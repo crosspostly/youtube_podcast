@@ -2,11 +2,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Podcast, YoutubeThumbnail, LogEntry } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import PodcastTest from './components/PodcastTest';
+import SfxTest from './components/SfxTest';
 import { JournalIcon, CloseIcon, KeyIcon } from './components/Icons';
 import { PodcastProvider, usePodcastContext } from './context/PodcastContext';
 import { initDB } from './services/dbService';
 import ApiKeyModal from './components/ApiKeyModal';
-import PodcastGenerationTest from './components/PodcastGenerationTest';
+import MusicGenerationTest from './components/MusicGenerationTest';
 import ProjectSetup from './components/ProjectSetup';
 import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
@@ -24,6 +25,7 @@ const AppUI: React.FC<{
     
     const [isDesignerTestPanelVisible, setIsDesignerTestPanelVisible] = useState<boolean>(false);
     const [isMusicTestPanelVisible, setIsMusicTestPanelVisible] = useState<boolean>(false);
+    const [isSfxTestPanelVisible, setIsSfxTestPanelVisible] = useState<boolean>(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
 
     useEffect(() => {
@@ -44,7 +46,8 @@ const AppUI: React.FC<{
     return (
         <>
             {isDesignerTestPanelVisible && <PodcastTest onClose={() => setIsDesignerTestPanelVisible(false)} />}
-            {isMusicTestPanelVisible && <PodcastGenerationTest onClose={() => setIsMusicTestPanelVisible(false)} />}
+            {isMusicTestPanelVisible && <MusicGenerationTest onClose={() => setIsMusicTestPanelVisible(false)} />}
+            {isSfxTestPanelVisible && <SfxTest onClose={() => setIsSfxTestPanelVisible(false)} />}
             {isLogVisible && (
                 <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={onCloseLog}>
                     <div className="w-full max-w-2xl h-full bg-slate-800 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
@@ -97,6 +100,7 @@ const AppUI: React.FC<{
                             onStartProject={startNewProject}
                             onOpenDesignerTest={() => setIsDesignerTestPanelVisible(true)}
                             onOpenMusicTest={() => setIsMusicTestPanelVisible(true)}
+                            onOpenSfxTest={() => setIsSfxTestPanelVisible(true)}
                         />
                     )}
                 </main>
@@ -108,7 +112,7 @@ const AppUI: React.FC<{
 const App: React.FC = () => {
     const [isLogVisible, setIsLogVisible] = useState(false);
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '' });
+    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '', freesound: '' });
     const [defaultFont, setDefaultFont] = useState('Impact');
 
     useEffect(() => {
@@ -122,7 +126,7 @@ const App: React.FC = () => {
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string }, defaultFont: string }) => {
+    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => {
         setApiKeys(data.keys);
         setDefaultFont(data.defaultFont);
         try {

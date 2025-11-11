@@ -10,9 +10,22 @@ export interface LogEntry {
   data?: any;
 }
 
+export interface SoundEffect {
+    id: number;
+    name: string;
+    previews: {
+        'preview-hq-mp3': string;
+    };
+    license: string;
+    username: string;
+}
+
 export interface ScriptLine {
   speaker: string;
   text: string;
+  // New fields for SFX
+  soundEffect?: SoundEffect;
+  soundEffectVolume?: number;
 }
 
 export type ChapterStatus = 'pending' | 'script_generating' | 'audio_generating' | 'completed' | 'error';
@@ -25,7 +38,7 @@ export interface MusicTrack {
 }
 
 export interface Chapter {
-  id: string;
+  id:string;
   title: string;
   script: ScriptLine[];
   audioBlob?: Blob;

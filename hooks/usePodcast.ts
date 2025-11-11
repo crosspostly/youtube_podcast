@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, generateSrtFile, findMusicWithAi, findMusicManually } from '../services/ttsService';
+import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, generateSrtFile, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
-import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack } from '../types';
+import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect } from '../types';
 
 interface LoadingStatus {
     label: string;
@@ -11,7 +11,7 @@ interface LoadingStatus {
 
 export const usePodcast = (
     updateHistory: (podcast: Podcast) => void,
-    apiKeys: { gemini: string; openRouter: string },
+    apiKeys: { gemini: string; openRouter: string, freesound: string },
     defaultFont: string
 ) => {
     const [podcast, setPodcastState] = useState<Podcast | null>(null);
@@ -75,7 +75,7 @@ export const usePodcast = (
     
         try {
             updateChapterState(chapterId, 'script_generating');
-            const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
+            const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
             
             // Automatically find music for the new chapter
             const scriptText = chapterScriptData.script.map(line => line.text).join(' ');
@@ -92,7 +92,7 @@ export const usePodcast = (
             log({type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1}`, data: err});
             updateChapterState(chapterId, 'error', { error: errorMessage });
         }
-    }, [podcast, log, setPodcast, apiKeys.gemini]);
+    }, [podcast, log, setPodcast, apiKeys]);
 
     useEffect(() => {
         const pendingChapter = podcast?.chapters.find(c => c.status === 'pending');
@@ -113,7 +113,7 @@ export const usePodcast = (
 
         const initialSteps: LoadingStatus[] = [
             { label: 'Анализ темы и создание концепции', status: 'pending' },
-            { label: 'Подбор музыки для первой главы', status: 'pending' },
+            { label: 'Подбор музыки и SFX для первой главы', status: 'pending' },
             { label: 'Озвучивание первой главы', status: 'pending' },
             { label: 'Генерация фоновых изображений', status: 'pending' },
             { label: 'Разработка дизайн-концепций обложек', status: 'pending' },
@@ -127,17 +127,17 @@ export const usePodcast = (
         
         try {
             updateStatus('Анализ темы и создание концепции', 'in_progress');
-            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, log, apiKeys.gemini);
+            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
             updateStatus('Анализ темы и создание концепции', 'completed');
             setGenerationProgress(15);
             
-            updateStatus('Подбор музыки для первой главы', 'in_progress');
+            updateStatus('Подбор музыки и SFX для первой главы', 'in_progress');
             const firstChapterScriptText = blueprint.chapters[0].script.map(line => line.text).join(' ');
             const musicTracks = await findMusicWithAi(firstChapterScriptText, log, apiKeys.gemini);
             if (musicTracks.length > 0) {
                 blueprint.chapters[0].backgroundMusic = musicTracks[0];
             }
-            updateStatus('Подбор музыки для первой главы', 'completed');
+            updateStatus('Подбор музыки и SFX для первой главы', 'completed');
             setGenerationProgress(30);
 
             const finalCharacterVoices: { [key: string]: string } = {};
@@ -454,7 +454,6 @@ export const usePodcast = (
         return podcast.chapters.filter(c => c.status === 'completed' && c.script).flatMap(c => c.script).filter(line => line.speaker.toUpperCase() !== 'SFX').map(line => line.text).join('\n');
     }, [podcast?.chapters]);
 
-    // FIX: Add findMusicForChapter function to find music for a specific chapter
     const findMusicForChapter = useCallback(async (chapterId: string): Promise<MusicTrack[]> => {
         if (!podcast) return [];
         const chapter = podcast.chapters.find(c => c.id === chapterId);
@@ -490,6 +489,58 @@ export const usePodcast = (
         }
     }, [podcast, log, setError]);
 
+    // --- SFX Management ---
+    const findSfxForLine = async (chapterId: string, lineIndex: number): Promise<SoundEffect[]> => {
+        if (!podcast) return [];
+        const line = podcast.chapters.find(c => c.id === chapterId)?.script[lineIndex];
+        if (!line || line.speaker.toUpperCase() !== 'SFX') return [];
+        try {
+            return await findSfxWithAi(line.text, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+        } catch (e: any) {
+            log({ type: 'error', message: 'Ошибка поиска SFX с ИИ', data: e });
+            return [];
+        }
+    };
+    
+    const findSfxManuallyForLine = async (keywords: string): Promise<SoundEffect[]> => {
+        try {
+            return await findSfxManually(keywords, log, apiKeys.freesound);
+        } catch (e: any) {
+            log({ type: 'error', message: 'Ошибка ручного поиска SFX', data: e });
+            return [];
+        }
+    };
+
+    const setSfxForLine = (chapterId: string, lineIndex: number, sfx: SoundEffect | null) => {
+        setPodcast(p => {
+            if (!p) return null;
+            const chapterIdx = p.chapters.findIndex(c => c.id === chapterId);
+            if (chapterIdx === -1) return p;
+            
+            const newChapters = [...p.chapters];
+            const newScript = [...newChapters[chapterIdx].script];
+            newScript[lineIndex] = { ...newScript[lineIndex], soundEffect: sfx || undefined };
+            newChapters[chapterIdx] = { ...newChapters[chapterIdx], script: newScript };
+
+            return { ...p, chapters: newChapters };
+        });
+    };
+
+    const setSfxVolume = (chapterId: string, lineIndex: number, volume: number) => {
+         setPodcast(p => {
+            if (!p) return null;
+            const chapterIdx = p.chapters.findIndex(c => c.id === chapterId);
+            if (chapterIdx === -1) return p;
+            
+            const newChapters = [...p.chapters];
+            const newScript = [...newChapters[chapterIdx].script];
+            newScript[lineIndex] = { ...newScript[lineIndex], soundEffectVolume: volume };
+            newChapters[chapterIdx] = { ...newChapters[chapterIdx], script: newScript };
+
+            return { ...p, chapters: newChapters };
+        });
+    };
+
 
     return {
         podcast, setPodcastState, 
@@ -508,5 +559,6 @@ export const usePodcast = (
         manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter,
         findMusicManuallyForChapter,
+        findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
     };
 };

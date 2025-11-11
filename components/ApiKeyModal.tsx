@@ -4,22 +4,23 @@ import FontAutocompleteInput from './FontAutocompleteInput';
 
 interface ApiKeyModalProps {
     onClose: () => void;
-    onSave: (data: { keys: { gemini: string; openRouter: string }, defaultFont: string }) => void;
-    currentKeys: { gemini: string; openRouter: string };
+    onSave: (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => void;
+    currentKeys: { gemini: string; openRouter: string; freesound: string };
     currentFont: string;
 }
 
-type Tab = 'gemini' | 'fallback' | 'style';
+type Tab = 'gemini' | 'fallback' | 'sfx' | 'style';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
     const [openRouterApiKey, setOpenRouterApiKey] = useState(currentKeys.openRouter);
+    const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound);
     const [defaultFont, setDefaultFont] = useState(currentFont);
     const [activeTab, setActiveTab] = useState<Tab>('gemini');
 
     const handleSave = () => {
         onSave({ 
-            keys: { gemini: geminiApiKey, openRouter: openRouterApiKey },
+            keys: { gemini: geminiApiKey, openRouter: openRouterApiKey, freesound: freesoundApiKey },
             defaultFont
         });
         onClose();
@@ -49,6 +50,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                     <div className="flex items-center border-b border-slate-700">
                         <TabButton tabId="gemini" label="Google Gemini" />
                         <TabButton tabId="fallback" label="Fallback" />
+                        <TabButton tabId="sfx" label="SFX" />
                         <TabButton tabId="style" label="Стиль канала" />
                     </div>
                 </div>
@@ -87,6 +89,26 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     value={openRouterApiKey}
                                     onChange={(e) => setOpenRouterApiKey(e.target.value)}
                                     placeholder="Введите ваш ключ OpenRouter..."
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                />
+                            </div>
+                        </div>
+                    )}
+                     {activeTab === 'sfx' && (
+                        <div>
+                            <h4 className="text-lg font-semibold text-white mb-2">Freesound API</h4>
+                            <p className="text-slate-300 text-sm mb-4">
+                                Ключ для доступа к библиотеке звуковых эффектов Freesound.org. Если поле пустое, будет использоваться ключ по умолчанию с общими лимитами.
+                                <a href="https://freesound.org/docs/api/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
+                            </p>
+                            <div>
+                                <label htmlFor="freesoundApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Freesound API-ключ</label>
+                                <input
+                                    id="freesoundApiKeyInput"
+                                    type="password"
+                                    value={freesoundApiKey}
+                                    onChange={(e) => setFreesoundApiKey(e.target.value)}
+                                    placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
                             </div>

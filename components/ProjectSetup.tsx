@@ -20,6 +20,7 @@ interface ProjectSetupProps {
     ) => void;
     onOpenDesignerTest: () => void;
     onOpenMusicTest: () => void;
+    onOpenSfxTest: () => void;
 }
 
 const sampleArticles = [
@@ -78,7 +79,7 @@ const VOICES: Voice[] = [
 ];
 
 
-const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesignerTest, onOpenMusicTest }) => {
+const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesignerTest, onOpenMusicTest, onOpenSfxTest }) => {
     const {
         isLoading, log, setError,
         history, setPodcast: setPodcastInHistory, clearHistory,
@@ -153,24 +154,34 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
         const playAudio = (blob: Blob) => {
             if (!audioRef.current) return;
+            const audio = audioRef.current;
 
             if (activeBlobUrls.current.has(voiceId)) {
                 URL.revokeObjectURL(activeBlobUrls.current.get(voiceId)!);
             }
-
             const url = URL.createObjectURL(blob);
             activeBlobUrls.current.set(voiceId, url);
+            
+            audio.pause();
+            audio.src = url;
 
-            audioRef.current.src = url;
-            audioRef.current.play();
-            audioRef.current.onended = () => setPreviewingVoice(null);
-            audioRef.current.onerror = () => {
-                log({ type: 'error', message: `Ошибка воспроизведения аудио для голоса ${voiceId}`});
-                setPreviewingVoice(null);
-            };
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    log({ type: 'error', message: `Ошибка воспроизведения аудио для голоса ${voiceId}`, data: error });
+                    setPreviewingVoice(null);
+                });
+            }
         };
 
         setPreviewingVoice(voiceId);
+
+        // This handler will be attached to the single audio element
+        audioRef.current.onended = () => setPreviewingVoice(null);
+        audioRef.current.onerror = () => {
+             log({ type: 'error', message: `Ошибка воспроизведения аудио для голоса ${voiceId}`});
+             setPreviewingVoice(null);
+        };
 
         try {
             const cachedBlob = await getVoiceFromCache(voiceId);
@@ -391,7 +402,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
             <div className="w-full flex flex-col gap-4 mb-8">
                 <button onClick={handleStartProjectClick} disabled={isLoading || !projectTitleInput} className="w-full px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xl font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 hover:shadow-blue-500/30 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none disabled:cursor-not-allowed">Начать проект</button>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <button onClick={onOpenDesignerTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
                         <BeakerIcon className="w-6 h-6"/>
                         <span>Тест AI-дизайнера</span>
@@ -399,6 +410,10 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                     <button onClick={onOpenMusicTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
                         <BeakerIcon className="w-6 h-6"/>
                         <span>Тест Музыки</span>
+                    </button>
+                     <button onClick={onOpenSfxTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
+                        <BeakerIcon className="w-6 h-6"/>
+                        <span>Тест SFX</span>
                     </button>
                 </div>
             </div>

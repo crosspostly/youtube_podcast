@@ -5,11 +5,11 @@ import Spinner from './Spinner';
 import { CloseIcon, PlayIcon, PauseIcon, SearchIcon } from './Icons';
 import { usePodcastContext } from '../context/PodcastContext';
 
-interface PodcastGenerationTestProps {
+interface MusicGenerationTestProps {
     onClose: () => void;
 }
 
-const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }) => {
+const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) => {
     const [topic, setTopic] = useState('A lonely journey through a haunted forest');
     const [isLoading, setIsLoading] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -152,4 +152,4 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
     );
 };
 
-export default PodcastGenerationTest;
+export default MusicGenerationTest;

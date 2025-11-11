@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
-import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack } from '../types';
+import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
 import { withRetries, generateContentWithFallback } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
@@ -113,70 +113,84 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
 
     const offlineContext = new OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
-    let currentTime = 0;
-    
+    let speechTimeCursor = 0;
+    // Layer 1: Speech and Music
     for (let i = 0; i < podcast.chapters.length; i++) {
         const chapter = podcast.chapters[i];
         const speechBuffer = chapterAudioBuffers[i];
         if (!speechBuffer) continue;
         
-        // Add speech for the current chapter
         const speechSource = offlineContext.createBufferSource();
         speechSource.buffer = speechBuffer;
         speechSource.connect(offlineContext.destination);
-        speechSource.start(currentTime);
+        speechSource.start(speechTimeCursor);
 
-        // Handle background music for the current chapter
         if (chapter.backgroundMusic) {
-            try {
+             try {
                 const musicResponse = await fetch(chapter.backgroundMusic.audio);
                 const musicArrayBuffer = await musicResponse.arrayBuffer();
                 const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
 
                 const musicGainNode = offlineContext.createGain();
-                // Use chapter-specific volume if available, otherwise global volume
                 const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
                 
                 musicGainNode.gain.value = chapterVolume;
                 musicGainNode.connect(offlineContext.destination);
                 
                 const crossfadeDuration = 1.5;
-                const fadeInStartTime = currentTime;
-                const fadeOutEndTime = currentTime + speechBuffer.duration;
+                const fadeInStartTime = speechTimeCursor;
+                const fadeOutEndTime = speechTimeCursor + speechBuffer.duration;
                 
-                // Fade In Logic
-                const prevChapterMusic = i > 0 ? podcast.chapters[i-1].backgroundMusic : null;
-                if (!prevChapterMusic || prevChapterMusic.id !== chapter.backgroundMusic.id) {
+                if (i === 0 || podcast.chapters[i-1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
                     musicGainNode.gain.setValueAtTime(0, fadeInStartTime);
                     musicGainNode.gain.linearRampToValueAtTime(chapterVolume, fadeInStartTime + crossfadeDuration);
                 }
 
-                // Fade Out Logic
-                const nextChapterMusic = i < podcast.chapters.length - 1 ? podcast.chapters[i+1].backgroundMusic : null;
-                if (!nextChapterMusic || nextChapterMusic.id !== chapter.backgroundMusic.id) {
+                if (i === podcast.chapters.length - 1 || podcast.chapters[i+1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
                      musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
                      musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
                 }
 
-                // Loop or trim music logic
                 let musicCursor = 0;
                 while (musicCursor < speechBuffer.duration) {
                     const musicSource = offlineContext.createBufferSource();
                     musicSource.buffer = musicBuffer;
                     musicSource.connect(musicGainNode);
-                    
-                    const offset = musicCursor;
-                    const durationLeftInChapter = speechBuffer.duration - musicCursor;
-                    
-                    musicSource.start(currentTime + offset, 0, durationLeftInChapter);
+                    musicSource.start(speechTimeCursor + musicCursor, 0, speechBuffer.duration - musicCursor);
                     musicCursor += musicBuffer.duration;
                 }
-            } catch (e) {
-                console.error(`Не удалось загрузить или обработать музыку для главы ${chapter.title}`, e);
-            }
+            } catch (e) { console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); }
         }
-        
-        currentTime += speechBuffer.duration;
+        speechTimeCursor += speechBuffer.duration;
+    }
+
+    // Layer 2: Sound Effects
+    let estimatedTimeCursor = 0;
+    const CHARS_PER_SECOND = 15; // Estimated reading speed for timing SFX
+    const allScriptLines = podcast.chapters.flatMap(c => c.script);
+
+    for (const line of allScriptLines) {
+        if (line.speaker.toUpperCase() !== 'SFX' && line.text) {
+             estimatedTimeCursor += Math.max(1, line.text.length / CHARS_PER_SECOND);
+        } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect?.previews['preview-hq-mp3']) {
+            try {
+                const sfxResponse = await fetch(line.soundEffect.previews['preview-hq-mp3']);
+                const sfxArrayBuffer = await sfxResponse.arrayBuffer();
+                const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
+                
+                const sfxGainNode = offlineContext.createGain();
+                sfxGainNode.gain.value = line.soundEffectVolume ?? 0.5; // Default volume 50%
+                sfxGainNode.connect(offlineContext.destination);
+
+                const sfxSource = offlineContext.createBufferSource();
+                sfxSource.buffer = sfxBuffer;
+                sfxSource.connect(sfxGainNode);
+                
+                // Play the SFX at the estimated time, ensuring it doesn't go past the end
+                sfxSource.start(Math.min(estimatedTimeCursor, totalDuration - sfxBuffer.duration));
+
+            } catch(e) { console.error(`Не удалось обработать SFX: ${line.soundEffect.name}`, e); }
+        }
     }
 
     const renderedBuffer = await offlineContext.startRendering();
@@ -271,7 +285,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string, freesound?: string }): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
 
     const sourceInstruction = knowledgeBaseText
@@ -298,10 +312,10 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     ${styleInstruction}
 
     **General Task Requirements:**
-    - The chapter script should be approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
-    1.  Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
-    2.  Create YouTube-optimized text assets (title options, description, tags) and 10 image prompts.
-    3.  Write the script for the FIRST CHAPTER. Format all sound effect cues as a separate element with the speaker "SFX".
+    1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
+    2.  **YouTube Assets:** Create YouTube-optimized text assets (title options, description, tags) and 10 image prompts.
+    3.  **Script:** Write the script for the FIRST CHAPTER. The script should be approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
+    4.  **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. Format all sound effect cues as a separate element with the speaker "SFX". **Example: { "speaker": "SFX", "text": "Sound of a creaking door opening..." }**
 
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -329,8 +343,22 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     
     try {
         const config = knowledgeBaseText ? {} : { tools: [{ googleSearch: {} }] };
-        const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKey);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
+        const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKeys?.gemini);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
+
+        // Auto-find SFX for the generated script
+        const populatedScript = await Promise.all(data.chapter.script.map(async (line: ScriptLine) => {
+            if (line.speaker.toUpperCase() === 'SFX') {
+                try {
+                    const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
+                    if (sfxTracks.length > 0) {
+                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                    }
+                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
+            }
+            return line;
+        }));
+        data.chapter.script = populatedScript;
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         const sources: Source[] = knowledgeBaseText ? [] : Array.from(new Map<string, Source>(groundingChunks.map((c: any) => c.web).filter((w: any) => w?.uri).map((w: any) => [w.uri, { uri: w.uri, title: w.title?.trim() || w.uri }])).values());
@@ -396,7 +424,7 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }
 };
 
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{title: string, script: ScriptLine[]}> => {
+export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<{title: string, script: ScriptLine[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
@@ -424,11 +452,12 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
 
     **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
 
-    Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter, approximately 7-8 minutes long when spoken.
-    - **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
-    - Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}.
-    - Format all cues, sound effects, and action descriptions as a separate element with the speaker "SFX".
+    Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter.
+    - **Script Length:** Approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
+    - **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere.
+    - **Formatting:** Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}. Format all cues and sound effects as a separate element with the speaker "SFX".
     - ${styleInstruction}
+    ${sourceInstruction}
     
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     Structure: {
@@ -437,8 +466,23 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     }${knowledgeBaseBlock}`;
     
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
+
+        // Auto-find SFX for the generated script
+        const populatedScript = await Promise.all(data.script.map(async (line: ScriptLine) => {
+            if (line.speaker.toUpperCase() === 'SFX') {
+                try {
+                    const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
+                    if (sfxTracks.length > 0) {
+                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                    }
+                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
+            }
+            return line;
+        }));
+        data.script = populatedScript;
+
         log({ type: 'info', message: `Сценарий для главы ${chapterIndex + 1} успешно создан.` });
         return data;
     } catch (error) {
@@ -520,6 +564,7 @@ export const generateChapterAudio = async (
     apiKey?: string
 ): Promise<Blob> => {
     log({ type: 'info', message: `Начало синтеза аудио в режиме '${narrationMode}'.` });
+    // IMPORTANT: Filter out SFX lines before sending to TTS
     const dialogueScript = script.filter(line => line.speaker.toUpperCase() !== 'SFX');
 
     if (dialogueScript.length === 0) {
@@ -763,5 +808,69 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: 
     } catch (error) {
         log({ type: 'error', message: 'Ошибка в процессе поиска музыки с ИИ.', data: error });
         throw new Error('Не удалось подобрать музыку.');
+    }
+};
+
+// --- AI SFX FINDER ---
+const FREESOUND_API_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk'; // Default key
+const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
+
+export const performFreesoundSearch = async (searchTags: string, log: LogFunction, customApiKey?: string): Promise<SoundEffect[]> => {
+    const apiKey = customApiKey || FREESOUND_API_KEY;
+    if (!apiKey) {
+        log({ type: 'error', message: 'Ключ API Freesound не настроен.' });
+        return [];
+    }
+    const tags = searchTags.trim().replace(/,\s*/g, ' ');
+    if (!tags) return [];
+
+    const searchUrl = `${FREESOUND_API_URL}?query=${encodeURIComponent(tags)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
+    log({ type: 'request', message: 'Запрос SFX с Freesound', data: { url: searchUrl } });
+
+    try {
+        const response = await fetch(searchUrl, {
+            headers: { 'Authorization': `Token ${apiKey}` }
+        });
+        if (!response.ok) {
+            log({ type: 'error', message: `Freesound API error: ${response.statusText}`, data: await response.text() });
+            return [];
+        }
+        const data = await response.json();
+        if (!data || !data.results || data.results.length === 0) return [];
+        return data.results;
+    } catch (error) {
+        log({ type: 'error', message: 'Сетевая ошибка при запросе к Freesound.', data: error });
+        return [];
+    }
+};
+
+export const findSfxManually = async (keywords: string, log: LogFunction, apiKey?: string): Promise<SoundEffect[]> => {
+    log({ type: 'info', message: `Ручной поиск SFX по ключевым словам: ${keywords}` });
+    return performFreesoundSearch(keywords, log, apiKey);
+};
+
+export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<SoundEffect[]> => {
+    log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
+    try {
+        const prompt = `Analyze the following sound effect description: "${description}".
+        Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
+        Focus on the core sound, avoiding generic terms like "sound of".
+        
+        Examples:
+        - "Sound of a heavy wooden door creaking open": heavy door creak
+        - "A wolf howls at the full moon in a forest": wolf howl forest
+        - "Footsteps on wet pavement": footsteps wet pavement
+        
+        Description: "${description}"
+        Keywords:`;
+
+        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
+        const keywords = keywordsResponse.text.trim();
+        log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
+
+        return performFreesoundSearch(keywords, log, apiKeys?.freesound);
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error });
+        throw new Error('Не удалось подобрать SFX.');
     }
 };

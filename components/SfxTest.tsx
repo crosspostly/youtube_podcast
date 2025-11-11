@@ -1,19 +1,19 @@
 import React, { useState, useRef } from 'react';
-import { findMusicWithAi } from '../services/ttsService';
-import { LogEntry, MusicTrack } from '../types';
+import { findSfxWithAi } from '../services/ttsService';
+import { LogEntry, SoundEffect } from '../types';
 import Spinner from './Spinner';
 import { CloseIcon, PlayIcon, PauseIcon, SearchIcon } from './Icons';
 import { usePodcastContext } from '../context/PodcastContext';
 
-interface PodcastGenerationTestProps {
+interface SfxTestProps {
     onClose: () => void;
 }
 
-const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }) => {
-    const [topic, setTopic] = useState('A lonely journey through a haunted forest');
+const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
+    const [description, setDescription] = useState('A heavy wooden door creaking open');
     const [isLoading, setIsLoading] = useState(false);
     const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [results, setResults] = useState<MusicTrack[]>([]);
+    const [results, setResults] = useState<SoundEffect[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
@@ -22,13 +22,12 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
         const newEntry = { ...entry, timestamp: new Date().toISOString() };
         setLogs(prev => [newEntry, ...prev]);
-        // Also send to the main application log
         contextLog(entry);
     };
 
     const runTest = async () => {
-        if (!topic.trim()) {
-            setError('Please enter a topic.');
+        if (!description.trim()) {
+            setError('Please enter a description.');
             return;
         }
         setIsLoading(true);
@@ -37,13 +36,9 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
         setError(null);
 
         try {
-            const tracks = await findMusicWithAi(topic, log, apiKeys.gemini);
-            setResults(tracks);
-            if (tracks.length === 0) {
-                 log({ type: 'info', message: 'Test finished: No music tracks were found for the generated keywords.' });
-            } else {
-                 log({ type: 'info', message: `Test finished: Found ${tracks.length} music tracks.` });
-            }
+            const sfx = await findSfxWithAi(description, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+            setResults(sfx);
+            log({ type: 'info', message: `Test finished: Found ${sfx.length} sound effects.` });
         } catch (err: any) {
             setError(err.message || 'An unknown error occurred.');
             log({ type: 'error', message: 'Test failed with an error.', data: err });
@@ -63,7 +58,7 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
         } else {
             audio.pause();
             audio.src = url;
-            audio.volume = 0.1;
+            audio.volume = 0.5;
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
@@ -80,23 +75,23 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
         <div className="fixed bottom-4 left-4 bg-slate-800/80 backdrop-blur-lg border border-slate-700 p-4 rounded-lg shadow-lg z-50 w-full max-w-3xl max-h-[90vh] flex flex-col">
             <audio ref={audioRef} className="hidden" onEnded={() => setPreviewingUrl(null)} />
             <div className="flex justify-between items-center mb-4 flex-shrink-0">
-                <h3 className="text-lg font-bold text-white">Тест: AI-подбор музыки</h3>
+                <h3 className="text-lg font-bold text-white">Тест: AI-подбор SFX</h3>
                 <button onClick={onClose} className="text-slate-400 hover:text-white"><CloseIcon /></button>
             </div>
 
             <div className="flex gap-2 mb-4 flex-shrink-0">
                 <input
                     type="text"
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    placeholder="Введите тему для подбора музыки..."
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}
                 />
                 <button
                     onClick={runTest}
-                    disabled={isLoading || !topic}
-                    className="w-40 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-400 hover:to-purple-500 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-wait flex-shrink-0"
+                    disabled={isLoading || !description}
+                    className="w-40 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-400 hover:to-purple-500 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-wait"
                 >
                     {isLoading ? <Spinner className="w-5 h-5" /> : <SearchIcon />}
                     <span>Запустить</span>
@@ -120,7 +115,7 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
                 </div>
 
                 <div className="flex flex-col overflow-hidden">
-                     <h4 className="font-semibold text-white mb-2 flex-shrink-0">Найденные треки</h4>
+                     <h4 className="font-semibold text-white mb-2 flex-shrink-0">Найденные SFX</h4>
                      <div className="flex-grow bg-slate-900 rounded-md p-2 overflow-y-auto">
                         {isLoading && <div className="flex justify-center items-center h-full"><Spinner /></div>}
                         {!isLoading && results.length === 0 && (
@@ -130,15 +125,15 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
                         )}
                         {results.length > 0 && (
                              <div className="space-y-2">
-                                {results.map(track => (
-                                    <div key={track.id} className="p-2 rounded-md flex items-center justify-between gap-2 bg-slate-800">
+                                {results.map(sfx => (
+                                    <div key={sfx.id} className="p-2 rounded-md flex items-center justify-between gap-2 bg-slate-800">
                                         <div className="flex items-center gap-3 min-w-0">
-                                            <button onClick={() => togglePreview(track.audio)} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700 flex-shrink-0">
-                                                {previewingUrl === track.audio ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
+                                            <button onClick={() => togglePreview(sfx.previews['preview-hq-mp3'])} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700 flex-shrink-0">
+                                                {previewingUrl === sfx.previews['preview-hq-mp3'] ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
                                             </button>
                                             <div className="truncate">
-                                                <p className="font-semibold text-white truncate">{track.name}</p>
-                                                <p className="text-xs text-slate-400 truncate">{track.artist_name}</p>
+                                                <p className="font-semibold text-white truncate">{sfx.name}</p>
+                                                <p className="text-xs text-slate-400 truncate">by {sfx.username}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -152,4 +147,4 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
     );
 };
 
-export default PodcastGenerationTest;
+export default SfxTest;
