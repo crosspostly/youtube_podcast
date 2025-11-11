@@ -1,6 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
+import { withRetries } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -59,22 +60,36 @@ const generateSingleImageWithOpenRouter = async (prompt: string, log: LogFunctio
 export const regenerateSingleImage = async (prompt: string, log: LogFunction, geminiApiKey?: string, openRouterApiKey?: string): Promise<string> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
     try {
-        log({ type: 'request', message: `Запрос одного изображения от Imagen`, data: { prompt: fullPrompt } });
+        log({ type: 'request', message: `Запрос одного изображения от gemini-2.5-flash-image`, data: { prompt: fullPrompt } });
         const ai = getAiClient(log, geminiApiKey);
-        const response = await ai.models.generateImages({
-            model: 'imagen-4.0-generate-001',
-            prompt: fullPrompt,
-            config: { numberOfImages: 1, outputMimeType: 'image/jpeg', aspectRatio: '16:9' },
+        
+        const generateCall = () => ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+                parts: [{ text: fullPrompt }],
+            },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
         });
-        const base64Image = response.generatedImages[0].image.imageBytes;
-        return `data:image/jpeg;base64,${base64Image}`;
+
+        const response = await withRetries(generateCall, log);
+
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                const base64Image: string = part.inlineData.data;
+                return `data:image/png;base64,${base64Image}`;
+            }
+        }
+        throw new Error("Не удалось найти данные изображения в ответе модели.");
+
     } catch (error: any) {
         const errorMessage = (error?.message || '').toLowerCase();
         const isQuotaError = errorMessage.includes('quota') || errorMessage.includes('resource has been exhausted');
-        log({ type: 'error', message: `Ошибка при генерации одного изображения через Imagen`, data: error });
+        log({ type: 'error', message: `Ошибка при генерации одного изображения через Gemini`, data: error });
 
         if (isQuotaError && openRouterApiKey) {
-            log({ type: 'info', message: 'Квота Imagen исчерпана. Переключаюсь на OpenRouter.' });
+            log({ type: 'info', message: 'Квота Gemini исчерпана. Переключаюсь на OpenRouter.' });
             return generateSingleImageWithOpenRouter(prompt, log, openRouterApiKey);
         } else if (isQuotaError) {
              throw new Error("Квота генерации изображений исчерпана. Добавьте API-ключ OpenRouter.");
@@ -103,7 +118,6 @@ export const generateStyleImages = async (prompts: string[], log: LogFunction, g
              log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
         } catch (error) {
             log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
-            // Push a placeholder or skip? For now, we skip, resulting in fewer images on failure.
         }
     }
     return generatedImages;
@@ -137,66 +151,71 @@ export const generateMoreImages = async (prompts: string[], log: LogFunction, ge
 
 // --- CANVAS-BASED THUMBNAIL GENERATION ---
 
-const mapFontFamily = (aiFamily: string): string => {
-    const lowerFamily = aiFamily.toLowerCase();
-    if (lowerFamily.includes('impact')) return "'Impact', 'Arial Black', sans-serif";
-    if (lowerFamily.includes('serif')) return "'Georgia', 'Times New Roman', serif";
-    if (lowerFamily.includes('sans-serif')) return "'Helvetica', 'Arial', sans-serif";
-    if (lowerFamily.includes('cursive')) return "'Brush Script MT', cursive";
-    return "'Impact', 'Arial Black', sans-serif"; // Default
-};
+export const generateYoutubeThumbnails = async (
+    baseImageSrc: string, 
+    title: string, 
+    designConcepts: ThumbnailDesignConcept[], 
+    log: LogFunction,
+    defaultFont?: string
+): Promise<YoutubeThumbnail[]> => {
+    if (!baseImageSrc) {
+        log({ type: 'info', message: 'Базовое изображение для обложки отсутствует, пропуск.' });
+        return [];
+    }
+    log({ type: 'info', message: 'Создание обложек для YouTube по AI-концепциям...' });
 
-
-export const generateYoutubeThumbnails = (baseImageSrc: string, title: string, designConcepts: ThumbnailDesignConcept[], log: LogFunction): Promise<YoutubeThumbnail[]> => {
-    return new Promise((resolve, reject) => {
-        if (!baseImageSrc) {
-            log({ type: 'info', message: 'Базовое изображение для обложки отсутствует, пропуск.' });
-            return resolve([]);
-        }
-        log({ type: 'info', message: 'Создание обложек для YouTube по AI-концепциям...' });
-
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 1280;
-            canvas.height = 720;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return reject(new Error("Не удалось получить 2D-контекст холста."));
-
-            const results: YoutubeThumbnail[] = designConcepts.map(concept => {
-                const options: TextOptions = {
-                    text: title.toUpperCase(),
-                    fontFamily: mapFontFamily(concept.fontFamily),
-                    fontSize: concept.fontSize || 90,
-                    fillStyle: concept.textColor || '#FFFFFF',
-                    textAlign: 'center',
-                    position: { x: canvas.width / 2, y: canvas.height / 2 },
-                    shadow: {
-                        color: concept.shadowColor || 'rgba(0,0,0,0.8)',
-                        blur: 15,
-                        offsetX: 5,
-                        offsetY: 5
-                    },
-                    overlayColor: `rgba(0,0,0,${concept.overlayOpacity || 0.4})`,
-                };
-                
-                drawCanvas(ctx, img, options);
-                
-                return {
-                    styleName: concept.name,
-                    dataUrl: canvas.toDataURL('image/png'),
-                    options: options
-                };
-            });
-
-            log({ type: 'response', message: 'Обложки по AI-концепциям успешно созданы.' });
-            resolve(results);
-        };
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    
+    // Wrap image loading in a promise
+    await new Promise((resolve, reject) => {
+        img.onload = resolve;
         img.onerror = (e) => {
             log({type: 'error', message: "Не удалось загрузить базовое изображение для Canvas.", data: e});
             reject(new Error("Не удалось загрузить базовое изображение для обложки."));
         };
         img.src = baseImageSrc;
     });
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1280;
+    canvas.height = 720;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("Не удалось получить 2D-контекст холста.");
+
+    const results: YoutubeThumbnail[] = [];
+    for (const concept of designConcepts) {
+        const options: TextOptions = {
+            text: title,
+            // Use default font if provided, otherwise use AI-suggested font
+            fontFamily: defaultFont || concept.fontFamily || 'Impact',
+            fontSize: concept.fontSize || 90,
+            fillStyle: concept.textColor || '#FFFFFF',
+            textAlign: 'center',
+            position: { x: canvas.width / 2, y: canvas.height / 2 },
+            shadow: {
+                color: concept.shadowColor || 'rgba(0,0,0,0.8)',
+                blur: 15,
+                offsetX: 5,
+                offsetY: 5
+            },
+            overlayColor: `rgba(0,0,0,${concept.overlayOpacity || 0.4})`,
+            textTransform: concept.textTransform || 'uppercase',
+            strokeColor: concept.strokeColor,
+            strokeWidth: concept.strokeWidth,
+            gradientColors: concept.gradientColors,
+        };
+        
+        // Drawing is now async because of font loading
+        await drawCanvas(ctx, img, options);
+        
+        results.push({
+            styleName: concept.name,
+            dataUrl: canvas.toDataURL('image/png'),
+            options: options
+        });
+    }
+
+    log({ type: 'response', message: 'Обложки по AI-концепциям успешно созданы.' });
+    return results;
 };

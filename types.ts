@@ -40,6 +40,11 @@ export interface TextOptions {
     offsetY: number;
   };
   overlayColor: string;
+  // New advanced options
+  strokeColor?: string;
+  strokeWidth?: number;
+  gradientColors?: string[];
+  textTransform?: 'uppercase' | 'none';
 }
 
 
@@ -62,6 +67,20 @@ export interface ThumbnailDesignConcept {
     textColor: string;
     shadowColor: string;
     overlayOpacity: number;
+    // New advanced options for "MrBeast" style
+    strokeColor?: string;
+    strokeWidth?: number;
+    gradientColors?: string[];
+    textTransform?: 'uppercase' | 'none';
+}
+
+export type NarrationMode = 'dialogue' | 'monologue';
+
+export interface Voice {
+    id: string;
+    name: string;
+    description: string;
+    gender: 'female' | 'male';
 }
 
 export interface Podcast {
@@ -82,4 +101,9 @@ export interface Podcast {
   creativeFreedom: boolean;
   totalDurationMinutes: number;
   language: string;
+  // New fields for voice selection
+  narrationMode: NarrationMode;
+  characterVoices: { [characterName: string]: string };
+  monologueVoice: string;
+  selectedBgIndex: number;
 }

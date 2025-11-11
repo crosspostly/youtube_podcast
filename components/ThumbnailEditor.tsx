@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { YoutubeThumbnail, TextOptions } from '../types';
-import { drawCanvas } from '../services/canvasUtils';
+import { drawCanvas, loadGoogleFont } from '../services/canvasUtils';
 import { CloseIcon } from './Icons';
+import FontAutocompleteInput from './FontAutocompleteInput';
 
 interface ThumbnailEditorProps {
     thumbnail: YoutubeThumbnail;
@@ -10,22 +11,37 @@ interface ThumbnailEditorProps {
     onClose: () => void;
 }
 
-const FONT_FAMILES = ["'Impact', 'Arial Black', sans-serif", "'Georgia', 'Times New Roman', serif", "'Helvetica', 'Arial', sans-serif", "'Courier New', Courier, monospace"];
-
 const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageSrc, onSave, onClose }) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const [options, setOptions] = useState<TextOptions>(thumbnail.options);
     const [isDragging, setIsDragging] = useState(false);
     const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+    const [isFontLoading, setIsFontLoading] = useState(false);
+    
+    // Debounce font loading
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (options.fontFamily) {
+                setIsFontLoading(true);
+                loadGoogleFont(options.fontFamily).then(() => {
+                    redrawCanvas();
+                    setIsFontLoading(false);
+                });
+            }
+        }, 300); // 300ms delay
+
+        return () => clearTimeout(handler);
+    }, [options.fontFamily]);
+
 
     const redrawCanvas = useCallback(() => {
-        if (!canvasRef.current || !imageRef.current) return;
+        if (!canvasRef.current || !imageRef.current || isFontLoading) return;
         const ctx = canvasRef.current.getContext('2d');
         if (ctx) {
             drawCanvas(ctx, imageRef.current, options);
         }
-    }, [options]);
+    }, [options, isFontLoading]);
 
     useEffect(() => {
         const img = new Image();
@@ -94,10 +110,11 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <textarea value={options.text} onChange={(e) => handleOptionChange('text', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300">Шрифт</label>
-                            <select value={options.fontFamily} onChange={(e) => handleOptionChange('fontFamily', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-white mt-1">
-                                {FONT_FAMILES.map(f => <option key={f} value={f}>{f.split(',')[0].replace(/'/g, '')}</option>)}
-                            </select>
+                            <label className="block text-sm font-medium text-gray-300">Шрифт (Google Fonts)</label>
+                             <FontAutocompleteInput 
+                                value={options.fontFamily}
+                                onChange={(font) => handleOptionChange('fontFamily', font)}
+                             />
                         </div>
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
@@ -117,6 +134,18 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                                 <option value="center">По центру</option>
                                 <option value="right">По правому краю</option>
                             </select>
+                        </div>
+
+                         <div className="border-t border-gray-700 pt-4">
+                            <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
+                             <div className="flex items-center gap-4 mb-2">
+                                 <label className="block text-sm font-medium text-gray-300">Цвет</label>
+                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e) => handleOptionChange('strokeColor', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                             </div>
+                             <div>
+                                <label className="block text-sm font-medium text-gray-300">Толщина: {options.strokeWidth || 0}px</label>
+                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e) => handleOptionChange('strokeWidth', Number(e.target.value))} className="w-full mt-1"/>
+                            </div>
                         </div>
 
                          <div className="border-t border-gray-700 pt-4">

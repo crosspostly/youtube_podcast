@@ -1,9 +1,11 @@
-import { GoogleGenAI, Modality } from "@google/genai";
-import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept } from '../types';
+import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
+import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode } from '../types';
+import { withRetries, generateContentWithFallback } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
-const getAiClient = (log: LogFunction, customApiKey?: string) => {
+// This client is now only for the TTS-specific model which doesn't use the text fallback logic.
+const getTtsAiClient = (log: LogFunction, customApiKey?: string) => {
   const apiKey = customApiKey || process.env.API_KEY;
   if (!apiKey) {
     const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена или введен пользовательский ключ.";
@@ -93,34 +95,49 @@ const combineWavBlobs = async (blobs: Blob[]): Promise<Blob> => {
 
 // --- SCRIPT & AUDIO GENERATION ---
 
-const parseGeminiJsonResponse = (rawText: string, log: LogFunction): any => {
+const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey?: string): Promise<any> => {
     log({ type: 'response', message: 'Сырой ответ от Gemini', data: rawText });
     const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
     const jsonText = jsonMatch ? jsonMatch[1] : rawText;
+
     try {
         return JSON.parse(jsonText);
     } catch (jsonError) {
-        log({ type: 'error', message: 'Не удалось распарсить JSON из ответа модели.', data: jsonText });
-        throw new Error(`Ответ модели не является валидным JSON. Подробности в журнале.`);
+        log({ type: 'error', message: 'Не удалось распарсить JSON, попытка исправления с помощью ИИ...', data: { error: jsonError, text: jsonText } });
+        
+        const correctionPrompt = `The following text is a malformed JSON response from an API. Please correct any syntax errors (like trailing commas, missing brackets, or unescaped quotes) and return ONLY the valid JSON object. Do not include any explanatory text or markdown formatting like \`\`\`json.
+
+        Malformed JSON:
+        ${jsonText}`;
+
+        try {
+            const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKey);
+            const correctedRawText = correctionResponse.text;
+            log({ type: 'info', message: 'Получен исправленный JSON от ИИ.', data: correctedRawText });
+            
+            const correctedJsonMatch = correctedRawText.match(/```json\s*([\s\S]*?)\s*```/);
+            const correctedJsonText = correctedJsonMatch ? correctedJsonMatch[1] : correctedRawText;
+            return JSON.parse(correctedJsonText);
+
+        } catch (correctionError) {
+             log({ type: 'error', message: 'Не удалось исправить и распарсить JSON даже после второй попытки.', data: correctionError });
+             throw new Error(`Ответ модели не является валидным JSON, и попытка автоматического исправления не удалась.`);
+        }
     }
 };
 
 export const googleSearchForKnowledge = async (question: string, log: LogFunction, apiKey?: string): Promise<string> => {
     log({ type: 'info', message: 'Начало поиска информации в Google для базы знаний.' });
-    const ai = getAiClient(log, apiKey);
-    const model = "gemini-2.5-pro";
 
     const prompt = `Using Google Search, find and provide a detailed, structured answer to the following question. The answer should be comprehensive, well-formatted, and contain key facts. Write the answer in Russian.
 
     Question: "${question}"`;
 
     try {
-        log({ type: 'request', message: `Запрос к модели ${model} с Google Search`, data: { question } });
-        const response = await ai.models.generateContent({ 
-            model, 
+        const response = await generateContentWithFallback({ 
             contents: prompt,
             config: { tools: [{ googleSearch: {} }] } 
-        });
+        }, log, apiKey);
         
         const answer = response.text;
         if (!answer.trim()) {
@@ -136,10 +153,8 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
-    const ai = getAiClient(log, apiKey);
-    const model = "gemini-2.5-pro";
 
     const sourceInstruction = knowledgeBaseText
         ? `Use STRICTLY AND ONLY the provided text ("Knowledge Base") as the SOLE source of facts. Do not use Google Search or invent facts.`
@@ -165,7 +180,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     ${styleInstruction}
 
     **General Task Requirements:**
-    - The chapter script should be approximately 4-5 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST NOT EXCEED 7000 characters.**
+    - The chapter script should be approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
     1.  Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
     2.  Create YouTube-optimized text assets (title options, description, tags) and 10 image prompts.
     3.  Write the script for the FIRST CHAPTER. Format all sound effect cues as a separate element with the speaker "SFX".
@@ -195,10 +210,9 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     }${knowledgeBaseBlock}`;
     
     try {
-        log({ type: 'request', message: `Запрос к модели ${model} для создания концепции`, data: { prompt } });
         const config = knowledgeBaseText ? {} : { tools: [{ googleSearch: {} }] };
-        const response = await ai.models.generateContent({ model, contents: prompt, config });
-        const data = parseGeminiJsonResponse(response.text, log);
+        const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKey);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         const sources: Source[] = knowledgeBaseText ? [] : Array.from(new Map<string, Source>(groundingChunks.map((c: any) => c.web).filter((w: any) => w?.uri).map((w: any) => [w.uri, { uri: w.uri, title: w.title?.trim() || w.uri }])).values());
@@ -211,7 +225,6 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         };
         
         log({ type: 'info', message: 'Концепция подкаста и первая глава успешно созданы.' });
-        // FIX: Removed 'id' property from return object to match the function's return type.
         return {
             youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
@@ -229,8 +242,6 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
 
 export const regenerateTextAssets = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{ youtubeTitleOptions: string[]; description: string; seoKeywords: string[] }> => {
     log({ type: 'info', message: 'Начало регенерации текстовых материалов для YouTube.' });
-    const ai = getAiClient(log, apiKey);
-    const model = "gemini-2.5-pro";
 
     const styleInstruction = creativeFreedom 
         ? "Style: Fictional, mystical, intriguing." 
@@ -257,9 +268,8 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }`;
 
     try {
-        log({ type: 'request', message: `Запрос к модели ${model} для регенерации текста`, data: { prompt } });
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        const data = parseGeminiJsonResponse(response.text, log);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
         log({ type: 'info', message: 'Текстовые материалы успешно обновлены.' });
         return data;
     } catch (error) {
@@ -270,8 +280,6 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
 
 export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{title: string, script: ScriptLine[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
-    const ai = getAiClient(log, apiKey);
-    const model = "gemini-2.5-pro";
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
 
@@ -298,8 +306,8 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
 
     **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
 
-    Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter, approximately 4-5 minutes long when spoken.
-    - **IMPORTANT: The total text volume of this chapter's script MUST NOT EXCEED 7000 characters.**
+    Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter, approximately 7-8 minutes long when spoken.
+    - **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
     - Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}.
     - Format all cues, sound effects, and action descriptions as a separate element with the speaker "SFX".
     - ${styleInstruction}
@@ -311,9 +319,8 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     }${knowledgeBaseBlock}`;
     
     try {
-        log({ type: 'request', message: `Запрос к модели ${model} для создания главы ${chapterIndex + 1}`, data: { prompt }});
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        const data = parseGeminiJsonResponse(response.text, log);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
         log({ type: 'info', message: `Сценарий для главы ${chapterIndex + 1} успешно создан.` });
         return data;
     } catch (error) {
@@ -322,28 +329,85 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     }
 };
 
-const getVoiceForCharacter = (description: string): string => {
-    const lowerDesc = description.toLowerCase();
-    const MALE_VOICES = ['Puck', 'Charon', 'Fenrir'];
-    const FEMALE_VOICES = ['Zephyr', 'Kore'];
+const processTtsResponse = (response: GenerateContentResponse): Blob => {
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!base64Audio) throw new Error("Не удалось получить аудиоданные от модели TTS.");
+    
+    const binaryString = atob(base64Audio);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    const pcmData = new Int16Array(bytes.buffer);
+    
+    return createWavBlobFromPcm(pcmData, 24000, 1);
+};
 
-    if (lowerDesc.includes('мужск') || lowerDesc.includes('male')) {
-        if (lowerDesc.includes('низк') || lowerDesc.includes('глубок') || lowerDesc.includes('deep')) return 'Puck';
-        if (lowerDesc.includes('стар') || lowerDesc.includes('old')) return 'Charon';
-        return MALE_VOICES[Math.floor(Math.random() * MALE_VOICES.length)];
+const TTS_MODEL_FALLBACK_CHAIN = [
+    'gemini-2.5-flash-preview-tts',
+    'gemini-2.5-pro-preview-tts',
+    'gemini-2.5-flash-tts'
+];
+
+const generateAudioWithFallback = async (
+    params: { contents: any; config: any; },
+    log: LogFunction,
+    customApiKey?: string
+): Promise<GenerateContentResponse> => {
+    const ai = getTtsAiClient(log, customApiKey);
+
+    for (const model of TTS_MODEL_FALLBACK_CHAIN) {
+        try {
+            log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
+            const generateCall = () => ai.models.generateContent({ model, ...params });
+            const response = await withRetries(generateCall, log);
+            log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
+            return response;
+        } catch (error) {
+            log({ type: 'error', message: `Model ${model} failed after retries. Trying next model...`, data: error });
+        }
     }
-    if (lowerDesc.includes('женск') || lowerDesc.includes('female')) {
-        if (lowerDesc.includes('спокойн') || lowerDesc.includes('calm')) return 'Zephyr';
-        return FEMALE_VOICES[Math.floor(Math.random() * FEMALE_VOICES.length)];
-    }
-    return 'Zephyr'; // Default fallback
+    throw new Error(`All TTS models in the fallback chain failed. See logs for details.`);
 };
 
 
-export const generatePodcastDialogueAudio = async (script: ScriptLine[], characters: Character[], log: LogFunction, apiKey?: string): Promise<Blob> => {
-    log({ type: 'info', message: 'Начало синтеза аудиодиалога (TTS).' });
-    const ai = getAiClient(log, apiKey);
+export const previewVoice = async (voiceName: string, languageCode: string, log: LogFunction, apiKey?: string): Promise<Blob> => {
+    log({ type: 'info', message: `Запрос на предпрослушивание голоса: ${voiceName}` });
 
+    const textToSpeak = languageCode === 'ru' 
+        ? "Привет, я один из голосов, доступных для озвучки вашего проекта."
+        : "Hello, I am one of the voices available to narrate your project.";
+
+    const params = {
+        contents: [{ parts: [{ text: textToSpeak }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+            },
+        },
+    };
+
+    try {
+        const response = await generateAudioWithFallback(params, log, apiKey);
+        return processTtsResponse(response);
+    } catch (error) {
+        log({ type: 'error', message: `Ошибка при предпрослушивании голоса ${voiceName}`, data: error });
+        throw error;
+    }
+};
+
+
+export const generateChapterAudio = async (
+    script: ScriptLine[],
+    narrationMode: NarrationMode,
+    characterVoices: { [key: string]: string },
+    monologueVoice: string,
+    log: LogFunction,
+    apiKey?: string
+): Promise<Blob> => {
+    log({ type: 'info', message: `Начало синтеза аудио в режиме '${narrationMode}'.` });
     const dialogueScript = script.filter(line => line.speaker.toUpperCase() !== 'SFX');
 
     if (dialogueScript.length === 0) {
@@ -351,45 +415,46 @@ export const generatePodcastDialogueAudio = async (script: ScriptLine[], charact
         const silentPcm = new Int16Array(24000 * 1); // 1 second of silence
         return createWavBlobFromPcm(silentPcm, 24000, 1);
     }
-    
-    const speakersInScript = Array.from(new Set(dialogueScript.map(line => line.speaker)));
-    
-    const speakerVoiceConfigs = speakersInScript.map(charName => {
-        const character = characters.find(c => c.name === charName);
-        const voiceName = character ? getVoiceForCharacter(character.description) : 'Zephyr';
-        log({type: 'info', message: `Для персонажа "${charName}" (${character?.description}) выбран голос: ${voiceName}`});
-        return {
-            speaker: charName,
-            voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+
+    let ttsPrompt: string;
+    let ttsConfig: any;
+
+    if (narrationMode === 'monologue') {
+        ttsPrompt = dialogueScript.map(line => line.text).join(' \n');
+        ttsConfig = {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } },
+            },
         };
-    });
+    } else { // Dialogue mode
+        const speakersInScript = Array.from(new Set(dialogueScript.map(line => line.speaker)));
+        const speakerVoiceConfigs = speakersInScript.map(charName => {
+            const voiceName = characterVoices[charName] || 'Zephyr'; // Default fallback
+            log({ type: 'info', message: `Для персонажа "${charName}" выбран голос: ${voiceName}` });
+            return {
+                speaker: charName,
+                voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+            };
+        });
+
+        ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
+        ttsConfig = {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } }
+        };
+    }
     
-    const ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
+    const params = {
+        contents: [{ parts: [{ text: ttsPrompt }] }],
+        config: ttsConfig
+    };
     
     try {
-        log({ type: 'request', message: 'Запрос к модели TTS (multi-speaker)', data: { speakers: speakerVoiceConfigs.map(s => s.speaker) } });
-        const response = await ai.models.generateContent({ 
-            model: "gemini-2.5-flash-preview-tts", 
-            contents: [{ parts: [{ text: ttsPrompt }] }], 
-            config: { 
-                responseModalities: [Modality.AUDIO], 
-                speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } } 
-            } 
-        });
-        
-        const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (!base64Audio) throw new Error("Не удалось получить аудиоданные от модели TTS.");
-        
-        const binaryString = atob(base64Audio);
-        const len = binaryString.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-        }
-        const pcmData = new Int16Array(bytes.buffer);
-        
+        const response = await generateAudioWithFallback(params, log, apiKey);
+        const wavBlob = processTtsResponse(response);
         log({ type: 'info', message: 'WAV файл успешно создан.' });
-        return createWavBlobFromPcm(pcmData, 24000, 1);
+        return wavBlob;
     } catch (error) {
         log({ type: 'error', message: 'Ошибка при синтезе аудио (TTS)', data: error });
         throw error;
@@ -398,15 +463,14 @@ export const generatePodcastDialogueAudio = async (script: ScriptLine[], charact
 
 export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKey?: string): Promise<ThumbnailDesignConcept[]> => {
     log({ type: 'info', message: 'Начало генерации дизайн-концепций для обложек.' });
-    const ai = getAiClient(log, apiKey);
-    const model = "gemini-2.5-pro";
 
-    const prompt = `You are an expert YouTube thumbnail designer. Analyze this video topic: "${topic}". 
+    const prompt = `You are an expert in creating viral, high-CTR YouTube thumbnails, specializing in the style of top creators like MrBeast. Your design MUST use principles of visual psychology: high contrast, emotional impact, and extremely readable, bold typography.
     
-    Propose 3 distinct, visually striking design concepts for a thumbnail. 
-    For each concept, provide a name and specific design parameters.
+    Analyze this video topic: "${topic}". 
     
-    **CRITICAL INSTRUCTION: Generate your response in the language: ${language}. However, the fontFamily values must be common, web-safe font categories.**
+    Propose 3 distinct, "bombastic" design concepts. For each concept, provide a name and specific design parameters. I want you to include modern design elements like text strokes (outlines) and gradients.
+    
+    **CRITICAL INSTRUCTION: For 'fontFamily', suggest specific, popular, free-to-use Google Font names that fit the theme (e.g., 'Anton', 'Bebas Neue', 'Creepster'). Do not use generic categories like 'serif'. Your entire response must be in the language: ${language}.**
 
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -414,20 +478,23 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
     {
       "concepts": [
         {
-          "name": "Concept name (e.g., Neon Horror, Vintage Conspiracy, Modern Thriller)",
-          "fontFamily": "A font suggestion from this list: 'Impactful', 'Serif', 'Sans-serif', 'Cursive'",
-          "fontSize": 90,
+          "name": "Concept name (e.g., Electric Shock, Conspiracy Board, Ancient Artifact)",
+          "fontFamily": "A specific Google Font name like 'Anton' or 'Oswald'",
+          "fontSize": 120,
           "textColor": "#RRGGBB hex code",
           "shadowColor": "#RRGGBB hex code for a glow or drop shadow",
-          "overlayOpacity": A number between 0.2 and 0.6 for the dark overlay
+          "overlayOpacity": A number between 0.2 and 0.6 for the dark overlay,
+          "textTransform": "uppercase",
+          "strokeColor": "#RRGGBB hex code for a contrasting text outline (e.g., black or white)",
+          "strokeWidth": A number between 5 and 15,
+          "gradientColors": ["#startColorHex", "#endColorHex"]
         }
       ]
     }`;
 
     try {
-        log({ type: 'request', message: `Запрос к модели ${model} для создания дизайн-концепций`, data: { prompt } });
-        const response = await ai.models.generateContent({ model, contents: prompt });
-        const data = parseGeminiJsonResponse(response.text, log);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
         if (!data.concepts || data.concepts.length === 0) {
             throw new Error("AI не смог сгенерировать дизайн-концепции.");
         }
@@ -437,9 +504,9 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
         log({ type: 'error', message: 'Ошибка при генерации дизайн-концепций. Будут использованы стандартные.', data: error });
         // Fallback to default concepts on error
         return [
-            { name: "Неоновый Ужас (Резервный)", fontFamily: "Impactful", fontSize: 90, textColor: "#00FFFF", shadowColor: "#FF00FF", overlayOpacity: 0.3 },
-            { name: "Классический Триллер (Резервный)", fontFamily: "Serif", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5 },
-            { name: "Современный Минимализм (Резервный)", fontFamily: "Sans-serif", fontSize: 90, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4 }
+            { name: "Контрастный Удар (Резервный)", fontFamily: "Anton", fontSize: 110, textColor: "#FFFF00", shadowColor: "#000000", overlayOpacity: 0.3, textTransform: 'uppercase', strokeColor: "#000000", strokeWidth: 8 },
+            { name: "Классический Триллер (Резервный)", fontFamily: "Roboto Slab", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5, textTransform: 'uppercase', strokeColor: "transparent", strokeWidth: 0 },
+            { name: "Современный Градиент (Резервный)", fontFamily: "Bebas Neue", fontSize: 130, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4, textTransform: 'uppercase', gradientColors: ["#00FFFF", "#FF00FF"] }
         ];
     }
 };

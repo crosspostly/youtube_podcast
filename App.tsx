@@ -1,13 +1,13 @@
-
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generatePodcastDialogueAudio, combineWavBlobs, googleSearchForKnowledge, regenerateTextAssets, generateThumbnailDesignConcepts } from './services/ttsService';
-import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage, generateMoreImages } from './services/imageService';
-import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, Character } from './types';
+import type { Podcast, YoutubeThumbnail, LogEntry, NarrationMode, Voice } from './types';
 import Spinner from './components/Spinner';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import ApiKeyModal from './components/ApiKeyModal';
 import PodcastTest from './components/PodcastTest';
 import { HistoryIcon, TrashIcon, JournalIcon, CloseIcon, ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, KeyIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, BeakerIcon } from './components/Icons';
+import { PodcastProvider, usePodcastContext } from './context/PodcastContext';
+import { googleSearchForKnowledge, previewVoice } from './services/ttsService';
+import { initDB, getVoiceFromCache, saveVoiceToCache } from './services/dbService';
 
 const sampleArticles = [
   { topic: "Секреты и теории заговора вокруг Зоны 51", title: "Зона 51: Что скрывает секретная база?" },
@@ -29,6 +29,39 @@ const languages: { code: string; name: string }[] = [
     { code: "id", name: "Bahasa Indonesia" }, { code: "ms", name: "Bahasa Melayu" }, { code: "th", name: "ไทย" }, 
     { code: "ro", name: "Română" }, { code: "hu", name: "Magyar" }, { code: "cs", name: "Čeština" },
     { code: "da", name: "Dansk" }, { code: "no", name: "Norsk" }
+];
+
+const VOICES: Voice[] = [
+    { id: 'Zephyr', name: 'Zephyr', description: 'Bright (яркий)', gender: 'female' },
+    { id: 'Puck', name: 'Puck', description: 'Upbeat (энергичный)', gender: 'male' },
+    { id: 'Charon', name: 'Charon', description: 'Informative (информативный)', gender: 'male' },
+    { id: 'Kore', name: 'Kore', description: 'Firm (уверенный)', gender: 'female' },
+    { id: 'Fenrir', name: 'Fenrir', description: 'Excitable (возбужденный)', gender: 'male' },
+    { id: 'Leda', name: 'Leda', description: 'Youthful (молодой)', gender: 'female' },
+    { id: 'Orus', name: 'Orus', description: 'Firm (уверенный)', gender: 'male' },
+    { id: 'Aoede', name: 'Aoede', description: 'Breezy (легкий)', gender: 'female' },
+    { id: 'Callirrhoe', name: 'Callirrhoe', description: 'Easy-going (спокойный)', gender: 'female' },
+    { id: 'Autonoe', name: 'Autonoe', description: 'Bright (яркий)', gender: 'female' },
+    { id: 'Enceladus', name: 'Enceladus', description: 'Breathy (дыхательный)', gender: 'male' },
+    { id: 'Iapetus', name: 'Iapetus', description: 'Clear (ясный)', gender: 'male' },
+    { id: 'Umbriel', name: 'Umbriel', description: 'Easy-going (спокойный)', gender: 'male' },
+    { id: 'Algieba', name: 'Algieba', description: 'Smooth (гладкий)', gender: 'male' },
+    { id: 'Despina', name: 'Despina', description: 'Smooth (гладкий)', gender: 'female' },
+    { id: 'Erinome', name: 'Erinome', description: 'Clear (ясный)', gender: 'female' },
+    { id: 'Algenib', name: 'Algenib', description: 'Gravelly (гортанный)', gender: 'male' },
+    { id: 'Rasalgethi', name: 'Rasalgethi', description: 'Informative (информативный)', gender: 'male' },
+    { id: 'Laomedeia', name: 'Laomedeia', description: 'Upbeat (энергичный)', gender: 'female' },
+    { id: 'Achernar', name: 'Achernar', description: 'Soft (мягкий)', gender: 'female' },
+    { id: 'Alnilam', name: 'Alnilam', description: 'Firm (уверенный)', gender: 'male' },
+    { id: 'Schedar', name: 'Schedar', description: 'Even (равномерный)', gender: 'male' },
+    { id: 'Gacrux', name: 'Gacrux', description: 'Mature (зрелый)', gender: 'female' },
+    { id: 'Pulcherrima', name: 'Pulcherrima', description: 'Forward (прямой)', gender: 'female' },
+    { id: 'Achird', name: 'Achird', description: 'Friendly (дружественный)', gender: 'male' },
+    { id: 'Zubenelgenubi', name: 'Zubenelgenubi', description: 'Casual (неформальный)', gender: 'male' },
+    { id: 'Vindemiatrix', name: 'Vindemiatrix', description: 'Gentle (мягкий)', gender: 'female' },
+    { id: 'Sadachbia', name: 'Sadachbia', description: 'Lively (оживленный)', gender: 'male' },
+    { id: 'Sadaltager', name: 'Sadaltager', description: 'Knowledgeable (знающий)', gender: 'male' },
+    { id: 'Sulafat', name: 'Sulafat', description: 'Warm (теплый)', gender: 'female' }
 ];
 
 
@@ -64,215 +97,78 @@ const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boole
     );
 };
 
+interface PodcastStudioAppProps {
+    apiKeys: { gemini: string; openRouter: string };
+    isLogVisible: boolean;
+    onCloseLog: () => void;
+    defaultFont: string;
+}
 
-const App: React.FC = () => {
-    const [isLoading, setIsLoading] = useState<boolean>(false);
-    const [loadingStep, setLoadingStep] = useState<string>('');
-    const [podcast, setPodcast] = useState<Podcast | null>(null);
-    const [error, setError] = useState<string | null>(null);
+const PodcastStudioApp: React.FC<PodcastStudioAppProps> = ({ apiKeys, isLogVisible, onCloseLog, defaultFont }) => {
+    const {
+        podcast, setPodcast, isLoading, loadingStep, error, setError,
+        logs, log, history, setHistory, clearHistory, saveMediaInHistory, setSaveMediaInHistory,
+        audioUrls, isGenerationPaused, setIsGenerationPaused,
+        isRegeneratingText, isRegeneratingImages, isRegeneratingAudio,
+        regeneratingImageIndex, isGeneratingMoreImages,
+        editingThumbnail, setEditingThumbnail,
+        startNewProject, handleGenerateChapter, combineAndDownload,
+        saveThumbnail, regenerateProject, regenerateText,
+        regenerateImages, regenerateAllAudio, regenerateSingleImage,
+        generateMoreImages, handleTitleSelection, handleBgSelection,
+        manualTtsScript, subtitleText
+    } = usePodcastContext();
+
     const [projectTitleInput, setProjectTitleInput] = useState<string>('');
-    const [history, setHistory] = useState<Podcast[]>([]);
-    const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [isLogVisible, setIsLogVisible] = useState<boolean>(false);
-    const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
     const [isEditorOpen, setIsEditorOpen] = useState(false);
-    const [editingThumbnail, setEditingThumbnail] = useState<YoutubeThumbnail | null>(null);
-    const [saveMediaInHistory, setSaveMediaInHistory] = useState<boolean>(false);
-    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '' });
-    const [isGeneratingChapter, setIsGeneratingChapter] = useState(false);
-    const [isGenerationPaused, setIsGenerationPaused] = useState(false);
-    const [isRegeneratingText, setIsRegeneratingText] = useState(false);
-    const [isRegeneratingImages, setIsRegeneratingImages] = useState(false);
-    const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false);
-    const [regeneratingImageIndex, setRegeneratingImageIndex] = useState<number | null>(null);
-    const [isGeneratingMoreImages, setIsGeneratingMoreImages] = useState(false);
-
-    // New state for knowledge base and generation settings
+    const [isTestPanelVisible, setIsTestPanelVisible] = useState<boolean>(false);
+    const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+    
     const [knowledgeBaseText, setKnowledgeBaseText] = useState('');
     const [googleSearchQuestion, setGoogleSearchQuestion] = useState('');
     const [isGoogling, setIsGoogling] = useState(false);
     const [creativeFreedom, setCreativeFreedom] = useState(true);
     const [totalDurationMinutes, setTotalDurationMinutes] = useState(40);
-    const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const [language, setLanguage] = useState('Русский');
+    
+    const [narrationMode, setNarrationMode] = useState<NarrationMode>('dialogue');
+    const [characterVoices, setCharacterVoices] = useState<{ [key: string]: string }>({ character1: 'Puck', character2: 'Zephyr' });
+    const [monologueVoice, setMonologueVoice] = useState<string>('Puck');
+    const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const [voiceFilter, setVoiceFilter] = useState<'all' | 'male' | 'female'>('all');
+    const activeBlobUrls = useRef<Map<string, string>>(new Map());
 
-    // State for searchable language dropdown
     const [langSearchTerm, setLangSearchTerm] = useState('');
     const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
     const langDropdownRef = useRef<HTMLDivElement>(null);
-    const [isTestPanelVisible, setIsTestPanelVisible] = useState<boolean>(false);
     
-
     const filteredLanguages = useMemo(() => 
         languages.filter(l => l.name.toLowerCase().includes(langSearchTerm.toLowerCase())),
     [langSearchTerm]);
 
+    const filteredVoices = useMemo(() => {
+        if (voiceFilter === 'all') return VOICES;
+        return VOICES.filter(v => v.gender === voiceFilter);
+    }, [voiceFilter]);
+
     useEffect(() => {
+        initDB();
+        
         const handleClickOutside = (event: MouseEvent) => {
             if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
                 setIsLangDropdownOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    useEffect(() => {
-        try {
-            const storedHistory = localStorage.getItem('podcastHistory');
-            if (storedHistory) setHistory(JSON.parse(storedHistory));
-            const storedGeminiKey = localStorage.getItem('geminiApiKey') || '';
-            const storedOpenRouterKey = localStorage.getItem('openRouterProviderKey') || '';
-            setApiKeys({ gemini: storedGeminiKey, openRouter: storedOpenRouterKey });
-        } catch (e) { console.error("Failed to load history or API keys", e); }
-    }, []);
-    
-    useEffect(() => {
-        const newUrls: Record<string, string> = {};
-        podcast?.chapters.forEach(chapter => {
-            if (chapter.audioBlob) {
-                newUrls[chapter.id] = URL.createObjectURL(chapter.audioBlob);
-            }
-        });
-        setAudioUrls(newUrls);
-
+        
+        const urls = activeBlobUrls.current;
         return () => {
-            Object.values(newUrls).forEach(url => URL.revokeObjectURL(url));
+            document.removeEventListener('mousedown', handleClickOutside);
+            urls.forEach(url => URL.revokeObjectURL(url));
         };
-    }, [podcast?.chapters]);
-
-    const log = useCallback((entry: Omit<LogEntry, 'timestamp'>) => {
-        setLogs(prev => [{ ...entry, timestamp: new Date().toISOString() }, ...prev]);
     }, []);
 
-    const updateHistory = useCallback((podcastToSave: Podcast) => {
-        setHistory(prevHistory => {
-            const newHistory = [podcastToSave, ...prevHistory.filter(p => p.id !== podcastToSave.id)];
-            
-            const serializableHistory = newHistory.map(p => {
-                const { chapters, ...podcastRest } = p;
-                const serializablePodcast: any = {
-                    ...podcastRest,
-                    chapters: chapters.map(({ audioBlob, ...chapterRest }) => chapterRest)
-                };
-        
-                if (!saveMediaInHistory) {
-                    delete serializablePodcast.generatedImages;
-                    delete serializablePodcast.youtubeThumbnails;
-                }
-        
-                return serializablePodcast;
-            });
-        
-            try {
-                localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
-            } catch (e) {
-                log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
-            }
-            return newHistory;
-        });
-    }, [saveMediaInHistory, log]);
-
-    // Effect to persist any changes to the active podcast to history
-    useEffect(() => {
-        if (podcast) {
-            updateHistory(podcast);
-        }
-    }, [podcast, updateHistory]);
-
-    const handleStartProject = useCallback(async (topic: string) => {
-        if (!topic.trim()) { setError('Введите название проекта.'); return; }
-        setIsLoading(true);
-        setError(null);
-        setPodcast(null);
-        setLogs([]);
-        setIsGenerationPaused(false);
-        
-        try {
-            setLoadingStep("Создание концепции, заголовков и первой главы...");
-            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, log, apiKeys.gemini);
-            
-            setLoadingStep("Озвучивание, генерация изображений и дизайна...");
-            const [firstChapterAudio, generatedImages, designConcepts] = await Promise.all([
-                generatePodcastDialogueAudio(blueprint.chapters[0].script, blueprint.characters, log, apiKeys.gemini),
-                generateStyleImages(blueprint.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter),
-                generateThumbnailDesignConcepts(topic, language, log, apiKeys.gemini)
-            ]);
-
-            const selectedTitle = blueprint.youtubeTitleOptions[0] || topic;
-            setLoadingStep("Создание обложек для YouTube...");
-            const youtubeThumbnails = generatedImages.length > 0 ? await generateYoutubeThumbnails(generatedImages[0], selectedTitle, designConcepts, log) : [];
-            
-            const newPodcast: Podcast = {
-                id: crypto.randomUUID(),
-                ...blueprint,
-                topic,
-                selectedTitle,
-                language,
-                chapters: [{ ...blueprint.chapters[0], status: 'completed', audioBlob: firstChapterAudio }],
-                generatedImages: generatedImages || [],
-                youtubeThumbnails: youtubeThumbnails || [],
-                designConcepts: designConcepts || [],
-                knowledgeBaseText: knowledgeBaseText,
-                creativeFreedom: creativeFreedom,
-                totalDurationMinutes: totalDurationMinutes,
-            };
-
-            const CHAPTER_DURATION_MIN = 5;
-            const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN));
-
-            for (let i = 1; i < totalChapters; i++) {
-                newPodcast.chapters.push({
-                    id: crypto.randomUUID(),
-                    title: `Глава ${i + 1}`,
-                    script: [],
-                    status: 'pending',
-                });
-            }
-
-            setPodcast(newPodcast);
-            
-        } catch (err: any) {
-            setError(err.message || 'Произошла неизвестная ошибка при создании проекта.');
-            log({ type: 'error', message: 'Критическая ошибка при инициализации проекта', data: err });
-        } finally {
-            setIsLoading(false);
-            setLoadingStep('');
-        }
-    }, [log, apiKeys, knowledgeBaseText, creativeFreedom, totalDurationMinutes, language]);
-
-    const handleGenerateChapter = useCallback(async (chapterId: string) => {
-        if (!podcast) return;
-    
-        const chapterIndex = podcast.chapters.findIndex(c => c.id === chapterId);
-        if (chapterIndex === -1) return;
-
-        const updateChapterState = (id: string, status: Chapter['status'], data: Partial<Chapter> = {}) => {
-            setPodcast(p => {
-                if (!p) return null;
-                const updatedChapters = p.chapters.map(c => c.id === id ? { ...c, status, ...data, error: data.error || undefined } : c);
-                return { ...p, chapters: updatedChapters };
-            });
-        };
-    
-        try {
-            updateChapterState(chapterId, 'script_generating');
-            const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
-            
-            updateChapterState(chapterId, 'audio_generating', { script: chapterScriptData.script, title: chapterScriptData.title });
-            const audioBlob = await generatePodcastDialogueAudio(chapterScriptData.script, podcast.characters, log, apiKeys.gemini);
-    
-            updateChapterState(chapterId, 'completed', { audioBlob });
-
-        } catch (err: any) {
-            const errorMessage = err.message || 'Неизвестная ошибка при генерации главы.';
-            log({type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1}`, data: err});
-            updateChapterState(chapterId, 'error', { error: errorMessage });
-        }
-
-    }, [podcast, log, apiKeys.gemini]);
-    
     const handleGoogleSearchAndAdd = async () => {
         if (!googleSearchQuestion.trim()) return;
         setIsGoogling(true);
@@ -281,7 +177,7 @@ const App: React.FC = () => {
             const answer = await googleSearchForKnowledge(googleSearchQuestion, log, apiKeys.gemini);
             const addition = `\n\n---\nИсточник по вопросу: "${googleSearchQuestion}"\n${answer}\n---\n`;
             setKnowledgeBaseText(prev => prev.trim() + addition);
-            setGoogleSearchQuestion(''); // Clear input after successful addition
+            setGoogleSearchQuestion('');
         } catch (err: any) {
             setError(err.message || 'Ошибка при поиске в Google.');
             log({type: 'error', message: 'Ошибка при поиске в Google', data: err});
@@ -289,40 +185,51 @@ const App: React.FC = () => {
             setIsGoogling(false);
         }
     };
+    
+    const handlePreviewVoice = async (voiceId: string) => {
+        if (previewingVoice || !audioRef.current) return;
 
+        const playAudio = (blob: Blob) => {
+            if (!audioRef.current) return;
 
-    useEffect(() => {
-        const pendingChapter = podcast?.chapters.find(c => c.status === 'pending');
-        if (pendingChapter && !isLoading && !isGeneratingChapter && !isGenerationPaused) {
-            setIsGeneratingChapter(true);
-            handleGenerateChapter(pendingChapter.id)
-                .finally(() => {
-                    setIsGeneratingChapter(false);
-                });
-        }
-    }, [podcast?.chapters, handleGenerateChapter, isLoading, isGeneratingChapter, isGenerationPaused]);
+            if (activeBlobUrls.current.has(voiceId)) {
+                URL.revokeObjectURL(activeBlobUrls.current.get(voiceId)!);
+            }
 
-    const handleCombineAndDownload = async () => {
-        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
-        setLoadingStep("Сборка финального аудиофайла...");
-        setIsLoading(true);
+            const url = URL.createObjectURL(blob);
+            activeBlobUrls.current.set(voiceId, url);
+
+            audioRef.current.src = url;
+            audioRef.current.play();
+            audioRef.current.onended = () => setPreviewingVoice(null);
+            audioRef.current.onerror = () => {
+                log({ type: 'error', message: `Ошибка воспроизведения аудио для голоса ${voiceId}`});
+                setPreviewingVoice(null);
+            };
+        };
+
+        setPreviewingVoice(voiceId);
+
         try {
-            const blobs = podcast.chapters.map(c => c.audioBlob).filter((b): b is Blob => !!b);
-            const finalBlob = await combineWavBlobs(blobs);
-            const url = URL.createObjectURL(finalBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.wav`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            const cachedBlob = await getVoiceFromCache(voiceId);
+            if (cachedBlob) {
+                log({ type: 'info', message: `Голос ${voiceId} загружен из кэша.` });
+                playAudio(cachedBlob);
+                return;
+            }
+
+            log({ type: 'info', message: `Голос ${voiceId} не найден в кэше. Генерация...` });
+            const selectedLanguageCode = languages.find(l => l.name === language)?.code || 'ru';
+            const generatedBlob = await previewVoice(voiceId, selectedLanguageCode, log, apiKeys.gemini);
+            
+            await saveVoiceToCache(voiceId, generatedBlob);
+            log({ type: 'info', message: `Голос ${voiceId} сохранен в кэш.` });
+            
+            playAudio(generatedBlob);
         } catch (err: any) {
-            setError('Ошибка при сборке аудиофайла.');
-            log({type: 'error', message: 'Ошибка при сборке WAV', data: err});
-        } finally {
-            setIsLoading(false);
-            setLoadingStep("");
+            setError(`Не удалось воспроизвести голос: ${err.message}`);
+            log({ type: 'error', message: `Ошибка предпрослушивания голоса ${voiceId}`, data: err });
+            setPreviewingVoice(null);
         }
     };
 
@@ -332,193 +239,14 @@ const App: React.FC = () => {
     };
 
     const handleSaveThumbnail = (updatedThumbnail: YoutubeThumbnail) => {
-        setPodcast(p => {
-            if (!p || !p.youtubeThumbnails) return p;
-            const newThumbnails = p.youtubeThumbnails.map(t => 
-                t.styleName === updatedThumbnail.styleName ? updatedThumbnail : t
-            );
-            return { ...p, youtubeThumbnails: newThumbnails };
-        });
+        saveThumbnail(updatedThumbnail);
         setIsEditorOpen(false);
         setEditingThumbnail(null);
     };
 
-    const handleSaveApiKeys = (keys: { gemini: string; openRouter: string }) => {
-        setApiKeys(keys);
-        localStorage.setItem('geminiApiKey', keys.gemini);
-        localStorage.setItem('openRouterProviderKey', keys.openRouter);
-        log({ type: 'info', message: 'API-ключи сохранены.' });
+    const handleStartProjectClick = () => {
+        startNewProject(projectTitleInput, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, narrationMode, characterVoices, monologueVoice);
     };
-    
-    const handleRegenerateProject = () => {
-        if (!podcast) return;
-        if (window.confirm("Вы уверены, что хотите полностью пересоздать этот проект? Все текущие сгенерированные данные (кроме настроек) будут утеряны.")) {
-            handleStartProject(podcast.topic);
-        }
-    };
-
-    const handleRegenerateText = async () => {
-        if (!podcast) return;
-        setIsRegeneratingText(true);
-        try {
-            const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
-            const newSelectedTitle = newTextAssets.youtubeTitleOptions[0] || podcast.selectedTitle;
-            
-            setPodcast(p => p ? { ...p, ...newTextAssets, selectedTitle: newSelectedTitle } : null);
-            await handleTitleSelection(newSelectedTitle, true);
-
-        } catch (err: any) {
-            setError(err.message || 'Ошибка при обновлении текста.');
-            log({ type: 'error', message: 'Ошибка при регенерации текста', data: err });
-        } finally {
-            setIsRegeneratingText(false);
-        }
-    };
-    
-    const handleRegenerateImages = async () => {
-        if (!podcast || !podcast.designConcepts) return;
-        setIsRegeneratingImages(true);
-        try {
-            const newImages = await generateStyleImages(podcast.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter);
-            const newThumbnails = newImages.length > 0 ? await generateYoutubeThumbnails(newImages[0], podcast.selectedTitle, podcast.designConcepts, log) : [];
-            setPodcast(p => p ? { ...p, generatedImages: newImages, youtubeThumbnails: newThumbnails } : null);
-        } catch (err: any) {
-            setError(err.message || 'Ошибка при генерации изображений.');
-            log({ type: 'error', message: 'Ошибка при регенерации изображений', data: err });
-        } finally {
-            setIsRegeneratingImages(false);
-        }
-    };
-
-    const handleRegenerateAllAudio = async () => {
-        if (!podcast) return;
-        setIsRegeneratingAudio(true);
-        log({ type: 'info', message: 'Начало переозвучки всех глав.' });
-    
-        for (let i = 0; i < podcast.chapters.length; i++) {
-            const chapter = podcast.chapters[i];
-            if (chapter.script && chapter.script.length > 0) {
-                setPodcast(p => {
-                    if (!p) return null;
-                    // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
-                    const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'audio_generating' as Chapter['status'] } : c);
-                    return { ...p, chapters: updatedChapters };
-                });
-    
-                try {
-                    const audioBlob = await generatePodcastDialogueAudio(chapter.script, podcast.characters, log, apiKeys.gemini);
-                    setPodcast(p => {
-                        if (!p) return null;
-                        // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
-                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'completed' as Chapter['status'], audioBlob } : c);
-                        return { ...p, chapters: updatedChapters };
-                    });
-                } catch (err: any) {
-                    log({ type: 'error', message: `Ошибка при переозвучке главы ${i + 1}`, data: err });
-                    setPodcast(p => {
-                        if (!p) return null;
-                        // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
-                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'error' as Chapter['status'], error: err.message || 'Ошибка озвучки' } : c);
-                        return { ...p, chapters: updatedChapters };
-                    });
-                }
-            }
-        }
-    
-        log({ type: 'info', message: 'Переозвучка всех глав завершена.' });
-        setIsRegeneratingAudio(false);
-    };
-
-    const handleRegenerateSingleImage = async (index: number) => {
-        if (!podcast || !podcast.imagePrompts[index] || !podcast.designConcepts) return;
-        setRegeneratingImageIndex(index);
-        try {
-            const newImageSrc = await regenerateSingleImage(podcast.imagePrompts[index], log, apiKeys.gemini, apiKeys.openRouter);
-            
-            const updateImages = (p: Podcast | null) => {
-                if (!p || !p.generatedImages) return p;
-                const newImages = [...p.generatedImages];
-                newImages[index] = newImageSrc;
-                return { ...p, generatedImages: newImages };
-            };
-            
-            setPodcast(updateImages);
-
-            if (index === 0) {
-                 const newThumbnails = await generateYoutubeThumbnails(newImageSrc, podcast.selectedTitle, podcast.designConcepts, log);
-                 setPodcast(p => p ? {...updateImages(p), youtubeThumbnails: newThumbnails} : null);
-            }
-        } catch (err: any) {
-            setError(err.message || `Ошибка при регенерации изображения ${index + 1}.`);
-            log({ type: 'error', message: `Ошибка при регенерации изображения ${index + 1}.`, data: err });
-        } finally {
-            setRegeneratingImageIndex(null);
-        }
-    };
-
-    const handleGenerateMoreImages = async () => {
-        if (!podcast) return;
-        setIsGeneratingMoreImages(true);
-        try {
-            const newImages = await generateMoreImages(podcast.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter);
-            setPodcast(p => {
-                if (!p) return p;
-                return {
-                    ...p,
-                    generatedImages: [...(p.generatedImages || []), ...newImages],
-                };
-            });
-        } catch (err: any) {
-            setError(err.message || 'Ошибка при генерации дополнительных изображений.');
-            log({ type: 'error', message: 'Ошибка при генерации дополнительных изображений', data: err });
-        } finally {
-            setIsGeneratingMoreImages(false);
-        }
-    };
-    
-    const handleTitleSelection = useCallback(async (newTitle: string, forceUpdate = false) => {
-        if (!podcast || (!forceUpdate && podcast.selectedTitle === newTitle)) return;
-        
-        setPodcast(p => p ? { ...p, selectedTitle: newTitle } : null);
-        
-        if (!podcast.designConcepts || !podcast.generatedImages?.[0]) return;
-        
-        try {
-            const newThumbnails = await generateYoutubeThumbnails(podcast.generatedImages[0], newTitle, podcast.designConcepts, log);
-            setPodcast(p => p ? { ...p, youtubeThumbnails: newThumbnails } : null);
-        } catch (err: any) {
-            setError("Ошибка при обновлении обложек.");
-            log({ type: 'error', message: 'Не удалось обновить обложки после смены заголовка', data: err });
-        }
-    }, [podcast, log]);
-
-    const manualTtsScript = useMemo(() => {
-        if (!podcast) return 'Генерация сценария...';
-    
-        const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.script?.length > 0);
-        if (completedChapters.length === 0) return 'Сценарий будет доступен после завершения глав.';
-    
-        return "Style Instructions: Read aloud in a warm, welcoming tone.\n\n" +
-            completedChapters.map((chapter, index) =>
-                `ГЛАВА ${index + 1}: ${chapter.title.toUpperCase()}\n\n` +
-                chapter.script.map(line => {
-                    if (line.speaker.toUpperCase() === 'SFX') {
-                        return `[SFX: ${line.text}]`;
-                    }
-                    return `${line.speaker}: ${line.text}`;
-                }).join('\n')
-            ).join('\n\n---\n\n');
-    }, [podcast?.chapters]);
-
-    const subtitleText = useMemo(() => {
-        if (!podcast) return '';
-        return podcast.chapters
-            .filter(c => c.status === 'completed' && c.script)
-            .flatMap(c => c.script)
-            .filter(line => line.speaker.toUpperCase() !== 'SFX')
-            .map(line => line.text)
-            .join('\n');
-    }, [podcast?.chapters]);
 
     const renderPodcastStudio = () => {
         if (!podcast) return null;
@@ -533,33 +261,15 @@ const App: React.FC = () => {
                     <p className="text-gray-300 mt-2">{podcast.description}</p>
                 </header>
 
-                <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Выбор заголовка для видео</h3>
-                    <div className="space-y-3">
-                        {podcast.youtubeTitleOptions.map((title, index) => (
-                            <label key={index} className="flex items-center p-3 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-700/50 transition-colors border border-transparent has-[:checked]:border-teal-500 has-[:checked]:bg-teal-900/20">
-                                <input
-                                    type="radio"
-                                    name="title-option"
-                                    value={title}
-                                    checked={podcast.selectedTitle === title}
-                                    onChange={() => handleTitleSelection(title)}
-                                    className="h-5 w-5 mr-4 text-teal-600 bg-gray-700 border-gray-600 focus:ring-teal-500"
-                                />
-                                <span className="text-gray-200">{title}</span>
-                            </label>
-                        ))}
-                    </div>
-                </div>
-
                 {podcast.characters && podcast.characters.length > 0 && (
                     <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Персонажи</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Персонажи и голоса</h3>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {podcast.characters.map((char) => (
                                 <div key={char.name} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
                                     <p className="font-bold text-teal-400 text-lg">{char.name}</p>
-                                    <p className="text-gray-300 italic text-sm">{char.description}</p>
+                                    <p className="text-gray-300 italic text-sm mb-2">{char.description}</p>
+                                     <p className="text-xs text-gray-400">Голос: <span className="font-semibold text-teal-300">{podcast.characterVoices[char.name] || 'Не назначен'}</span></p>
                                 </div>
                             ))}
                         </div>
@@ -594,7 +304,7 @@ const App: React.FC = () => {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                                {(chapter.status === 'script_generating' || chapter.status === 'audio_generating' || (chapter.status === 'pending' && isGeneratingChapter && !isGenerationPaused)) && <Spinner className="w-5 h-5"/>}
+                                {(chapter.status === 'script_generating' || chapter.status === 'audio_generating') && <Spinner className="w-5 h-5"/>}
                                 {chapter.status === 'completed' && audioUrls[chapter.id] && <audio src={audioUrls[chapter.id]} controls className="h-8 w-72"/>}
                                 {(chapter.status === 'error' || chapter.status === 'completed') && (
                                     <button 
@@ -612,19 +322,19 @@ const App: React.FC = () => {
                  <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
                     <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><WrenchIcon /> Инструменты</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <button onClick={handleRegenerateText} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
+                        <button onClick={regenerateText} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
                             {isRegeneratingText ? <Spinner className="w-6 h-6"/> : <ScriptIcon />}
                             <span className="font-semibold text-sm">Обновить текст</span>
                         </button>
-                        <button onClick={handleRegenerateImages} disabled={isRegeneratingImages} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
+                        <button onClick={regenerateImages} disabled={isRegeneratingImages} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
                             {isRegeneratingImages ? <Spinner className="w-6 h-6"/> : <ImageIcon />}
                             <span className="font-semibold text-sm">Новые изображения</span>
                         </button>
-                        <button onClick={handleRegenerateAllAudio} disabled={isRegeneratingAudio} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
+                        <button onClick={regenerateAllAudio} disabled={isRegeneratingAudio} className="flex flex-col items-center justify-center gap-2 p-4 bg-gray-700/80 rounded-lg hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors">
                             {isRegeneratingAudio ? <Spinner className="w-6 h-6"/> : <SpeakerWaveIcon />}
                             <span className="font-semibold text-sm">Переозвучить всё</span>
                         </button>
-                        <button onClick={handleRegenerateProject} disabled={isLoading} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors text-red-300">
+                        <button onClick={regenerateProject} disabled={isLoading} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-gray-600 disabled:cursor-not-allowed transition-colors text-red-300">
                             <RedoIcon />
                             <span className="font-semibold text-sm">Пересоздать проект</span>
                         </button>
@@ -633,53 +343,75 @@ const App: React.FC = () => {
 
                 {(podcast.generatedImages && podcast.generatedImages.length > 0) && (
                     <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
-                        <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Визуальные материалы</h3>
+                         <div className="mb-8">
+                            <h4 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Галерея Фонов</h4>
+                            <p className="text-sm text-gray-400 mb-4">Нажмите на изображение, чтобы выбрать его в качестве активного фона для всех вариантов обложек.</p>
+                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                 {podcast.generatedImages.map((imgSrc, index) => (
+                                     <div key={index} className="group relative cursor-pointer" onClick={() => handleBgSelection(index)}>
+                                        <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 ${podcast.selectedBgIndex === index ? 'border-teal-500' : 'border-transparent'}`} />
+                                         {podcast.selectedBgIndex === index && (
+                                            <div className="absolute top-2 right-2 bg-teal-600 text-white text-xs font-bold px-2 py-1 rounded">Активный фон</div>
+                                         )}
+                                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                             <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(index); }} disabled={regeneratingImageIndex !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed" title="Пересоздать это изображение"><RedoIcon /></button>
+                                             <a href={imgSrc} download={`image_${index + 1}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700" title="Скачать"><DownloadIcon /></a>
+                                         </div>
+                                         {regeneratingImageIndex === index && (
+                                            <div className="absolute inset-0 bg-gray-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
+                                         )}
+                                     </div>
+                                ))}
+                            </div>
+                            <div className="text-center mt-4">
+                                <button
+                                    onClick={generateMoreImages}
+                                    disabled={isGeneratingMoreImages}
+                                    className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-teal-600/80 text-white font-bold rounded-lg hover:bg-teal-700/80 transition-colors disabled:bg-gray-500"
+                                >
+                                    {isGeneratingMoreImages ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>}
+                                    <span>Сгенерировать ещё 5</span>
+                                </button>
+                            </div>
+                        </div>
                         
                         {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 && (
-                            <div className="mb-8">
-                                <h4 className="font-semibold text-lg text-gray-200 mb-4">Варианты обложек от AI-дизайнера (Текст: "{podcast.selectedTitle}")</h4>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                                    {podcast.youtubeThumbnails.map((thumb) => (
-                                        <div key={thumb.styleName} className="group relative">
-                                            <p className="text-center font-semibold text-gray-300 mb-2">{thumb.styleName}</p>
-                                            <img src={thumb.dataUrl} alt={`YouTube Thumbnail - ${thumb.styleName}`} className="rounded-lg border-2 border-teal-500" />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
-                                                <button onClick={() => handleEditThumbnail(thumb)} className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-sm font-bold rounded-lg hover:bg-white/30 backdrop-blur-sm"><EditIcon className="w-4 h-4"/> Редактировать</button>
-                                                <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
+                            <div className="border-t border-gray-700 pt-6">
+                                <div className="mb-8">
+                                    <h4 className="text-lg font-semibold text-gray-200 flex items-center gap-3 mb-4"><SubtitleIcon /> Выбор заголовка для обложки</h4>
+                                    <div className="space-y-3">
+                                        {podcast.youtubeTitleOptions.map((title, index) => (
+                                            <label key={index} className="flex items-center p-3 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-700/50 transition-colors border border-transparent has-[:checked]:border-teal-500 has-[:checked]:bg-teal-900/20">
+                                                <input
+                                                    type="radio"
+                                                    name="title-option"
+                                                    value={title}
+                                                    checked={podcast.selectedTitle === title}
+                                                    onChange={() => handleTitleSelection(title)}
+                                                    className="h-5 w-5 mr-4 text-teal-600 bg-gray-700 border-gray-600 focus:ring-teal-500"
+                                                />
+                                                <span className="text-gray-200">{title}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <h4 className="font-semibold text-lg text-gray-200 mb-4">Варианты обложек от AI-дизайнера</h4>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                        {podcast.youtubeThumbnails.map((thumb) => (
+                                            <div key={thumb.styleName} className="group relative">
+                                                <p className="text-center font-semibold text-gray-300 mb-2">{thumb.styleName}</p>
+                                                <img src={thumb.dataUrl} alt={`YouTube Thumbnail - ${thumb.styleName}`} className="rounded-lg border-2 border-teal-500/50" />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                                    <button onClick={() => handleEditThumbnail(thumb)} className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-sm font-bold rounded-lg hover:bg-white/30 backdrop-blur-sm"><EditIcon className="w-4 h-4"/> Редактировать</button>
+                                                    <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         )}
-                        
-                        <div className="flex justify-between items-center mb-4 border-t border-gray-700 pt-6">
-                            <h4 className="font-semibold text-lg text-gray-200">Сгенерированные изображения</h4>
-                             <button
-                                onClick={handleGenerateMoreImages}
-                                disabled={isGeneratingMoreImages}
-                                className="flex items-center gap-2 px-4 py-2 bg-teal-600/80 text-white font-bold rounded-lg hover:bg-teal-700/80 transition-colors disabled:bg-gray-500"
-                            >
-                                {isGeneratingMoreImages ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>}
-                                <span>Сгенерировать ещё 5</span>
-                            </button>
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {podcast.generatedImages.map((imgSrc, index) => (
-                                 <div key={index} className="group relative">
-                                     <h4 className="font-semibold text-gray-300 mb-2">Изображение {index + 1}</h4>
-                                     {regeneratingImageIndex === index ? (
-                                        <div className="w-full aspect-video bg-gray-700 rounded-lg flex items-center justify-center"><Spinner /></div>
-                                     ) : (
-                                        <img src={imgSrc} alt={`Generated image ${index + 1}`} className="rounded-lg w-full aspect-video object-cover" />
-                                     )}
-                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
-                                         <button onClick={() => handleRegenerateSingleImage(index)} disabled={regeneratingImageIndex !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed" title="Пересоздать это изображение"><RedoIcon /></button>
-                                         <a href={imgSrc} download={`image_${index + 1}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.jpeg`} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700" title="Скачать"><DownloadIcon /></a>
-                                     </div>
-                                 </div>
-                            ))}
-                        </div>
                     </div>
                 )}
                 
@@ -708,7 +440,7 @@ const App: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 mt-8">
-                    <button onClick={handleCombineAndDownload} disabled={!allChaptersDone || isLoading} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all">
+                    <button onClick={combineAndDownload} disabled={!allChaptersDone || isLoading} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all">
                         <DownloadIcon /> {allChaptersDone ? "Собрать и скачать финальный подкаст" : `Завершите ${podcast.chapters.filter(c => c.status !== 'completed').length} глав`}
                     </button>
                     <button onClick={() => setPodcast(null)} className="flex-1 px-8 py-4 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700">Начать новый проект</button>
@@ -718,18 +450,15 @@ const App: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 sm:p-6 lg:p-8">
-            <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-                <button onClick={() => setIsApiKeyModalOpen(true)} className="p-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><KeyIcon /></button>
-                <button onClick={() => setIsLogVisible(true)} className="px-4 py-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><JournalIcon />Журнал</button>
-            </div>
+        <>
+            <audio ref={audioRef} className="hidden" />
             {isTestPanelVisible && <PodcastTest apiKeys={apiKeys} onClose={() => setIsTestPanelVisible(false)} />}
             {isLogVisible && (
-                <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={() => setIsLogVisible(false)}>
+                <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={onCloseLog}>
                     <div className="w-full max-w-2xl h-full bg-gray-800 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center p-4 border-b border-gray-700">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2"><JournalIcon/>Журнал запросов</h3>
-                            <button onClick={() => setIsLogVisible(false)} className="text-gray-400 hover:text-white"><CloseIcon/></button>
+                            <button onClick={onCloseLog} className="text-gray-400 hover:text-white"><CloseIcon/></button>
                         </div>
                         <div className="flex-grow p-4 overflow-y-auto text-sm font-mono">
                             {logs.map((entry, index) => (
@@ -747,16 +476,9 @@ const App: React.FC = () => {
             {isEditorOpen && editingThumbnail && podcast?.generatedImages && (
                 <ThumbnailEditor
                     thumbnail={editingThumbnail}
-                    baseImageSrc={podcast.generatedImages[0]}
+                    baseImageSrc={podcast.generatedImages[podcast.selectedBgIndex || 0]}
                     onSave={handleSaveThumbnail}
                     onClose={() => setIsEditorOpen(false)}
-                />
-            )}
-            {isApiKeyModalOpen && (
-                <ApiKeyModal
-                    currentKeys={apiKeys}
-                    onSave={handleSaveApiKeys}
-                    onClose={() => setIsApiKeyModalOpen(false)}
                 />
             )}
              {isSourceModalOpen && podcast?.knowledgeBaseText && (
@@ -776,7 +498,7 @@ const App: React.FC = () => {
                 <header className="text-center mb-10"><h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight"><span className="bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-blue-500">Студия Подкастов с ИИ</span></h1></header>
                 <main className="flex justify-center items-start">
                     {isLoading ? <div className="text-center p-8"><Spinner className="w-16 h-16 mb-6 mx-auto" /><h2 className="text-2xl font-bold text-white mb-2">Генерация...</h2><p className="text-lg text-teal-300 animate-pulse">{loadingStep}</p></div> : 
-                     error ? <div className="text-center p-8 bg-red-900/50 border border-red-700 rounded-lg"><h3 className="text-2xl font-bold text-red-300">Произошла ошибка</h3><p className="mt-2 text-red-200">{error}</p><button onClick={() => { setError(null); setIsLoading(false); }} className="mt-4 px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Попробовать снова</button></div> : 
+                     error ? <div className="text-center p-8 bg-red-900/50 border border-red-700 rounded-lg"><h3 className="text-2xl font-bold text-red-300">Произошла ошибка</h3><p className="mt-2 text-red-200">{error}</p><button onClick={() => { setError(null); }} className="mt-4 px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700">Попробовать снова</button></div> : 
                      podcast ? renderPodcastStudio() : (
                         <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
                             <p className="text-center text-lg text-gray-400 mb-6">Введите название будущего подкаста/видео, соберите базу знаний и настройте параметры генерации.</p>
@@ -820,7 +542,6 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-
 
                             <div className="w-full bg-gray-800/50 border border-gray-700 rounded-2xl p-6 mb-8">
                                 <h3 className="text-2xl font-bold text-white mb-4">Настройки генерации</h3>
@@ -890,9 +611,71 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
+                            
+                            <div className="w-full bg-gray-800/50 border border-gray-700 rounded-2xl p-6 mb-8">
+                                <h3 className="text-2xl font-bold text-white mb-4">Настройки озвучки</h3>
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-lg font-medium text-gray-200 mb-2">Режим озвучки</label>
+                                        <div className="flex gap-4">
+                                            <label className="flex items-center text-gray-200 cursor-pointer"><input type="radio" name="narrationMode" value="dialogue" checked={narrationMode === 'dialogue'} onChange={() => setNarrationMode('dialogue')} className="mr-2 h-4 w-4 bg-gray-700 border-gray-600 text-teal-600 focus:ring-teal-500"/>Диалог</label>
+                                            <label className="flex items-center text-gray-200 cursor-pointer"><input type="radio" name="narrationMode" value="monologue" checked={narrationMode === 'monologue'} onChange={() => setNarrationMode('monologue')} className="mr-2 h-4 w-4 bg-gray-700 border-gray-600 text-teal-600 focus:ring-teal-500"/>Монолог</label>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-lg font-medium text-gray-200 mb-2">Фильтр голосов</label>
+                                        <div className="flex gap-2 rounded-lg bg-gray-900 p-1">
+                                            <button onClick={() => setVoiceFilter('all')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'all' ? 'bg-teal-600 text-white font-semibold' : 'text-gray-300 hover:bg-gray-700'}`}>Все</button>
+                                            <button onClick={() => setVoiceFilter('male')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'male' ? 'bg-teal-600 text-white font-semibold' : 'text-gray-300 hover:bg-gray-700'}`}>Мужские</button>
+                                            <button onClick={() => setVoiceFilter('female')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'female' ? 'bg-teal-600 text-white font-semibold' : 'text-gray-300 hover:bg-gray-700'}`}>Женские</button>
+                                        </div>
+                                    </div>
+                                    
+                                    {narrationMode === 'monologue' && (
+                                        <div>
+                                            <label className="block text-lg font-medium text-gray-200 mb-2">Голос рассказчика</label>
+                                            <div className="flex items-center gap-4">
+                                                <select value={monologueVoice} onChange={e => setMonologueVoice(e.target.value)} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-white">
+                                                    {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                                </select>
+                                                <button onClick={() => handlePreviewVoice(monologueVoice)} disabled={!!previewingVoice} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700 disabled:bg-gray-500">
+                                                    {previewingVoice === monologueVoice ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    {narrationMode === 'dialogue' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label className="block text-lg font-medium text-gray-200 mb-2">Голос персонажа 1</label>
+                                                <div className="flex items-center gap-4">
+                                                    <select value={characterVoices.character1} onChange={e => setCharacterVoices(p => ({...p, character1: e.target.value}))} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-white">
+                                                        {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                                    </select>
+                                                    <button onClick={() => handlePreviewVoice(characterVoices.character1)} disabled={!!previewingVoice} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700 disabled:bg-gray-500">
+                                                        {previewingVoice === characterVoices.character1 ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-lg font-medium text-gray-200 mb-2">Голос персонажа 2</label>
+                                                <div className="flex items-center gap-4">
+                                                    <select value={characterVoices.character2} onChange={e => setCharacterVoices(p => ({...p, character2: e.target.value}))} className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-white">
+                                                        {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                                    </select>
+                                                    <button onClick={() => handlePreviewVoice(characterVoices.character2)} disabled={!!previewingVoice} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700 disabled:bg-gray-500">
+                                                         {previewingVoice === characterVoices.character2 ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
 
                             <div className="w-full flex flex-col sm:flex-row items-center gap-4 mb-8">
-                                 <button onClick={() => handleStartProject(projectTitleInput)} disabled={isLoading || !projectTitleInput} className="w-full px-8 py-4 bg-teal-600 text-white text-xl font-bold rounded-lg hover:bg-teal-700 transition-all disabled:bg-gray-500 disabled:cursor-not-allowed">Начать проект</button>
+                                 <button onClick={handleStartProjectClick} disabled={isLoading || !projectTitleInput} className="w-full px-8 py-4 bg-teal-600 text-white text-xl font-bold rounded-lg hover:bg-teal-700 transition-all disabled:bg-gray-500 disabled:cursor-not-allowed">Начать проект</button>
                                  <button onClick={() => setIsTestPanelVisible(true)} className="flex items-center justify-center gap-2 px-6 py-4 bg-gray-700/80 text-white font-bold rounded-lg hover:bg-gray-700 transition-colors flex-shrink-0">
                                     <BeakerIcon className="w-6 h-6"/>
                                     <span>Тест AI-дизайнера</span>
@@ -923,7 +706,7 @@ const App: React.FC = () => {
                                                 </label>
                                                 <p className="text-xs text-gray-500 mt-1">Внимание: может привести к переполнению хранилища.</p>
                                             </div>
-                                            <button onClick={() => { setHistory([]); localStorage.removeItem('podcastHistory'); }} className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 flex-shrink-0">
+                                            <button onClick={clearHistory} className="flex items-center gap-2 text-sm text-red-400 hover:text-red-300 flex-shrink-0">
                                                 <TrashIcon className="w-5 h-5" />
                                                 Очистить
                                             </button>
@@ -936,6 +719,56 @@ const App: React.FC = () => {
                      )}
                 </main>
             </div>
+        </>
+    );
+}
+
+const App: React.FC = () => {
+    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+    const [isLogVisible, setIsLogVisible] = useState(false);
+    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '' });
+    const [defaultFont, setDefaultFont] = useState('Impact');
+
+    useEffect(() => {
+        try {
+            const storedGeminiKey = localStorage.getItem('geminiApiKey') || '';
+            const storedOpenRouterKey = localStorage.getItem('openRouterProviderKey') || '';
+            const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
+            setApiKeys({ gemini: storedGeminiKey, openRouter: storedOpenRouterKey });
+            setDefaultFont(storedFont);
+        } catch (e) { console.error("Failed to load settings from localStorage", e); }
+    }, []);
+
+    const handleSaveSettings = (data: { keys: { gemini: string; openRouter: string }, defaultFont: string }) => {
+        setApiKeys(data.keys);
+        setDefaultFont(data.defaultFont);
+        localStorage.setItem('geminiApiKey', data.keys.gemini);
+        localStorage.setItem('openRouterProviderKey', data.keys.openRouter);
+        localStorage.setItem('channelDefaultFont', data.defaultFont);
+    };
+
+    return (
+        <div className="min-h-screen bg-gray-900 text-gray-100 font-sans p-4 sm:p-6 lg:p-8">
+             <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                <button onClick={() => setIsLogVisible(true)} className="p-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><JournalIcon /></button>
+                <button onClick={() => setIsApiKeyModalOpen(true)} className="p-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><KeyIcon /></button>
+            </div>
+             {isApiKeyModalOpen && (
+                <ApiKeyModal
+                    currentKeys={apiKeys}
+                    currentFont={defaultFont}
+                    onSave={handleSaveSettings}
+                    onClose={() => setIsApiKeyModalOpen(false)}
+                />
+            )}
+            <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont}>
+                <PodcastStudioApp 
+                    apiKeys={apiKeys} 
+                    isLogVisible={isLogVisible} 
+                    onCloseLog={() => setIsLogVisible(false)}
+                    defaultFont={defaultFont}
+                />
+            </PodcastProvider>
         </div>
     );
 };
