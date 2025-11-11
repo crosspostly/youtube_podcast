@@ -26,6 +26,34 @@ export interface Chapter {
   error?: string;
 }
 
+export interface TextOptions {
+  text: string;
+  fontFamily: string;
+  fontSize: number;
+  fillStyle: string;
+  textAlign: 'left' | 'center' | 'right';
+  position: { x: number; y: number };
+  shadow: {
+    color: string;
+    blur: number;
+    offsetX: number;
+    offsetY: number;
+  };
+  overlayColor: string;
+}
+
+
+export interface YoutubeThumbnail {
+  styleName: string;
+  dataUrl: string;
+  options: TextOptions;
+}
+
+export interface Character {
+  name: string;
+  description: string;
+}
+
 export interface Podcast {
   id: string;
   topic: string;
@@ -33,8 +61,13 @@ export interface Podcast {
   description: string;
   seoKeywords: string[];
   imagePrompts: string[];
+  characters: Character[];
   sources: Source[];
   chapters: Chapter[];
   generatedImages?: string[];
-  youtubeThumbnail?: string;
+  youtubeThumbnails?: YoutubeThumbnail[];
+  manualTtsScript?: string;
+  knowledgeBaseText?: string;
+  creativeFreedom: boolean;
+  totalDurationMinutes: number;
 }
