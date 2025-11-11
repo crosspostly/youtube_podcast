@@ -1,21 +1,22 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
-import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode } from '../types';
+import * as lamejs from 'lamejs';
+import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack } from '../types';
 import { withRetries, generateContentWithFallback } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 // This client is now only for the TTS-specific model which doesn't use the text fallback logic.
-const getTtsAiClient = (log: LogFunction, customApiKey?: string) => {
+const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {
   const apiKey = customApiKey || process.env.API_KEY;
   if (!apiKey) {
-    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена или введен пользовательский ключ.";
+    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
   return new GoogleGenAI({ apiKey });
 };
 
-// --- WAV UTILITIES ---
+// --- WAV / AUDIO UTILITIES ---
 
 const writeString = (view: DataView, offset: number, string: string) => {
     for (let i = 0; i < string.length; i++) {
@@ -50,48 +51,165 @@ const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChanne
     return new Blob([view], { type: 'audio/wav' });
 };
 
+const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
+    const numChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
 
-const combineWavBlobs = async (blobs: Blob[]): Promise<Blob> => {
-    const buffers = await Promise.all(blobs.map(b => b.arrayBuffer()));
-    if (buffers.length === 0) throw new Error("Нет аудиофайлов для сборки.");
-
-    const firstHeader = new DataView(buffers[0].slice(0, 44));
-    const numChannels = firstHeader.getUint16(22, true);
-    const sampleRate = firstHeader.getUint32(24, true);
-    const bitsPerSample = firstHeader.getUint16(34, true);
-
-    const dataChunks = buffers.map(buffer => buffer.slice(44));
-    const totalDataLength = dataChunks.reduce((acc, chunk) => acc + chunk.byteLength, 0);
-    
-    const finalBuffer = new ArrayBuffer(44 + totalDataLength);
-    const finalView = new DataView(finalBuffer);
-
-    // Write new WAV header
-    writeString(finalView, 0, 'RIFF');
-    finalView.setUint32(4, 36 + totalDataLength, true);
-    writeString(finalView, 8, 'WAVE');
-    writeString(finalView, 12, 'fmt ');
-    finalView.setUint32(16, 16, true); // Sub-chunk size
-    finalView.setUint16(20, 1, true); // Audio format (PCM)
-    finalView.setUint16(22, numChannels, true);
-    finalView.setUint32(24, sampleRate, true);
-    finalView.setUint32(28, sampleRate * numChannels * (bitsPerSample / 8), true); // Byte rate
-    finalView.setUint16(32, numChannels * (bitsPerSample / 8), true); // Block align
-    finalView.setUint16(34, bitsPerSample, true);
-    writeString(finalView, 36, 'data');
-    finalView.setUint32(40, totalDataLength, true);
-
-    // Concatenate data
-    let offset = 44;
-    for (const chunk of dataChunks) {
-        const sourceArray = new Uint8Array(chunk);
-        const destArray = new Uint8Array(finalBuffer, offset, chunk.byteLength);
-        destArray.set(sourceArray);
-        offset += chunk.byteLength;
+    let result: Float32Array;
+    if (numChannels === 2) {
+        result = new Float32Array(buffer.length * 2);
+        const left = buffer.getChannelData(0);
+        const right = buffer.getChannelData(1);
+        for (let i = 0; i < buffer.length; i++) {
+            result[i * 2] = left[i];
+            result[i * 2 + 1] = right[i];
+        }
+    } else {
+        result = buffer.getChannelData(0);
     }
 
-    return new Blob([finalBuffer], { type: 'audio/wav' });
+    const dataLength = result.length * (bitDepth / 8);
+    const bufferLength = 44 + dataLength;
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataLength, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, format, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * (bitDepth / 8) * numChannels, true);
+    view.setUint16(32, numChannels * (bitDepth / 8), true);
+    view.setUint16(34, bitDepth, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, dataLength, true);
+
+    let offset = 44;
+    for (let i = 0; i < result.length; i++, offset += 2) {
+        const s = Math.max(-1, Math.min(1, result[i]));
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+
+    return new Blob([view], { type: 'audio/wav' });
 };
+
+export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const chapterBlobs = podcast.chapters.map(c => c.audioBlob).filter((b): b is Blob => !!b);
+    if (chapterBlobs.length === 0) throw new Error("Нет аудиофайлов для сборки.");
+
+    const chapterAudioBuffers = await Promise.all(chapterBlobs.map(b => b.arrayBuffer().then(ab => audioContext.decodeAudioData(ab))));
+    
+    const totalDuration = chapterAudioBuffers.reduce((sum, buffer) => sum + buffer.duration, 0);
+    if (totalDuration === 0) throw new Error("Общая длительность аудио равна нулю.");
+    
+    const sampleRate = chapterAudioBuffers[0].sampleRate;
+    const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
+
+    const offlineContext = new OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
+
+    let currentTime = 0;
+    
+    for (let i = 0; i < podcast.chapters.length; i++) {
+        const chapter = podcast.chapters[i];
+        const speechBuffer = chapterAudioBuffers[i];
+        if (!speechBuffer) continue;
+        
+        // Add speech for the current chapter
+        const speechSource = offlineContext.createBufferSource();
+        speechSource.buffer = speechBuffer;
+        speechSource.connect(offlineContext.destination);
+        speechSource.start(currentTime);
+
+        // Handle background music for the current chapter
+        if (chapter.backgroundMusic) {
+            try {
+                const musicResponse = await fetch(chapter.backgroundMusic.audio);
+                const musicArrayBuffer = await musicResponse.arrayBuffer();
+                const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
+
+                const musicGainNode = offlineContext.createGain();
+                // Use chapter-specific volume if available, otherwise global volume
+                const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
+                
+                musicGainNode.gain.value = chapterVolume;
+                musicGainNode.connect(offlineContext.destination);
+                
+                const crossfadeDuration = 1.5;
+                const fadeInStartTime = currentTime;
+                const fadeOutEndTime = currentTime + speechBuffer.duration;
+                
+                // Fade In Logic
+                const prevChapterMusic = i > 0 ? podcast.chapters[i-1].backgroundMusic : null;
+                if (!prevChapterMusic || prevChapterMusic.id !== chapter.backgroundMusic.id) {
+                    musicGainNode.gain.setValueAtTime(0, fadeInStartTime);
+                    musicGainNode.gain.linearRampToValueAtTime(chapterVolume, fadeInStartTime + crossfadeDuration);
+                }
+
+                // Fade Out Logic
+                const nextChapterMusic = i < podcast.chapters.length - 1 ? podcast.chapters[i+1].backgroundMusic : null;
+                if (!nextChapterMusic || nextChapterMusic.id !== chapter.backgroundMusic.id) {
+                     musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
+                     musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
+                }
+
+                // Loop or trim music logic
+                let musicCursor = 0;
+                while (musicCursor < speechBuffer.duration) {
+                    const musicSource = offlineContext.createBufferSource();
+                    musicSource.buffer = musicBuffer;
+                    musicSource.connect(musicGainNode);
+                    
+                    const offset = musicCursor;
+                    const durationLeftInChapter = speechBuffer.duration - musicCursor;
+                    
+                    musicSource.start(currentTime + offset, 0, durationLeftInChapter);
+                    musicCursor += musicBuffer.duration;
+                }
+            } catch (e) {
+                console.error(`Не удалось загрузить или обработать музыку для главы ${chapter.title}`, e);
+            }
+        }
+        
+        currentTime += speechBuffer.duration;
+    }
+
+    const renderedBuffer = await offlineContext.startRendering();
+    return audioBufferToWavBlob(renderedBuffer);
+};
+
+export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<Blob> => {
+    log({ type: 'info', message: 'Начало конвертации WAV в MP3.' });
+    const arrayBuffer = await wavBlob.arrayBuffer();
+    const wav = lamejs.WavHeader.readHeader(new DataView(arrayBuffer));
+    const samples = new Int16Array(arrayBuffer, wav.dataOffset, wav.dataLen / 2);
+    
+    const mp3encoder = new lamejs.Mp3Encoder(wav.channels, wav.sampleRate, 128); // 128 kbps
+    const mp3Data = [];
+    const sampleBlockSize = 1152; 
+
+    for (let i = 0; i < samples.length; i += sampleBlockSize) {
+        const sampleChunk = samples.subarray(i, i + sampleBlockSize);
+        const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+        if (mp3buf.length > 0) {
+            mp3Data.push(mp3buf);
+        }
+    }
+    const mp3buf = mp3encoder.flush();
+    if (mp3buf.length > 0) {
+        mp3Data.push(mp3buf);
+    }
+
+    const mp3Blob = new Blob(mp3Data.map(d => new Uint8Array(d.buffer, 0, d.length)), { type: 'audio/mpeg' });
+    log({ type: 'info', message: 'Конвертация в MP3 завершена.' });
+    return mp3Blob;
+};
+
 
 // --- SCRIPT & AUDIO GENERATION ---
 
@@ -153,7 +271,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
 
     const sourceInstruction = knowledgeBaseText
@@ -344,31 +462,25 @@ const processTtsResponse = (response: GenerateContentResponse): Blob => {
     return createWavBlobFromPcm(pcmData, 24000, 1);
 };
 
-const TTS_MODEL_FALLBACK_CHAIN = [
-    'gemini-2.5-flash-preview-tts',
-    'gemini-2.5-pro-preview-tts',
-    'gemini-2.5-flash-tts'
-];
-
-const generateAudioWithFallback = async (
+const generateAudioWithRetries = async (
     params: { contents: any; config: any; },
     log: LogFunction,
     customApiKey?: string
 ): Promise<GenerateContentResponse> => {
-    const ai = getTtsAiClient(log, customApiKey);
+    const ai = getTtsAiClient(customApiKey, log);
 
-    for (const model of TTS_MODEL_FALLBACK_CHAIN) {
-        try {
-            log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
-            const generateCall = () => ai.models.generateContent({ model, ...params });
-            const response = await withRetries(generateCall, log);
-            log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
-            return response;
-        } catch (error) {
-            log({ type: 'error', message: `Model ${model} failed after retries. Trying next model...`, data: error });
-        }
+    // Use the most stable model directly
+    const model = 'gemini-2.5-flash-preview-tts';
+    try {
+        log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
+        const generateCall = () => ai.models.generateContent({ model, ...params });
+        const response = await withRetries(generateCall, log);
+        log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
+        return response;
+    } catch (error) {
+        log({ type: 'error', message: `Model ${model} failed after retries.`, data: error });
+        throw new Error(`TTS model failed. See logs for details.`);
     }
-    throw new Error(`All TTS models in the fallback chain failed. See logs for details.`);
 };
 
 
@@ -390,7 +502,7 @@ export const previewVoice = async (voiceName: string, languageCode: string, log:
     };
 
     try {
-        const response = await generateAudioWithFallback(params, log, apiKey);
+        const response = await generateAudioWithRetries(params, log, apiKey);
         return processTtsResponse(response);
     } catch (error) {
         log({ type: 'error', message: `Ошибка при предпрослушивании голоса ${voiceName}`, data: error });
@@ -451,7 +563,7 @@ export const generateChapterAudio = async (
     };
     
     try {
-        const response = await generateAudioWithFallback(params, log, apiKey);
+        const response = await generateAudioWithRetries(params, log, apiKey);
         const wavBlob = processTtsResponse(response);
         log({ type: 'info', message: 'WAV файл успешно создан.' });
         return wavBlob;
@@ -468,7 +580,9 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
     
     Analyze this video topic: "${topic}". 
     
-    Propose 3 distinct, "bombastic" design concepts. For each concept, provide a name and specific design parameters. I want you to include modern design elements like text strokes (outlines) and gradients.
+    **CRITICAL READABILITY REQUIREMENT:** The text MUST be perfectly readable on any complex or bright background. Propose designs that use high-contrast color combinations (e.g., bright yellow text with a thick black outline), heavy font weights, and prominent shadows or glows. Avoid thin fonts or low-contrast colors.
+
+    Propose 3 distinct, "bombastic" design concepts. For each concept, provide a name and specific design parameters. Include modern design elements like text strokes (outlines) and gradients.
     
     **CRITICAL INSTRUCTION: For 'fontFamily', suggest specific, popular, free-to-use Google Font names that fit the theme (e.g., 'Anton', 'Bebas Neue', 'Creepster'). Do not use generic categories like 'serif'. Your entire response must be in the language: ${language}.**
 
@@ -481,12 +595,12 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
           "name": "Concept name (e.g., Electric Shock, Conspiracy Board, Ancient Artifact)",
           "fontFamily": "A specific Google Font name like 'Anton' or 'Oswald'",
           "fontSize": 120,
-          "textColor": "#RRGGBB hex code",
-          "shadowColor": "#RRGGBB hex code for a glow or drop shadow",
-          "overlayOpacity": A number between 0.2 and 0.6 for the dark overlay,
+          "textColor": "#FFFF00",
+          "shadowColor": "#000000",
+          "overlayOpacity": 0.3,
           "textTransform": "uppercase",
-          "strokeColor": "#RRGGBB hex code for a contrasting text outline (e.g., black or white)",
-          "strokeWidth": A number between 5 and 15,
+          "strokeColor": "#000000",
+          "strokeWidth": 12,
           "gradientColors": ["#startColorHex", "#endColorHex"]
         }
       ]
@@ -511,4 +625,143 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
     }
 };
 
-export { combineWavBlobs };
+// --- SRT SUBTITLE GENERATION ---
+
+const formatSrtTime = (seconds: number): string => {
+    const date = new Date(0);
+    date.setSeconds(seconds);
+    const time = date.toISOString().substr(11, 12);
+    return time.replace('.', ',');
+};
+
+// New, fast SRT generation based on text estimation
+export const generateSrtFile = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
+    log({ type: 'info', message: 'Начало быстрой генерации SRT-субтитров.' });
+    let srtContent = '';
+    let currentTime = 0;
+    let subtitleIndex = 1;
+
+    // Average characters per second for speech. This is an estimate.
+    const CHARS_PER_SECOND = 15;
+    
+    const allLines = podcast.chapters.flatMap(c => c.script.filter(s => s.speaker.toUpperCase() !== 'SFX'));
+
+    for (const line of allLines) {
+        // Estimate duration based on text length. Minimum 1 second.
+        const duration = Math.max(1, line.text.length / CHARS_PER_SECOND);
+
+        const startTime = formatSrtTime(currentTime);
+        const endTime = formatSrtTime(currentTime + duration);
+        
+        srtContent += `${subtitleIndex}\n`;
+        srtContent += `${startTime} --> ${endTime}\n`;
+        srtContent += `${line.text}\n\n`;
+
+        currentTime += duration;
+        subtitleIndex++;
+    }
+    
+    log({ type: 'info', message: 'Генерация SRT-субтитров завершена.' });
+    return new Blob([srtContent], { type: 'text/srt' });
+};
+
+
+// --- AI MUSIC FINDER ---
+
+const JAMENDO_CLIENT_ID = '76b53e2b';
+const JAMENDO_API_URL = 'https://api.jamendo.com/v3.0/tracks/';
+
+const performJamendoSearch = async (searchTags: string, log: LogFunction): Promise<MusicTrack[]> => {
+    const tags = searchTags.trim().replace(/,\s*/g, ' ');
+    if (!tags) return [];
+
+    const searchUrl = `${JAMENDO_API_URL}?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=10&tags=${tags}&order=popularity_total`;
+    log({ type: 'request', message: 'Запрос музыки с Jamendo', data: { url: searchUrl } });
+
+    const jamendoResponse = await fetch(searchUrl);
+    if (!jamendoResponse.ok) {
+        log({ type: 'error', message: `Jamendo API error: ${jamendoResponse.statusText}` });
+        return [];
+    }
+    const jamendoData = await jamendoResponse.json();
+
+    if (!jamendoData || !jamendoData.results || jamendoData.results.length === 0) {
+        return [];
+    }
+    
+    return jamendoData.results.map((track: any) => ({
+        id: track.id,
+        name: track.name,
+        artist_name: track.artist_name,
+        audio: track.audio
+    }));
+};
+
+export const findMusicManually = async (keywords: string, log: LogFunction): Promise<MusicTrack[]> => {
+    log({ type: 'info', message: `Ручной поиск музыки по ключевым словам: ${keywords}` });
+    try {
+        const tracks = await performJamendoSearch(keywords, log);
+        if (tracks.length > 0) {
+            log({ type: 'response', message: 'Музыкальные треки по ручному запросу успешно получены.' });
+        } else {
+            log({ type: 'info', message: 'По ручному запросу музыка не найдена.' });
+        }
+        return tracks;
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка при ручном поиске музыки.', data: error });
+        throw new Error('Не удалось найти музыку.');
+    }
+};
+
+export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: string): Promise<MusicTrack[]> => {
+    log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для музыки.' });
+    
+    try {
+        const keywordsPrompt = `Analyze the mood of the provided text: "${topic}". Your task is to generate a search query for a royalty-free music library like Jamendo. 
+    
+        Instructions:
+        1.  Identify the primary mood and a suitable genre.
+        2.  Combine them into a simple, effective search query of 2-3 English keywords.
+        3.  Prioritize using tags from the "Recommended Tags" list if they fit. Avoid overly specific or niche terms not on the list unless absolutely necessary.
+        4.  Return ONLY the comma-separated keywords.
+
+        Recommended Tags:
+        - Moods: mysterious, epic, sad, suspenseful, peaceful, dark, uplifting, dramatic, romantic, energetic, chill
+        - Genres: ambient, cinematic, electronic, orchestral, acoustic, rock, instrumental, lounge, soundtrack
+        
+        Example for "A lonely journey through a haunted forest": 
+        dark, ambient, cinematic
+        
+        Example for "The final battle for the kingdom":
+        epic, orchestral, action
+        
+        Provided text: "${topic}"
+        Keywords:`;
+        
+        const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKey);
+        const keywords = keywordsResponse.text.trim();
+        log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
+
+        let tracks = await performJamendoSearch(keywords, log);
+        
+        if (tracks.length === 0) {
+            log({ type: 'info', message: 'По данным ключевым словам музыка в Jamendo не найдена. Попытка с более широким запросом...' });
+            const keywordParts = keywords.split(/[\s,]+/);
+            if (keywordParts.length > 1) {
+                const fallbackKeywords = keywordParts.slice(0, -1).join(' ');
+                tracks = await performJamendoSearch(fallbackKeywords, log);
+            }
+        }
+        
+        if (tracks.length === 0) {
+            log({ type: 'info', message: 'Резервный поиск также не дал результатов.' });
+        } else {
+            log({ type: 'response', message: 'Музыкальные треки успешно получены.' });
+        }
+        return tracks;
+
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка в процессе поиска музыки с ИИ.', data: error });
+        throw new Error('Не удалось подобрать музыку.');
+    }
+};

@@ -8,6 +8,7 @@ type UsePodcastReturn = ReturnType<typeof usePodcast>;
 
 interface PodcastContextType extends UseHistoryReturn, UsePodcastReturn {
     setPodcast: (podcast: Podcast | null) => void;
+    apiKeys: { gemini: string; openRouter: string };
 }
 
 const PodcastContext = createContext<PodcastContextType | undefined>(undefined);
@@ -20,7 +21,7 @@ interface PodcastProviderProps {
 
 export const PodcastProvider: React.FC<PodcastProviderProps> = ({ children, apiKeys, defaultFont }) => {
     const historyHook = useHistory();
-    const podcastHook = usePodcast(apiKeys, historyHook.updateHistoryWithPodcast, defaultFont);
+    const podcastHook = usePodcast(historyHook.updateHistoryWithPodcast, apiKeys, defaultFont);
 
     const value = {
         ...historyHook,
@@ -31,6 +32,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({ children, apiK
                 historyHook.updateHistoryWithPodcast(podcast);
             }
         },
+        apiKeys, // Expose apiKeys in the context
     };
 
     return <PodcastContext.Provider value={value as PodcastContextType}>{children}</PodcastContext.Provider>;

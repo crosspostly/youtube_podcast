@@ -1,15 +1,16 @@
 
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
 type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response'; message: string; data?: any; }) => void;
 
-// Centralized client creation, ensuring a custom API key is used if provided.
-const getAiClient = (log: LogFunction, customApiKey?: string) => {
+// Centralized client creation.
+const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
   const apiKey = customApiKey || process.env.API_KEY;
   if (!apiKey) {
-    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена или введен пользовательский ключ.";
+    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
@@ -54,21 +55,20 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
 };
 
 // Define primary and fallback models for text generation
-// FIX: Use correct model names as per Gemini API guidelines.
-const PRIMARY_TEXT_MODEL = 'gemini-flash-lite-latest';
-const FALLBACK_TEXT_MODEL = 'gemini-2.5-flash';
+// FIX: Use the more capable model as primary and the faster model as fallback.
+const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
+const FALLBACK_TEXT_MODEL = 'gemini-flash-lite-latest';
 
 // Wrapper for generateContent that includes both retries and model fallback.
 export const generateContentWithFallback = async (
     params: { contents: any; config?: any; }, 
-    log: LogFunction, 
+    log: LogFunction,
     customApiKey?: string
 ): Promise<GenerateContentResponse> => {
     
     const attemptGeneration = (model: string) => {
         log({ type: 'request', message: `Attempting generation with model: ${model}`, data: { contents: params.contents } });
-        // Create a new client for each attempt to ensure the correct (potentially custom) API key is used.
-        const ai = getAiClient(log, customApiKey);
+        const ai = getAiClient(customApiKey, log);
         return ai.models.generateContent({ model, ...params });
     };
 

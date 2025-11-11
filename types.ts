@@ -17,6 +17,13 @@ export interface ScriptLine {
 
 export type ChapterStatus = 'pending' | 'script_generating' | 'audio_generating' | 'completed' | 'error';
 
+export interface MusicTrack {
+  id: string;
+  name: string;
+  artist_name: string;
+  audio: string; // URL
+}
+
 export interface Chapter {
   id: string;
   title: string;
@@ -24,6 +31,8 @@ export interface Chapter {
   audioBlob?: Blob;
   status: ChapterStatus;
   error?: string;
+  backgroundMusic?: MusicTrack;
+  backgroundMusicVolume?: number;
 }
 
 export interface TextOptions {
@@ -101,9 +110,11 @@ export interface Podcast {
   creativeFreedom: boolean;
   totalDurationMinutes: number;
   language: string;
-  // New fields for voice selection
   narrationMode: NarrationMode;
   characterVoices: { [characterName: string]: string };
   monologueVoice: string;
   selectedBgIndex: number;
+  initialImageCount: number;
+  // New fields for background music
+  backgroundMusicVolume: number;
 }

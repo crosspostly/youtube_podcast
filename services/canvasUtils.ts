@@ -9,7 +9,7 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
     }
 
     const fontQuery = fontFamily.replace(/ /g, '+');
-    const fontUrl = `https://fonts.googleapis.com/css2?family=${fontQuery}:wght@400;700&display=swap`;
+    const fontUrl = `https://fonts.googleapis.com/css2?family=${fontQuery}:wght@400;700;800;900&display=swap`;
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
@@ -20,7 +20,7 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
             document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            await document.fonts.load(`bold 12px "${fontFamily}"`);
+            await document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
     } catch (error) {
@@ -65,11 +65,6 @@ export const drawCanvas = async (
     context.clearRect(0, 0, width, height);
     context.drawImage(baseImage, 0, 0, width, height);
     
-    if (options.overlayColor && options.overlayColor !== 'transparent') {
-        context.fillStyle = options.overlayColor;
-        context.fillRect(0, 0, width, height);
-    }
-    
     context.textAlign = options.textAlign;
     context.textBaseline = 'middle';
 
@@ -82,7 +77,7 @@ export const drawCanvas = async (
     const maxHeight = height * 0.9; // 90% of canvas height
 
     while (currentFontSize > 10) {
-        context.font = `bold ${currentFontSize}px "${options.fontFamily}"`;
+        context.font = `900 ${currentFontSize}px "${options.fontFamily}"`; // Use a heavy font weight
         lines = wrapText(context, textToDraw, maxWidth);
         const totalTextHeight = lines.length * (currentFontSize * 1.2);
         
@@ -94,9 +89,26 @@ export const drawCanvas = async (
     }
     // --- End of Fitting Algorithm ---
     
-    // Set final font size after fitting
-    context.font = `bold ${currentFontSize}px "${options.fontFamily}"`;
+    // Set final font properties
+    context.font = `900 ${currentFontSize}px "${options.fontFamily}"`;
+    const lineHeight = currentFontSize * 1.2;
+    const totalTextHeight = lines.length * lineHeight;
+    const startY = options.position.y - (totalTextHeight / 2) + (lineHeight / 2);
+    
+    // --- NEW: Advanced Scrim for Readability ---
+    // Instead of a global overlay, draw a localized gradient behind the text.
+    // This makes the text pop without darkening the entire image.
+    if (lines.length > 0) {
+         const scrimGradient = context.createLinearGradient(0, 0, 0, height);
+         scrimGradient.addColorStop(0, 'rgba(0,0,0,0)');
+         scrimGradient.addColorStop(0.3, 'rgba(0,0,0,0)');
+         scrimGradient.addColorStop(0.5, 'rgba(0,0,0,0.65)');
+         scrimGradient.addColorStop(1, 'rgba(0,0,0,0.8)');
+         context.fillStyle = scrimGradient;
+         context.fillRect(0, 0, width, height);
+    }
 
+    // --- Text Rendering ---
     if (options.gradientColors && options.gradientColors.length >= 2) {
         const gradient = context.createLinearGradient(0, options.position.y - currentFontSize, 0, options.position.y + currentFontSize);
         gradient.addColorStop(0, options.gradientColors[0]);
@@ -108,31 +120,31 @@ export const drawCanvas = async (
     
     if (options.shadow && options.shadow.color !== 'transparent') {
         context.shadowColor = options.shadow.color;
-        context.shadowBlur = options.shadow.blur;
-        context.shadowOffsetX = options.shadow.offsetX;
-        context.shadowOffsetY = options.shadow.offsetY;
+        context.shadowBlur = options.shadow.blur || 20; // Increased default
+        context.shadowOffsetX = options.shadow.offsetX || 5;
+        context.shadowOffsetY = options.shadow.offsetY || 5;
     }
-
-    const lineHeight = currentFontSize * 1.2;
-    const totalTextHeight = lines.length * lineHeight;
-    const startY = options.position.y - (totalTextHeight / 2) + (lineHeight / 2);
 
     lines.forEach((line, i) => {
         const yPos = startY + (i * lineHeight);
-        context.fillText(line, options.position.x, yPos);
-
+        
+        // Draw stroke first (background layer)
         if (options.strokeWidth && options.strokeWidth > 0 && options.strokeColor && options.strokeColor !== 'transparent') {
             context.strokeStyle = options.strokeColor;
-            context.lineWidth = options.strokeWidth;
+            context.lineWidth = options.strokeWidth || 10; // Increased default
             context.lineJoin = 'round';
+            // Draw stroke without shadow, so shadow is only on the main text fill
+            const currentShadowColor = context.shadowColor;
             context.shadowColor = 'transparent';
             context.strokeText(line, options.position.x, yPos);
-            if (options.shadow && options.shadow.color !== 'transparent') {
-                context.shadowColor = options.shadow.color;
-            }
+            context.shadowColor = currentShadowColor; // Restore shadow for fill
         }
+
+        // Draw main text fill on top
+        context.fillText(line, options.position.x, yPos);
     });
     
+    // Reset all shadow and stroke properties to avoid affecting other draw calls
     context.shadowColor = 'transparent';
     context.shadowBlur = 0;
     context.shadowOffsetX = 0;

@@ -100,17 +100,17 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
 
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-gray-800 rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col md:flex-row overflow-hidden border border-gray-700">
+            <div className="bg-slate-900/80 backdrop-blur-lg rounded-lg shadow-2xl w-full max-w-6xl h-full max-h-[90vh] flex flex-col md:flex-row overflow-hidden border border-slate-700">
                 {/* Controls Panel */}
-                <div className="w-full md:w-80 p-4 bg-gray-900 overflow-y-auto flex-shrink-0">
+                <div className="w-full md:w-80 p-4 bg-slate-950/80 overflow-y-auto flex-shrink-0">
                     <h3 className="text-xl font-bold text-white mb-6">Редактор обложки</h3>
                     <div className="space-y-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-300">Текст</label>
-                            <textarea value={options.text} onChange={(e) => handleOptionChange('text', e.target.value)} className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-white mt-1" rows={3}/>
+                            <label className="block text-sm font-medium text-slate-300">Текст</label>
+                            <textarea value={options.text} onChange={(e) => handleOptionChange('text', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300">Шрифт (Google Fonts)</label>
+                            <label className="block text-sm font-medium text-slate-300">Шрифт (Google Fonts)</label>
                              <FontAutocompleteInput 
                                 value={options.fontFamily}
                                 onChange={(font) => handleOptionChange('fontFamily', font)}
@@ -118,52 +118,52 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         </div>
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
-                                <label className="block text-sm font-medium text-gray-300">Размер</label>
+                                <label className="block text-sm font-medium text-slate-300">Размер</label>
                                 <input type="range" min="30" max="200" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
-                             <input type="number" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number(e.target.value))} className="w-20 bg-gray-800 border border-gray-600 rounded-md p-2 text-white"/>
+                             <input type="number" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number(e.target.value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
                         </div>
                         <div className="flex items-center gap-4">
-                             <label className="block text-sm font-medium text-gray-300">Цвет</label>
+                             <label className="block text-sm font-medium text-slate-300">Цвет</label>
                              <input type="color" value={options.fillStyle} onChange={(e) => handleOptionChange('fillStyle', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-gray-300">Выравнивание</label>
-                            <select value={options.textAlign} onChange={(e) => handleOptionChange('textAlign', e.target.value as TextOptions['textAlign'])} className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 text-white mt-1">
+                            <label className="block text-sm font-medium text-slate-300">Выравнивание</label>
+                            <select value={options.textAlign} onChange={(e) => handleOptionChange('textAlign', e.target.value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
                                 <option value="left">По левому краю</option>
                                 <option value="center">По центру</option>
                                 <option value="right">По правому краю</option>
                             </select>
                         </div>
 
-                         <div className="border-t border-gray-700 pt-4">
+                         <div className="border-t border-slate-700 pt-4">
                             <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
                              <div className="flex items-center gap-4 mb-2">
-                                 <label className="block text-sm font-medium text-gray-300">Цвет</label>
+                                 <label className="block text-sm font-medium text-slate-300">Цвет</label>
                                  <input type="color" value={options.strokeColor || '#000000'} onChange={(e) => handleOptionChange('strokeColor', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                              </div>
                              <div>
-                                <label className="block text-sm font-medium text-gray-300">Толщина: {options.strokeWidth || 0}px</label>
+                                <label className="block text-sm font-medium text-slate-300">Толщина: {options.strokeWidth || 0}px</label>
                                 <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e) => handleOptionChange('strokeWidth', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                         </div>
 
-                         <div className="border-t border-gray-700 pt-4">
+                         <div className="border-t border-slate-700 pt-4">
                             <h4 className="text-lg font-semibold text-white mb-2">Тень</h4>
                             <div className="flex items-center gap-4 mb-2">
-                                 <label className="block text-sm font-medium text-gray-300">Цвет</label>
+                                 <label className="block text-sm font-medium text-slate-300">Цвет</label>
                                  <input type="color" value={options.shadow.color} onChange={(e) => handleShadowChange('color', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-300">Размытие: {options.shadow.blur}px</label>
+                                <label className="block text-sm font-medium text-slate-300">Размытие: {options.shadow.blur}px</label>
                                 <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e) => handleShadowChange('blur', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                              <div>
-                                <label className="block text-sm font-medium text-gray-300">Смещение X: {options.shadow.offsetX}px</label>
+                                <label className="block text-sm font-medium text-slate-300">Смещение X: {options.shadow.offsetX}px</label>
                                 <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e) => handleShadowChange('offsetX', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                              <div>
-                                <label className="block text-sm font-medium text-gray-300">Смещение Y: {options.shadow.offsetY}px</label>
+                                <label className="block text-sm font-medium text-slate-300">Смещение Y: {options.shadow.offsetY}px</label>
                                 <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e) => handleShadowChange('offsetY', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                         </div>
@@ -173,9 +173,9 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                 {/* Canvas Area */}
                 <div className="flex-1 flex flex-col p-4">
                      <div className="flex justify-end mb-4">
-                         <button onClick={onClose} className="p-2 text-gray-400 hover:text-white"><CloseIcon/></button>
+                         <button onClick={onClose} className="p-2 text-slate-400 hover:text-white"><CloseIcon/></button>
                     </div>
-                    <div className="flex-1 flex items-center justify-center bg-gray-900/50 rounded-lg overflow-hidden">
+                    <div className="flex-1 flex items-center justify-center bg-black/50 rounded-lg overflow-hidden">
                        <canvas
                             ref={canvasRef}
                             width={1280}
@@ -188,8 +188,8 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         />
                     </div>
                      <div className="flex justify-end gap-4 mt-4">
-                        <button onClick={onClose} className="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg hover:bg-gray-700">Отмена</button>
-                        <button onClick={handleSave} className="px-6 py-2 bg-teal-600 text-white font-bold rounded-lg hover:bg-teal-700">Сохранить</button>
+                        <button onClick={onClose} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
+                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Сохранить</button>
                     </div>
                 </div>
             </div>

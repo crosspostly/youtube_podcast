@@ -64,17 +64,17 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
                     onChange={handleInputChange}
                     onFocus={() => { if (searchTerm) setIsOpen(true); }}
                     placeholder="Название шрифта из Google Fonts"
-                    className="w-full bg-gray-800 border border-gray-600 rounded-md p-2 pl-8 text-white"
+                    className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 pl-8 text-white"
                 />
-                <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"/>
+                <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"/>
             </div>
             {isOpen && suggestions.length > 0 && (
-                <ul className="absolute z-20 top-full mt-1 w-full bg-gray-700 border border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <ul className="absolute z-20 top-full mt-1 w-full bg-slate-700 border border-slate-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
                     {suggestions.map(font => (
                         <li
                             key={font}
                             onClick={() => handleSuggestionClick(font)}
-                            className="px-4 py-2 text-white hover:bg-teal-600 cursor-pointer"
+                            className="px-4 py-2 text-white hover:bg-cyan-600 cursor-pointer"
                         >
                             <span style={{ fontFamily: font }}>{font}</span>
                         </li>
