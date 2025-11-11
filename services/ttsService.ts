@@ -20,6 +20,34 @@ const writeString = (view: DataView, offset: number, string: string) => {
     }
 };
 
+const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChannels: number): Blob => {
+    const bitsPerSample = 16;
+    const buffer = new ArrayBuffer(44 + pcmData.byteLength);
+    const view = new DataView(buffer);
+    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+    const blockAlign = numChannels * (bitsPerSample / 8);
+
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + pcmData.byteLength, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitsPerSample, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, pcmData.byteLength, true);
+
+    const pcmView = new Int16Array(buffer, 44);
+    pcmView.set(pcmData);
+
+    return new Blob([view], { type: 'audio/wav' });
+};
+
+
 const combineWavBlobs = async (blobs: Blob[]): Promise<Blob> => {
     const buffers = await Promise.all(blobs.map(b => b.arrayBuffer()));
     if (buffers.length === 0) throw new Error("Нет аудиофайлов для сборки.");
@@ -60,20 +88,6 @@ const combineWavBlobs = async (blobs: Blob[]): Promise<Blob> => {
     }
 
     return new Blob([finalBuffer], { type: 'audio/wav' });
-};
-
-
-// Fix: The `combineWavBlobs` function is async and returns a `Promise<Blob>`.
-// This function must also be async, await the result, and have its return type updated to `Promise<Blob>`.
-const createWavBlob = async (base64: string, sampleRate: number): Promise<Blob> => {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    const pcmData = new Int16Array(bytes.buffer);
-    return await combineWavBlobs([new Blob([pcmData.buffer])]); // Use combiner to generate header
 };
 
 // --- SCRIPT & AUDIO GENERATION ---
@@ -186,8 +200,17 @@ export const generatePodcastDialogueAudio = async (script: { speaker: string; te
         const response = await ai.models.generateContent({ model: "gemini-2.5-flash-preview-tts", contents: [{ parts: [{ text: ttsPrompt }] }], config: { responseModalities: [Modality.AUDIO], speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } } } });
         const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (!base64Audio) throw new Error("Не удалось получить аудиоданные от модели TTS.");
+        
+        const binaryString = atob(base64Audio);
+        const len = binaryString.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        const pcmData = new Int16Array(bytes.buffer);
+        
         log({ type: 'info', message: 'WAV файл успешно создан.' });
-        return createWavBlob(base64Audio, 24000);
+        return createWavBlobFromPcm(pcmData, 24000, 1);
     } catch (error) {
         log({ type: 'error', message: 'Ошибка при синтезе аудио (TTS)', data: error });
         throw error;

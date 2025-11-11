@@ -35,4 +35,6 @@ export interface Podcast {
   imagePrompts: string[];
   sources: Source[];
   chapters: Chapter[];
+  generatedImages?: string[];
+  youtubeThumbnail?: string;
 }

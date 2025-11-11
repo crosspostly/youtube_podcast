@@ -1,8 +1,9 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generatePodcastDialogueAudio, combineWavBlobs } from './services/ttsService';
+import { generateStyleImages, generateYoutubeThumbnail } from './services/imageService';
 import type { Podcast, Chapter, LogEntry } from './types';
 import Spinner from './components/Spinner';
-import { HistoryIcon, TrashIcon, JournalIcon, CloseIcon, ChapterIcon, RedoIcon, CombineIcon, DownloadIcon } from './components/Icons';
+import { HistoryIcon, TrashIcon, JournalIcon, CloseIcon, ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon } from './components/Icons';
 
 const sampleArticles = [
   { topic: "Секреты и теории заговора вокруг Зоны 51", title: "Зона 51: Что скрывает секретная база?" },
@@ -64,15 +65,25 @@ const App: React.FC = () => {
         setError(null);
         setPodcast(null);
         setLogs([]);
-        setLoadingStep("Создание концепции и первой главы...");
-
+        
         try {
+            setLoadingStep("Создание концепции и первой главы...");
             const blueprint = await generatePodcastBlueprint(topic, log);
+            
+            setLoadingStep("Озвучивание первой главы...");
             const firstChapterAudio = await generatePodcastDialogueAudio(blueprint.chapters[0].script, log);
+            
+            setLoadingStep("Генерация изображений...");
+            const generatedImages = await generateStyleImages(blueprint.imagePrompts, log);
+            
+            setLoadingStep("Создание обложки для YouTube...");
+            const youtubeThumbnail = generatedImages.length > 0 ? await generateYoutubeThumbnail(generatedImages[0], blueprint.title, log) : null;
             
             const newPodcast: Podcast = {
                 ...blueprint,
-                chapters: blueprint.chapters.map(c => ({...c, status: 'completed', audioBlob: firstChapterAudio})),
+                chapters: [{ ...blueprint.chapters[0], status: 'completed', audioBlob: firstChapterAudio }],
+                generatedImages: generatedImages || [],
+                youtubeThumbnail: youtubeThumbnail || undefined,
             };
 
             // Add pending chapters to reach a total of 6
@@ -159,7 +170,6 @@ const App: React.FC = () => {
         }
     };
     
-    const renderInitialState = () => ( /* UI for topic input */ );
     const renderPodcastStudio = () => {
         if (!podcast) return null;
         const allChaptersDone = podcast.chapters.every(c => c.status === 'completed');
@@ -197,7 +207,30 @@ const App: React.FC = () => {
                     ))}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4">
+                {podcast.generatedImages && podcast.generatedImages.length > 0 && (
+                    <div className="mt-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
+                        <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Визуальные материалы</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {podcast.youtubeThumbnail && (
+                                <div className="md:col-span-2">
+                                    <h4 className="font-semibold text-lg text-gray-200 mb-2">Обложка для YouTube</h4>
+                                    <img src={podcast.youtubeThumbnail} alt="YouTube Thumbnail" className="rounded-lg border-2 border-teal-500" />
+                                    <a href={podcast.youtubeThumbnail} download={`thumbnail_${podcast.title.replace(/[^a-z0-9]/gi, '_')}.png`} className="mt-2 inline-block px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-700">Скачать обложку</a>
+                                </div>
+                            )}
+                            {podcast.generatedImages.map((imgSrc, index) => (
+                                 <div key={index}>
+                                     <h4 className="font-semibold text-gray-300 mb-2">Изображение {index + 1}</h4>
+                                     <img src={imgSrc} alt={`Generated image ${index + 1}`} className="rounded-lg w-full aspect-video object-cover" />
+                                     <a href={imgSrc} download={`image_${index + 1}_${podcast.title.replace(/[^a-z0-9]/gi, '_')}.jpeg`} className="mt-2 inline-block px-4 py-2 bg-gray-600 text-white text-sm font-bold rounded-lg hover:bg-gray-700">Скачать изображение</a>
+                                 </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+
+                <div className="flex flex-col sm:flex-row gap-4 mt-8">
                     <button onClick={handleCombineAndDownload} disabled={!allChaptersDone || isLoading} className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all">
                         <DownloadIcon /> {allChaptersDone ? "Собрать и скачать финальный подкаст" : `Завершите ${podcast.chapters.filter(c => c.status !== 'completed').length} глав`}
                     </button>
