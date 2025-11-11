@@ -1,5 +1,5 @@
 import { GoogleGenAI, Modality } from "@google/genai";
-import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character } from '../types';
+import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -110,9 +110,9 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     const ai = getAiClient(log, apiKey);
     const model = "gemini-2.5-pro";
 
-    const prompt = `Используя Google Search, найди и предоставь подробный, структурированный ответ на следующий вопрос. Ответ должен быть исчерпывающим, хорошо отформатированным и содержать ключевые факты. Пиши на русском языке.
+    const prompt = `Using Google Search, find and provide a detailed, structured answer to the following question. The answer should be comprehensive, well-formatted, and contain key facts. Write the answer in Russian.
 
-    Вопрос: "${question}"`;
+    Question: "${question}"`;
 
     try {
         log({ type: 'request', message: `Запрос к модели ${model} с Google Search`, data: { question } });
@@ -136,58 +136,60 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' > & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
     const ai = getAiClient(log, apiKey);
     const model = "gemini-2.5-pro";
 
     const sourceInstruction = knowledgeBaseText
-        ? `Используй СТРОГО И ТОЛЬКО предоставленный ниже текст ("База знаний") как ЕДИНСТВЕННЫЙ источник фактов. Не используй Google Search и не придумывай факты.`
-        : `Используй Google Search для сбора фактов и информации по теме.`;
+        ? `Use STRICTLY AND ONLY the provided text ("Knowledge Base") as the SOLE source of facts. Do not use Google Search or invent facts.`
+        : `Use Google Search to gather facts and information on the topic.`;
 
     const styleInstruction = creativeFreedom
-        ? `**Требования к стилю (Творческая свобода):**
-    - **Атмосфера:** Создай гнетущую, таинственную и мистическую атмосферу в стиле Стивена Кинга и Говарда Лавкрафта. Используй недомолвки, намёки на древнее зло и психологическое напряжение.
-    - **Повествование:** История должна захватывать с первых секунд и держать в напряжении. Факты из источника используй как основу, но вплетай их в художественный, леденящий душу рассказ.`
-        : `**Требования к стилю (Документальная точность):**
-    - **Атмосфера:** Создай серьезный, информативный и объективный тон повествования.
-    - **Повествование:** Строго придерживайся фактов из источника. Построй повествование в документальном стиле, без вымысла и художественных преувеличений.`;
+        ? `**Style Requirements (Creative Freedom):**
+    - **Atmosphere:** Create a dark, mysterious, and mystical atmosphere in the style of Stephen King and H.P. Lovecraft. Use ambiguity, hints of ancient evil, and psychological tension.
+    - **Narrative:** The story should be captivating from the first seconds and maintain suspense. Use facts from the source as a foundation, but weave them into a fictional, chilling tale.`
+        : `**Style Requirements (Documentary Precision):**
+    - **Atmosphere:** Create a serious, informative, and objective tone.
+    - **Narrative:** Strictly adhere to the facts from the source. Structure the narrative in a documentary style, without fiction or artistic exaggeration.`;
     
     const knowledgeBaseBlock = knowledgeBaseText
-        ? `\n\n**База знаний (Единственный источник фактов):**\n---\n${knowledgeBaseText}\n---`
+        ? `\n\n**Knowledge Base (Sole Source of Facts):**\n---\n${knowledgeBaseText}\n---`
         : "";
 
-    const prompt = `Ты — ИИ-сценарист и YouTube-продюсер. Твоя задача — создать полный пакет материалов для захватывающего видео на YouTube на тему: "${topic}".
+    const prompt = `You are an AI screenwriter and YouTube producer. Your task is to create a complete package of materials for a compelling YouTube video on the topic: "${topic}".
     
+    **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
+
     ${sourceInstruction}
     ${styleInstruction}
 
-    **Общие требования к заданию:**
-    - Сценарий главы должен быть рассчитан примерно на 4-5 минут озвучки. **ВАЖНО: Общий объем текста сценария этой главы НЕ ДОЛЖЕН ПРЕВЫШАТЬ 7000 символов.**
-    1.  Придумай двух уникальных персонажей для этого видео (например, "Ведущий", "Историк"). Дай каждому краткое описание (пол, характер голоса).
-    2.  Создай текстовые материалы, оптимизированные для YouTube (название, описание, теги) и 10 промптов для изображений.
-    3.  Напиши сценарий ПЕРВОЙ ГЛАВЫ. Все ремарки оформляй как отдельный элемент со спикером "SFX".
+    **General Task Requirements:**
+    - The chapter script should be approximately 4-5 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST NOT EXCEED 7000 characters.**
+    1.  Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
+    2.  Create YouTube-optimized text assets (title options, description, tags) and 10 image prompts.
+    3.  Write the script for the FIRST CHAPTER. Format all sound effect cues as a separate element with the speaker "SFX".
 
-    Результат верни как ЕДИНЫЙ ВАЛИДНЫЙ JSON-ОБЪЕКТ в \`\`\`json ... \`\`\`.
+    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
-    **Структура JSON:**
+    **JSON Structure:**
     {
-      "title": "Кликабельное, интригующее и SEO-оптимизированное название для YouTube видео",
-      "description": "Развернутое описание для YouTube видео (2-3 абзаца). Должно заинтересовать зрителя, кратко изложить суть и содержать призыв к действию (подписаться, поставить лайк).",
-      "seoKeywords": ["список", "из", "10-15", "релевантных", "тегов", "для", "YouTube видео"],
+      "youtubeTitleOptions": [ "An array of 3-5 clickable, intriguing, and SEO-optimized titles for the YouTube video" ],
+      "description": "A detailed description for the YouTube video (2-3 paragraphs). It should engage the viewer, summarize the content, and include a call to action (subscribe, like).",
+      "seoKeywords": ["list", "of", "10-15", "relevant", "tags", "for", "the YouTube video"],
       "imagePrompts": [
-        "10 уникальных, детализированных промптов на английском для генерации изображений."
+        "10 unique, detailed prompts in English for image generation."
       ],
       "characters": [
-        { "name": "Имя Персонажа 1", "description": "Краткое описание, пол и характер голоса. Например: мужской, глубокий, авторитетный голос." },
-        { "name": "Имя Персонажа 2", "description": "Краткое описание, пол и характер голоса. Например: женский, спокойный, интригующий голос." }
+        { "name": "Character Name 1", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." },
+        { "name": "Character Name 2", "description": "Brief description, gender, and voice character. E.g., Female, calm, intriguing voice." }
       ],
       "chapter": {
-        "title": "Название первой главы",
+        "title": "Title of the first chapter",
         "script": [
-          { "speaker": "SFX", "text": "Звук открывающейся скрипучей двери..." },
-          { "speaker": "Имя Персонажа 1", "text": "Текст интригующего вступления..." },
-          { "speaker": "Имя Персонажа 2", "text": "Загадочный ответ..." }
+          { "speaker": "SFX", "text": "Sound of a creaking door opening..." },
+          { "speaker": "Character Name 1", "text": "Intriguing introduction text..." },
+          { "speaker": "Character Name 2", "text": "Mysterious response..." }
         ]
       }
     }${knowledgeBaseBlock}`;
@@ -209,10 +211,9 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         };
         
         log({ type: 'info', message: 'Концепция подкаста и первая глава успешно созданы.' });
+        // FIX: Removed 'id' property from return object to match the function's return type.
         return {
-            id: crypto.randomUUID(),
-            topic,
-            title: data.title,
+            youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
             seoKeywords: data.seoKeywords,
             imagePrompts: data.imagePrompts,
@@ -226,31 +227,33 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     }
 };
 
-export const regenerateTextAssets = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, log: LogFunction, apiKey?: string): Promise<{ title: string; description: string; seoKeywords: string[] }> => {
+export const regenerateTextAssets = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{ youtubeTitleOptions: string[]; description: string; seoKeywords: string[] }> => {
     log({ type: 'info', message: 'Начало регенерации текстовых материалов для YouTube.' });
     const ai = getAiClient(log, apiKey);
     const model = "gemini-2.5-pro";
 
     const styleInstruction = creativeFreedom 
-        ? "Стиль: художественный, мистический, интригующий." 
-        : "Стиль: документальный, строгий, информативный.";
+        ? "Style: Fictional, mystical, intriguing." 
+        : "Style: Documentary, strict, informative.";
 
-    const prompt = `Ты — эксперт по YouTube-маркетингу. Твоя задача — создать новые, еще более привлекательные текстовые материалы для видео на тему: "${topic}".
+    const prompt = `You are a YouTube marketing expert. Your task is to create new, even more engaging text materials for a video on the topic: "${topic}".
+    
+    **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
     
     ${styleInstruction}
 
-    Основываясь на теме и стиле, сгенерируй:
-    1.  Новое название.
-    2.  Новое описание.
-    3.  Новый набор тегов.
+    Based on the topic and style, generate:
+    1.  An array of 3-5 new, clickable titles.
+    2.  A new description.
+    3.  A new set of tags.
 
-    Результат верни как ЕДИНЫЙ ВАЛИДНЫЙ JSON-ОБЪЕКТ в \`\`\`json ... \`\`\`.
+    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
-    **Структура JSON:**
+    **JSON Structure:**
     {
-      "title": "Новое, еще более кликабельное и SEO-оптимизированное название для YouTube видео",
-      "description": "Новое, развернутое описание для YouTube видео (2-3 абзаца) с призывом к действию.",
-      "seoKeywords": ["новый", "список", "из", "10-15", "релевантных", "тегов", "для", "YouTube видео"]
+      "youtubeTitleOptions": ["A new array of 3-5 clickable and SEO-optimized titles for the YouTube video"],
+      "description": "A new, detailed description for the YouTube video (2-3 paragraphs) with a call to action.",
+      "seoKeywords": ["new", "list", "of", "10-15", "relevant", "tags", "for", "the YouTube video"]
     }`;
 
     try {
@@ -265,43 +268,45 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }
 };
 
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, log: LogFunction, apiKey?: string): Promise<{title: string, script: ScriptLine[]}> => {
+export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{title: string, script: ScriptLine[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
     const ai = getAiClient(log, apiKey);
     const model = "gemini-2.5-pro";
-    const previousSummary = previousChapters.map((c, i) => `Глава ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
+    const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
 
     const styleInstruction = creativeFreedom
-        ? "Продолжай историю в захватывающем и атмосферном стиле Кинга/Лавкрафта. Углубляй тайну, вводи новые тревожные детали, нагнетай напряжение."
-        : "Продолжай историю в строгом документальном стиле, придерживаясь фактов. Подавай информацию структурированно и объективно.";
+        ? "Continue the story in a captivating and atmospheric style of King/Lovecraft. Deepen the mystery, introduce new unsettling details, and build suspense."
+        : "Continue the story in a strict documentary style, adhering to the facts. Present information in a structured and objective manner.";
     
     const sourceInstruction = knowledgeBaseText
-        ? "При написании сценария опирайся СТРОГО на факты из предоставленной 'Базы знаний'."
+        ? "When writing the script, rely STRICTLY on the facts from the provided 'Knowledge Base'."
         : "";
         
     const knowledgeBaseBlock = knowledgeBaseText
-        ? `\n\n**База знаний (Источник фактов):**\n---\n${knowledgeBaseText}\n---`
+        ? `\n\n**Knowledge Base (Source of Facts):**\n---\n${knowledgeBaseText}\n---`
         : "";
 
-    const prompt = `Ты — мастер саспенса, ИИ-сценарист, продолжающий писать длинный подкаст.
+    const prompt = `You are a master of suspense, an AI screenwriter continuing a long-form podcast.
 
-    Тема подкаста: "${topic}"
-    Название подкаста: "${podcastTitle}"
-    Персонажи:
+    Podcast Topic: "${topic}"
+    Podcast Title: "${podcastTitle}"
+    Characters:
     ${characterDescriptions}
-    Краткое содержание предыдущих глав:
+    Summary of previous chapters:
     ${previousSummary}
 
-    Твоя задача: написать сценарий для СЛЕДУЮЩЕЙ, ${chapterIndex + 1}-й главы, рассчитанный на 4-5 минут озвучки.
-    - **ВАЖНО: Общий объем текста сценария этой главы НЕ ДОЛЖЕН ПРЕВЫШАТЬ 7000 символов.**
-    - Используй только имена персонажей: ${characters.map(c => `"${c.name}"`).join(', ')}.
-    - Все ремарки, звуковые эффекты и описания действий оформляй как отдельный элемент со спикером "SFX".
+    **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
+
+    Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter, approximately 4-5 minutes long when spoken.
+    - **IMPORTANT: The total text volume of this chapter's script MUST NOT EXCEED 7000 characters.**
+    - Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}.
+    - Format all cues, sound effects, and action descriptions as a separate element with the speaker "SFX".
     - ${styleInstruction}
     
-    Результат верни как ЕДИНЫЙ ВАЛИДНЫЙ JSON-ОБЪЕКТ в \`\`\`json ... \`\`\`.
-    Структура: {
-        "title": "Название этой новой главы",
+    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
+    Structure: {
+        "title": "Title of this new chapter",
         "script": [{ "speaker": "SFX", "text": "..." }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }]
     }${knowledgeBaseBlock}`;
     
@@ -388,6 +393,54 @@ export const generatePodcastDialogueAudio = async (script: ScriptLine[], charact
     } catch (error) {
         log({ type: 'error', message: 'Ошибка при синтезе аудио (TTS)', data: error });
         throw error;
+    }
+};
+
+export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKey?: string): Promise<ThumbnailDesignConcept[]> => {
+    log({ type: 'info', message: 'Начало генерации дизайн-концепций для обложек.' });
+    const ai = getAiClient(log, apiKey);
+    const model = "gemini-2.5-pro";
+
+    const prompt = `You are an expert YouTube thumbnail designer. Analyze this video topic: "${topic}". 
+    
+    Propose 3 distinct, visually striking design concepts for a thumbnail. 
+    For each concept, provide a name and specific design parameters.
+    
+    **CRITICAL INSTRUCTION: Generate your response in the language: ${language}. However, the fontFamily values must be common, web-safe font categories.**
+
+    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
+
+    **JSON Structure:**
+    {
+      "concepts": [
+        {
+          "name": "Concept name (e.g., Neon Horror, Vintage Conspiracy, Modern Thriller)",
+          "fontFamily": "A font suggestion from this list: 'Impactful', 'Serif', 'Sans-serif', 'Cursive'",
+          "fontSize": 90,
+          "textColor": "#RRGGBB hex code",
+          "shadowColor": "#RRGGBB hex code for a glow or drop shadow",
+          "overlayOpacity": A number between 0.2 and 0.6 for the dark overlay
+        }
+      ]
+    }`;
+
+    try {
+        log({ type: 'request', message: `Запрос к модели ${model} для создания дизайн-концепций`, data: { prompt } });
+        const response = await ai.models.generateContent({ model, contents: prompt });
+        const data = parseGeminiJsonResponse(response.text, log);
+        if (!data.concepts || data.concepts.length === 0) {
+            throw new Error("AI не смог сгенерировать дизайн-концепции.");
+        }
+        log({ type: 'info', message: 'Дизайн-концепции успешно созданы.' });
+        return data.concepts.slice(0, 3);
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка при генерации дизайн-концепций. Будут использованы стандартные.', data: error });
+        // Fallback to default concepts on error
+        return [
+            { name: "Неоновый Ужас (Резервный)", fontFamily: "Impactful", fontSize: 90, textColor: "#00FFFF", shadowColor: "#FF00FF", overlayOpacity: 0.3 },
+            { name: "Классический Триллер (Резервный)", fontFamily: "Serif", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5 },
+            { name: "Современный Минимализм (Резервный)", fontFamily: "Sans-serif", fontSize: 90, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4 }
+        ];
     }
 };
 

@@ -54,10 +54,21 @@ export interface Character {
   description: string;
 }
 
+// AI-Generated Design concept for thumbnails
+export interface ThumbnailDesignConcept {
+    name: string;
+    fontFamily: string;
+    fontSize: number;
+    textColor: string;
+    shadowColor: string;
+    overlayOpacity: number;
+}
+
 export interface Podcast {
   id: string;
   topic: string;
-  title: string;
+  youtubeTitleOptions: string[];
+  selectedTitle: string;
   description: string;
   seoKeywords: string[];
   imagePrompts: string[];
@@ -66,8 +77,9 @@ export interface Podcast {
   chapters: Chapter[];
   generatedImages?: string[];
   youtubeThumbnails?: YoutubeThumbnail[];
-  manualTtsScript?: string;
+  designConcepts?: ThumbnailDesignConcept[];
   knowledgeBaseText?: string;
   creativeFreedom: boolean;
   totalDurationMinutes: number;
+  language: string;
 }

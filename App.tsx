@@ -1,11 +1,13 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generatePodcastDialogueAudio, combineWavBlobs, googleSearchForKnowledge, regenerateTextAssets } from './services/ttsService';
-import { generateStyleImages, generateYoutubeThumbnails } from './services/imageService';
+
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { generatePodcastBlueprint, generateNextChapterScript, generatePodcastDialogueAudio, combineWavBlobs, googleSearchForKnowledge, regenerateTextAssets, generateThumbnailDesignConcepts } from './services/ttsService';
+import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage, generateMoreImages } from './services/imageService';
 import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, Character } from './types';
 import Spinner from './components/Spinner';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import ApiKeyModal from './components/ApiKeyModal';
-import { HistoryIcon, TrashIcon, JournalIcon, CloseIcon, ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, KeyIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon } from './components/Icons';
+import PodcastTest from './components/PodcastTest';
+import { HistoryIcon, TrashIcon, JournalIcon, CloseIcon, ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, KeyIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, BeakerIcon } from './components/Icons';
 
 const sampleArticles = [
   { topic: "Секреты и теории заговора вокруг Зоны 51", title: "Зона 51: Что скрывает секретная база?" },
@@ -14,7 +16,23 @@ const sampleArticles = [
   { topic: "Паранормальная активность на Ранчо Скинуокер", title: "Ранчо Скинуокер: Портал в другие миры?" }
 ];
 
-const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boolean }> = ({ label, value, isTextarea = false }) => {
+const languages: { code: string; name: string }[] = [
+    { code: "ru", name: "Русский" }, { code: "en", name: "English" }, { code: "es", name: "Español" }, 
+    { code: "zh-CN", name: "中文 (简体)" }, { code: "hi", name: "हिन्दी" }, { code: "ar", name: "العربية" }, 
+    { code: "pt", name: "Português" }, { code: "bn", name: "বাংলা" }, { code: "fr", name: "Français" }, 
+    { code: "de", name: "Deutsch" }, { code: "ja", name: "日本語" }, { code: "pa", name: "ਪੰਜਾਬੀ" }, 
+    { code: "jv", name: "Basa Jawa" }, { code: "te", name: "తెలుగు" }, { code: "ko", name: "한국어" }, 
+    { code: "tr", name: "Türkçe" }, { code: "ta", name: "தமிழ்" }, { code: "vi", name: "Tiếng Việt" }, 
+    { code: "mr", name: "मराठी" }, { code: "it", name: "Italiano" }, { code: "pl", name: "Polski" }, 
+    { code: "uk", name: "Українська" }, { code: "nl", name: "Nederlands" }, { code: "el", name: "Ελληνικά" }, 
+    { code: "he", name: "עברית" }, { code: "sv", name: "Svenska" }, { code: "fi", name: "Suomi" }, 
+    { code: "id", name: "Bahasa Indonesia" }, { code: "ms", name: "Bahasa Melayu" }, { code: "th", name: "ไทย" }, 
+    { code: "ro", name: "Română" }, { code: "hu", name: "Magyar" }, { code: "cs", name: "Čeština" },
+    { code: "da", name: "Dansk" }, { code: "no", name: "Norsk" }
+];
+
+
+const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boolean; icon?: React.ReactNode }> = ({ label, value, isTextarea = false, icon }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {
         navigator.clipboard.writeText(value);
@@ -26,7 +44,7 @@ const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boole
 
     return (
         <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-300 mb-1">{icon}{label}</label>
             <div className="relative">
                 <InputComponent
                     readOnly
@@ -67,6 +85,8 @@ const App: React.FC = () => {
     const [isRegeneratingText, setIsRegeneratingText] = useState(false);
     const [isRegeneratingImages, setIsRegeneratingImages] = useState(false);
     const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false);
+    const [regeneratingImageIndex, setRegeneratingImageIndex] = useState<number | null>(null);
+    const [isGeneratingMoreImages, setIsGeneratingMoreImages] = useState(false);
 
     // New state for knowledge base and generation settings
     const [knowledgeBaseText, setKnowledgeBaseText] = useState('');
@@ -75,7 +95,28 @@ const App: React.FC = () => {
     const [creativeFreedom, setCreativeFreedom] = useState(true);
     const [totalDurationMinutes, setTotalDurationMinutes] = useState(40);
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+    const [language, setLanguage] = useState('Русский');
 
+    // State for searchable language dropdown
+    const [langSearchTerm, setLangSearchTerm] = useState('');
+    const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
+    const langDropdownRef = useRef<HTMLDivElement>(null);
+    const [isTestPanelVisible, setIsTestPanelVisible] = useState<boolean>(false);
+    
+
+    const filteredLanguages = useMemo(() => 
+        languages.filter(l => l.name.toLowerCase().includes(langSearchTerm.toLowerCase())),
+    [langSearchTerm]);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (langDropdownRef.current && !langDropdownRef.current.contains(event.target as Node)) {
+                setIsLangDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     useEffect(() => {
         try {
@@ -105,33 +146,40 @@ const App: React.FC = () => {
         setLogs(prev => [{ ...entry, timestamp: new Date().toISOString() }, ...prev]);
     }, []);
 
-    const updateHistory = useCallback((newPodcast: Podcast) => {
-        const newHistory = [newPodcast, ...history.filter(p => p.id !== newPodcast.id)];
-        setHistory(newHistory);
-    
-        const serializableHistory = newHistory.map(p => {
-            const { chapters, ...podcastRest } = p;
+    const updateHistory = useCallback((podcastToSave: Podcast) => {
+        setHistory(prevHistory => {
+            const newHistory = [podcastToSave, ...prevHistory.filter(p => p.id !== podcastToSave.id)];
             
-            const serializablePodcast: any = {
-                ...podcastRest,
-                chapters: chapters.map(({ audioBlob, ...chapterRest }) => chapterRest)
-            };
-    
-            if (!saveMediaInHistory) {
-                delete serializablePodcast.generatedImages;
-                delete serializablePodcast.youtubeThumbnails;
+            const serializableHistory = newHistory.map(p => {
+                const { chapters, ...podcastRest } = p;
+                const serializablePodcast: any = {
+                    ...podcastRest,
+                    chapters: chapters.map(({ audioBlob, ...chapterRest }) => chapterRest)
+                };
+        
+                if (!saveMediaInHistory) {
+                    delete serializablePodcast.generatedImages;
+                    delete serializablePodcast.youtubeThumbnails;
+                }
+        
+                return serializablePodcast;
+            });
+        
+            try {
+                localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
+            } catch (e) {
+                log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
             }
-    
-            return serializablePodcast;
+            return newHistory;
         });
-    
-        try {
-            localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
-        } catch (e) {
-            setError("Не удалось сохранить в историю: хранилище переполнено.");
-            log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
+    }, [saveMediaInHistory, log]);
+
+    // Effect to persist any changes to the active podcast to history
+    useEffect(() => {
+        if (podcast) {
+            updateHistory(podcast);
         }
-    }, [history, saveMediaInHistory, log]);
+    }, [podcast, updateHistory]);
 
     const handleStartProject = useCallback(async (topic: string) => {
         if (!topic.trim()) { setError('Введите название проекта.'); return; }
@@ -142,23 +190,30 @@ const App: React.FC = () => {
         setIsGenerationPaused(false);
         
         try {
-            setLoadingStep("Создание концепции, персонажей и первой главы...");
-            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, log, apiKeys.gemini);
+            setLoadingStep("Создание концепции, заголовков и первой главы...");
+            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, log, apiKeys.gemini);
             
-            setLoadingStep("Озвучивание первой главы...");
-            const firstChapterAudio = await generatePodcastDialogueAudio(blueprint.chapters[0].script, blueprint.characters, log, apiKeys.gemini);
-            
-            setLoadingStep("Генерация изображений...");
-            const generatedImages = await generateStyleImages(blueprint.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter);
-            
+            setLoadingStep("Озвучивание, генерация изображений и дизайна...");
+            const [firstChapterAudio, generatedImages, designConcepts] = await Promise.all([
+                generatePodcastDialogueAudio(blueprint.chapters[0].script, blueprint.characters, log, apiKeys.gemini),
+                generateStyleImages(blueprint.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter),
+                generateThumbnailDesignConcepts(topic, language, log, apiKeys.gemini)
+            ]);
+
+            const selectedTitle = blueprint.youtubeTitleOptions[0] || topic;
             setLoadingStep("Создание обложек для YouTube...");
-            const youtubeThumbnails = generatedImages.length > 0 ? await generateYoutubeThumbnails(generatedImages[0], blueprint.title, log) : [];
+            const youtubeThumbnails = generatedImages.length > 0 ? await generateYoutubeThumbnails(generatedImages[0], selectedTitle, designConcepts, log) : [];
             
             const newPodcast: Podcast = {
+                id: crypto.randomUUID(),
                 ...blueprint,
+                topic,
+                selectedTitle,
+                language,
                 chapters: [{ ...blueprint.chapters[0], status: 'completed', audioBlob: firstChapterAudio }],
                 generatedImages: generatedImages || [],
                 youtubeThumbnails: youtubeThumbnails || [],
+                designConcepts: designConcepts || [],
                 knowledgeBaseText: knowledgeBaseText,
                 creativeFreedom: creativeFreedom,
                 totalDurationMinutes: totalDurationMinutes,
@@ -185,7 +240,7 @@ const App: React.FC = () => {
             setIsLoading(false);
             setLoadingStep('');
         }
-    }, [log, apiKeys, knowledgeBaseText, creativeFreedom, totalDurationMinutes]);
+    }, [log, apiKeys, knowledgeBaseText, creativeFreedom, totalDurationMinutes, language]);
 
     const handleGenerateChapter = useCallback(async (chapterId: string) => {
         if (!podcast) return;
@@ -203,7 +258,7 @@ const App: React.FC = () => {
     
         try {
             updateChapterState(chapterId, 'script_generating');
-            const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.title, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, log, apiKeys.gemini);
+            const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
             
             updateChapterState(chapterId, 'audio_generating', { script: chapterScriptData.script, title: chapterScriptData.title });
             const audioBlob = await generatePodcastDialogueAudio(chapterScriptData.script, podcast.characters, log, apiKeys.gemini);
@@ -247,29 +302,6 @@ const App: React.FC = () => {
         }
     }, [podcast?.chapters, handleGenerateChapter, isLoading, isGeneratingChapter, isGenerationPaused]);
 
-    useEffect(() => {
-        if (podcast) {
-            updateHistory(podcast);
-
-            const completedChapters = podcast.chapters.filter(c => c.status === 'completed');
-            if (completedChapters.length > 0) {
-                const scriptText = "Style Instructions: Read aloud in a warm, welcoming tone.\n\n" +
-                    completedChapters.map((chapter, index) => 
-                    `ГЛАВА ${index + 1}: ${chapter.title.toUpperCase()}\n\n` +
-                    chapter.script.map(line => {
-                      if (line.speaker.toUpperCase() === 'SFX') {
-                          return `[SFX: ${line.text}]`;
-                      }
-                      return `${line.speaker}: ${line.text}`;
-                    }).join('\n')
-                ).join('\n\n---\n\n');
-                
-                setPodcast(p => p ? {...p, manualTtsScript: scriptText} : null);
-            }
-        }
-    }, [podcast?.chapters.map(c => c.status).join(','), updateHistory]);
-
-
     const handleCombineAndDownload = async () => {
         if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
         setLoadingStep("Сборка финального аудиофайла...");
@@ -280,7 +312,7 @@ const App: React.FC = () => {
             const url = URL.createObjectURL(finalBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.wav`;
+            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.wav`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -318,7 +350,6 @@ const App: React.FC = () => {
         log({ type: 'info', message: 'API-ключи сохранены.' });
     };
     
-    // --- REGENERATION HANDLERS ---
     const handleRegenerateProject = () => {
         if (!podcast) return;
         if (window.confirm("Вы уверены, что хотите полностью пересоздать этот проект? Все текущие сгенерированные данные (кроме настроек) будут утеряны.")) {
@@ -330,8 +361,12 @@ const App: React.FC = () => {
         if (!podcast) return;
         setIsRegeneratingText(true);
         try {
-            const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, log, apiKeys.gemini);
-            setPodcast(p => p ? { ...p, ...newTextAssets } : null);
+            const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
+            const newSelectedTitle = newTextAssets.youtubeTitleOptions[0] || podcast.selectedTitle;
+            
+            setPodcast(p => p ? { ...p, ...newTextAssets, selectedTitle: newSelectedTitle } : null);
+            await handleTitleSelection(newSelectedTitle, true);
+
         } catch (err: any) {
             setError(err.message || 'Ошибка при обновлении текста.');
             log({ type: 'error', message: 'Ошибка при регенерации текста', data: err });
@@ -341,11 +376,11 @@ const App: React.FC = () => {
     };
     
     const handleRegenerateImages = async () => {
-        if (!podcast) return;
+        if (!podcast || !podcast.designConcepts) return;
         setIsRegeneratingImages(true);
         try {
             const newImages = await generateStyleImages(podcast.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter);
-            const newThumbnails = newImages.length > 0 ? await generateYoutubeThumbnails(newImages[0], podcast.title, log) : [];
+            const newThumbnails = newImages.length > 0 ? await generateYoutubeThumbnails(newImages[0], podcast.selectedTitle, podcast.designConcepts, log) : [];
             setPodcast(p => p ? { ...p, generatedImages: newImages, youtubeThumbnails: newThumbnails } : null);
         } catch (err: any) {
             setError(err.message || 'Ошибка при генерации изображений.');
@@ -365,7 +400,8 @@ const App: React.FC = () => {
             if (chapter.script && chapter.script.length > 0) {
                 setPodcast(p => {
                     if (!p) return null;
-                    const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'audio_generating' } : c);
+                    // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
+                    const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'audio_generating' as Chapter['status'] } : c);
                     return { ...p, chapters: updatedChapters };
                 });
     
@@ -373,14 +409,16 @@ const App: React.FC = () => {
                     const audioBlob = await generatePodcastDialogueAudio(chapter.script, podcast.characters, log, apiKeys.gemini);
                     setPodcast(p => {
                         if (!p) return null;
-                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'completed', audioBlob } : c);
+                        // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
+                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'completed' as Chapter['status'], audioBlob } : c);
                         return { ...p, chapters: updatedChapters };
                     });
                 } catch (err: any) {
                     log({ type: 'error', message: `Ошибка при переозвучке главы ${i + 1}`, data: err });
                     setPodcast(p => {
                         if (!p) return null;
-                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'error', error: err.message || 'Ошибка озвучки' } : c);
+                        // FIX: Explicitly cast status to Chapter['status'] to avoid type widening.
+                        const updatedChapters = p.chapters.map(c => c.id === chapter.id ? { ...c, status: 'error' as Chapter['status'], error: err.message || 'Ошибка озвучки' } : c);
                         return { ...p, chapters: updatedChapters };
                     });
                 }
@@ -391,6 +429,97 @@ const App: React.FC = () => {
         setIsRegeneratingAudio(false);
     };
 
+    const handleRegenerateSingleImage = async (index: number) => {
+        if (!podcast || !podcast.imagePrompts[index] || !podcast.designConcepts) return;
+        setRegeneratingImageIndex(index);
+        try {
+            const newImageSrc = await regenerateSingleImage(podcast.imagePrompts[index], log, apiKeys.gemini, apiKeys.openRouter);
+            
+            const updateImages = (p: Podcast | null) => {
+                if (!p || !p.generatedImages) return p;
+                const newImages = [...p.generatedImages];
+                newImages[index] = newImageSrc;
+                return { ...p, generatedImages: newImages };
+            };
+            
+            setPodcast(updateImages);
+
+            if (index === 0) {
+                 const newThumbnails = await generateYoutubeThumbnails(newImageSrc, podcast.selectedTitle, podcast.designConcepts, log);
+                 setPodcast(p => p ? {...updateImages(p), youtubeThumbnails: newThumbnails} : null);
+            }
+        } catch (err: any) {
+            setError(err.message || `Ошибка при регенерации изображения ${index + 1}.`);
+            log({ type: 'error', message: `Ошибка при регенерации изображения ${index + 1}.`, data: err });
+        } finally {
+            setRegeneratingImageIndex(null);
+        }
+    };
+
+    const handleGenerateMoreImages = async () => {
+        if (!podcast) return;
+        setIsGeneratingMoreImages(true);
+        try {
+            const newImages = await generateMoreImages(podcast.imagePrompts, log, apiKeys.gemini, apiKeys.openRouter);
+            setPodcast(p => {
+                if (!p) return p;
+                return {
+                    ...p,
+                    generatedImages: [...(p.generatedImages || []), ...newImages],
+                };
+            });
+        } catch (err: any) {
+            setError(err.message || 'Ошибка при генерации дополнительных изображений.');
+            log({ type: 'error', message: 'Ошибка при генерации дополнительных изображений', data: err });
+        } finally {
+            setIsGeneratingMoreImages(false);
+        }
+    };
+    
+    const handleTitleSelection = useCallback(async (newTitle: string, forceUpdate = false) => {
+        if (!podcast || (!forceUpdate && podcast.selectedTitle === newTitle)) return;
+        
+        setPodcast(p => p ? { ...p, selectedTitle: newTitle } : null);
+        
+        if (!podcast.designConcepts || !podcast.generatedImages?.[0]) return;
+        
+        try {
+            const newThumbnails = await generateYoutubeThumbnails(podcast.generatedImages[0], newTitle, podcast.designConcepts, log);
+            setPodcast(p => p ? { ...p, youtubeThumbnails: newThumbnails } : null);
+        } catch (err: any) {
+            setError("Ошибка при обновлении обложек.");
+            log({ type: 'error', message: 'Не удалось обновить обложки после смены заголовка', data: err });
+        }
+    }, [podcast, log]);
+
+    const manualTtsScript = useMemo(() => {
+        if (!podcast) return 'Генерация сценария...';
+    
+        const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.script?.length > 0);
+        if (completedChapters.length === 0) return 'Сценарий будет доступен после завершения глав.';
+    
+        return "Style Instructions: Read aloud in a warm, welcoming tone.\n\n" +
+            completedChapters.map((chapter, index) =>
+                `ГЛАВА ${index + 1}: ${chapter.title.toUpperCase()}\n\n` +
+                chapter.script.map(line => {
+                    if (line.speaker.toUpperCase() === 'SFX') {
+                        return `[SFX: ${line.text}]`;
+                    }
+                    return `${line.speaker}: ${line.text}`;
+                }).join('\n')
+            ).join('\n\n---\n\n');
+    }, [podcast?.chapters]);
+
+    const subtitleText = useMemo(() => {
+        if (!podcast) return '';
+        return podcast.chapters
+            .filter(c => c.status === 'completed' && c.script)
+            .flatMap(c => c.script)
+            .filter(line => line.speaker.toUpperCase() !== 'SFX')
+            .map(line => line.text)
+            .join('\n');
+    }, [podcast?.chapters]);
+
     const renderPodcastStudio = () => {
         if (!podcast) return null;
         const allChaptersDone = podcast.chapters.every(c => c.status === 'completed');
@@ -400,10 +529,29 @@ const App: React.FC = () => {
         return (
             <div className="w-full max-w-5xl mx-auto">
                 <header className="text-center mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
-                    <h2 className="text-3xl md:text-4xl font-bold text-white">{podcast.title}</h2>
+                    <h2 className="text-3xl md:text-4xl font-bold text-white">{podcast.selectedTitle}</h2>
                     <p className="text-gray-300 mt-2">{podcast.description}</p>
                 </header>
-                
+
+                <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Выбор заголовка для видео</h3>
+                    <div className="space-y-3">
+                        {podcast.youtubeTitleOptions.map((title, index) => (
+                            <label key={index} className="flex items-center p-3 bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-700/50 transition-colors border border-transparent has-[:checked]:border-teal-500 has-[:checked]:bg-teal-900/20">
+                                <input
+                                    type="radio"
+                                    name="title-option"
+                                    value={title}
+                                    checked={podcast.selectedTitle === title}
+                                    onChange={() => handleTitleSelection(title)}
+                                    className="h-5 w-5 mr-4 text-teal-600 bg-gray-700 border-gray-600 focus:ring-teal-500"
+                                />
+                                <span className="text-gray-200">{title}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
                 {podcast.characters && podcast.characters.length > 0 && (
                     <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
                         <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Персонажи</h3>
@@ -489,7 +637,7 @@ const App: React.FC = () => {
                         
                         {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 && (
                             <div className="mb-8">
-                                <h4 className="font-semibold text-lg text-gray-200 mb-4">Варианты обложек для YouTube</h4>
+                                <h4 className="font-semibold text-lg text-gray-200 mb-4">Варианты обложек от AI-дизайнера (Текст: "{podcast.selectedTitle}")</h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                     {podcast.youtubeThumbnails.map((thumb) => (
                                         <div key={thumb.styleName} className="group relative">
@@ -497,7 +645,7 @@ const App: React.FC = () => {
                                             <img src={thumb.dataUrl} alt={`YouTube Thumbnail - ${thumb.styleName}`} className="rounded-lg border-2 border-teal-500" />
                                             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
                                                 <button onClick={() => handleEditThumbnail(thumb)} className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-sm font-bold rounded-lg hover:bg-white/30 backdrop-blur-sm"><EditIcon className="w-4 h-4"/> Редактировать</button>
-                                                <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
+                                                <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-bold rounded-lg hover:bg-teal-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
                                             </div>
                                         </div>
                                     ))}
@@ -505,13 +653,30 @@ const App: React.FC = () => {
                             </div>
                         )}
                         
-                        <h4 className="font-semibold text-lg text-gray-200 mb-4 border-t border-gray-700 pt-6">Сгенерированные изображения</h4>
+                        <div className="flex justify-between items-center mb-4 border-t border-gray-700 pt-6">
+                            <h4 className="font-semibold text-lg text-gray-200">Сгенерированные изображения</h4>
+                             <button
+                                onClick={handleGenerateMoreImages}
+                                disabled={isGeneratingMoreImages}
+                                className="flex items-center gap-2 px-4 py-2 bg-teal-600/80 text-white font-bold rounded-lg hover:bg-teal-700/80 transition-colors disabled:bg-gray-500"
+                            >
+                                {isGeneratingMoreImages ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>}
+                                <span>Сгенерировать ещё 5</span>
+                            </button>
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {podcast.generatedImages.map((imgSrc, index) => (
-                                 <div key={index}>
+                                 <div key={index} className="group relative">
                                      <h4 className="font-semibold text-gray-300 mb-2">Изображение {index + 1}</h4>
-                                     <img src={imgSrc} alt={`Generated image ${index + 1}`} className="rounded-lg w-full aspect-video object-cover" />
-                                     <a href={imgSrc} download={`image_${index + 1}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.jpeg`} className="mt-2 inline-block px-4 py-2 bg-gray-600 text-white text-sm font-bold rounded-lg hover:bg-gray-700">Скачать</a>
+                                     {regeneratingImageIndex === index ? (
+                                        <div className="w-full aspect-video bg-gray-700 rounded-lg flex items-center justify-center"><Spinner /></div>
+                                     ) : (
+                                        <img src={imgSrc} alt={`Generated image ${index + 1}`} className="rounded-lg w-full aspect-video object-cover" />
+                                     )}
+                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                         <button onClick={() => handleRegenerateSingleImage(index)} disabled={regeneratingImageIndex !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed" title="Пересоздать это изображение"><RedoIcon /></button>
+                                         <a href={imgSrc} download={`image_${index + 1}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.jpeg`} className="p-2 bg-teal-600 rounded-full text-white hover:bg-teal-700" title="Скачать"><DownloadIcon /></a>
+                                     </div>
                                  </div>
                             ))}
                         </div>
@@ -521,9 +686,12 @@ const App: React.FC = () => {
                 <div className="mb-8 p-6 bg-gray-800/50 rounded-2xl border border-gray-700">
                      <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ScriptIcon /> Текстовые материалы</h3>
                      <div className="space-y-4">
-                        <CopyableField label="Название для YouTube" value={podcast.title} />
-                        <CopyableField label="Описание для YouTube" value={podcast.description} isTextarea />
-                        <CopyableField label="Теги для YouTube" value={podcast.seoKeywords.join(', ')} />
+                        <CopyableField label="Название для YouTube" value={podcast.selectedTitle} icon={<UserCircleIcon className="w-4 h-4" />} />
+                        <CopyableField label="Описание для YouTube" value={podcast.description} isTextarea icon={<BookOpenIcon className="w-4 h-4" />} />
+                        <CopyableField label="Теги для YouTube" value={podcast.seoKeywords.join(', ')} icon={<ImageIcon className="w-4 h-4" />} />
+                        {subtitleText && (
+                            <CopyableField label="Субтитры (Текст)" value={subtitleText} isTextarea icon={<SubtitleIcon className="w-4 h-4" />} />
+                        )}
                         {podcast.knowledgeBaseText && (
                             <div className="pt-2">
                                 <button
@@ -535,7 +703,7 @@ const App: React.FC = () => {
                                 </button>
                             </div>
                         )}
-                        <CopyableField label="Полный сценарий для ручной озвучки" value={podcast.manualTtsScript || 'Генерация сценария...'} isTextarea />
+                        <CopyableField label="Полный сценарий для ручной озвучки" value={manualTtsScript} isTextarea icon={<ScriptIcon className="w-4 h-4" />} />
                      </div>
                 </div>
 
@@ -555,6 +723,7 @@ const App: React.FC = () => {
                 <button onClick={() => setIsApiKeyModalOpen(true)} className="p-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><KeyIcon /></button>
                 <button onClick={() => setIsLogVisible(true)} className="px-4 py-2 bg-gray-700/50 text-white rounded-lg hover:bg-gray-600/50 flex items-center gap-2"><JournalIcon />Журнал</button>
             </div>
+            {isTestPanelVisible && <PodcastTest apiKeys={apiKeys} onClose={() => setIsTestPanelVisible(false)} />}
             {isLogVisible && (
                 <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={() => setIsLogVisible(false)}>
                     <div className="w-full max-w-2xl h-full bg-gray-800 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
@@ -656,6 +825,48 @@ const App: React.FC = () => {
                             <div className="w-full bg-gray-800/50 border border-gray-700 rounded-2xl p-6 mb-8">
                                 <h3 className="text-2xl font-bold text-white mb-4">Настройки генерации</h3>
                                 <div className="space-y-6">
+                                    <div ref={langDropdownRef}>
+                                        <label className="block text-lg font-medium text-gray-200 mb-2">Язык генерации</label>
+                                        <div className="relative">
+                                            <button 
+                                                onClick={() => setIsLangDropdownOpen(!isLangDropdownOpen)} 
+                                                className="w-full bg-gray-900 border border-gray-600 rounded-md p-2 text-white text-left"
+                                            >
+                                                {language}
+                                            </button>
+                                            {isLangDropdownOpen && (
+                                                <div className="absolute z-10 top-full mt-1 w-full bg-gray-800 border border-gray-600 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                                                    <div className="p-2 sticky top-0 bg-gray-800">
+                                                        <div className="relative">
+                                                             <input 
+                                                                type="text"
+                                                                placeholder="Поиск языка..."
+                                                                value={langSearchTerm}
+                                                                onChange={e => setLangSearchTerm(e.target.value)}
+                                                                className="w-full bg-gray-700 border border-gray-500 rounded-md py-1.5 pl-8 pr-2 text-white"
+                                                            />
+                                                            <SearchIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400"/>
+                                                        </div>
+                                                    </div>
+                                                    <ul>
+                                                        {filteredLanguages.map(lang => (
+                                                            <li 
+                                                                key={lang.code}
+                                                                onClick={() => {
+                                                                    setLanguage(lang.name);
+                                                                    setIsLangDropdownOpen(false);
+                                                                    setLangSearchTerm('');
+                                                                }}
+                                                                className="px-4 py-2 text-white hover:bg-teal-600 cursor-pointer"
+                                                            >
+                                                                {lang.name}
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                     <div>
                                         <label className="flex items-center text-lg text-gray-200 cursor-pointer">
                                             <input type="checkbox" checked={creativeFreedom} onChange={(e) => setCreativeFreedom(e.target.checked)} className="mr-3 h-5 w-5 rounded bg-gray-700 border-gray-600 text-teal-600 focus:ring-teal-500" />
@@ -680,8 +891,12 @@ const App: React.FC = () => {
                                 </div>
                             </div>
 
-                            <div className="w-full flex flex-col sm:flex-row gap-2 mb-8">
+                            <div className="w-full flex flex-col sm:flex-row items-center gap-4 mb-8">
                                  <button onClick={() => handleStartProject(projectTitleInput)} disabled={isLoading || !projectTitleInput} className="w-full px-8 py-4 bg-teal-600 text-white text-xl font-bold rounded-lg hover:bg-teal-700 transition-all disabled:bg-gray-500 disabled:cursor-not-allowed">Начать проект</button>
+                                 <button onClick={() => setIsTestPanelVisible(true)} className="flex items-center justify-center gap-2 px-6 py-4 bg-gray-700/80 text-white font-bold rounded-lg hover:bg-gray-700 transition-colors flex-shrink-0">
+                                    <BeakerIcon className="w-6 h-6"/>
+                                    <span>Тест AI-дизайнера</span>
+                                 </button>
                             </div>
                            
                             <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
