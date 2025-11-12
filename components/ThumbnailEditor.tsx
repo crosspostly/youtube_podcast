@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { YoutubeThumbnail, TextOptions } from '../types';
 import { drawCanvas, loadGoogleFont } from '../services/canvasUtils';

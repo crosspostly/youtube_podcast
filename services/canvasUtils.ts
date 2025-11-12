@@ -1,3 +1,4 @@
+
 import type { TextOptions } from '../types';
 
 // A cache to avoid re-fetching font CSS

@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { generateThumbnailDesignConcepts } from '../services/ttsService';
 import { drawCanvas } from '../services/canvasUtils';

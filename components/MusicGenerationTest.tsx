@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { findMusicWithAi } from '../services/ttsService';
 import { LogEntry, MusicTrack } from '../types';
