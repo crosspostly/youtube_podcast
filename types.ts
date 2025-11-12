@@ -50,6 +50,8 @@ export interface Chapter {
   imagePrompts: string[];
   generatedImages?: string[];
   selectedBgIndex: number;
+  // New field for manual video timing
+  imageDurations?: number[];
 }
 
 export interface TextOptions {
@@ -133,4 +135,6 @@ export interface Podcast {
   backgroundMusicVolume: number;
   // New field for thumbnail background
   thumbnailBaseImage?: string;
+  // New field for video pacing control
+  videoPacingMode?: 'auto' | 'manual';
 }

@@ -55,7 +55,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter, findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
-        setThumbnailBaseImage, setPodcast,
+        setThumbnailBaseImage, setPodcast, setVideoPacingMode, setImageDuration,
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -186,7 +186,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                             />
                             <button 
                                 type="button" 
-                                onClick={handleManualSearch} 
+                                onClick={() => handleManualSearch()} 
                                 disabled={isFindingManually || !manualSearchQuery.trim()} 
                                 className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:bg-slate-500"
                             >
@@ -197,7 +197,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
 
                          <div className="flex items-center gap-4"><hr className="flex-grow border-slate-600"/><span className="text-slate-400 text-sm">ИЛИ</span><hr className="flex-grow border-slate-600"/></div>
                         <div>
-                            <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700">
+                            <button onClick={() => handleFindWithAI()} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700">
                                 {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />} Подобрать с помощью ИИ
                             </button>
                              <p className="text-xs text-center text-slate-400 mt-2">ИИ проанализирует описание и подберет ключевые слова.</p>
@@ -235,7 +235,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                     </div>
                      <div className="flex justify-end gap-4 p-4 border-t border-slate-700 flex-shrink-0 bg-slate-800/50 rounded-b-lg">
                         <button onClick={() => setSfxModalLine(null)} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
-                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
+                        <button onClick={() => handleSave()} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
                     </div>
                 </div>
             </div>
@@ -353,7 +353,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                             />
                             <button 
                                 type="button" 
-                                onClick={handleManualSearch} 
+                                onClick={() => handleManualSearch()} 
                                 disabled={isFindingManually || !manualSearchQuery.trim()} 
                                 className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none"
                             >
@@ -370,7 +370,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         </div>
 
                         <div>
-                            <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none">
+                            <button onClick={() => handleFindWithAI()} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none">
                                 {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />}
                                 Подобрать треки с помощью ИИ
                             </button>
@@ -419,7 +419,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                     </div>
                      <div className="flex justify-end gap-4 p-4 border-t border-slate-700 flex-shrink-0 bg-slate-800/50 rounded-b-lg">
                         <button onClick={() => setMusicModalChapter(null)} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
-                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
+                        <button onClick={() => handleSave()} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
                     </div>
                 </div>
             </div>
@@ -501,6 +501,26 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </div>
             </div>
 
+            <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
+                 <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><VideoCameraIcon /> Настройки видео</h3>
+                <div>
+                    <label className="block text-lg font-medium text-slate-200 mb-2">Режим монтажа</label>
+                    <div className="flex items-center gap-4 p-1 rounded-lg bg-slate-800 max-w-xs">
+                         <button onClick={() => setVideoPacingMode('auto')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${podcast.videoPacingMode !== 'manual' ? 'bg-cyan-600 text-white' : 'hover:bg-slate-700'}`}>
+                            Автоматический
+                        </button>
+                         <button onClick={() => setVideoPacingMode('manual')} className={`flex-1 py-2 text-sm font-semibold rounded-md transition-colors ${podcast.videoPacingMode === 'manual' ? 'bg-cyan-600 text-white' : 'hover:bg-slate-700'}`}>
+                            Ручной
+                        </button>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-2 max-w-md">
+                        {podcast.videoPacingMode === 'manual' 
+                            ? "Вы можете задать длительность показа для каждого изображения вручную." 
+                            : "Длительность показа изображений будет рассчитана автоматически на основе длины аудиодорожки."}
+                    </p>
+                </div>
+            </div>
+
             <div className="space-y-6 mb-8">
                  {isQueueActive && (
                     <div className="flex justify-end mb-4">
@@ -548,26 +568,41 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         </div>
 
                         {(chapter.generatedImages && chapter.generatedImages.length > 0) && (
-                             <details className="bg-slate-950/30 border-t border-slate-700">
+                             <details className="bg-slate-950/30 border-t border-slate-700" open>
                                 <summary className="p-4 cursor-pointer font-semibold text-slate-300 hover:bg-slate-800/50">Изображения для главы ({chapter.generatedImages.length})</summary>
                                 <div className="p-4 border-t border-slate-700">
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {chapter.generatedImages.map((imgSrc, index) => (
-                                            <div key={index} className="group relative cursor-pointer" onClick={() => {}}>
-                                                <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                                                    <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(chapter.id, index); }} disabled={regeneratingImage !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50" title="Пересоздать"><RedoIcon /></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); setThumbnailBaseImage(imgSrc); }} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30" title="Сделать фоном для обложки"><ImageIcon /></button>
-                                                    <a href={imgSrc} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
+                                            <div key={index}>
+                                                <div className="group relative cursor-pointer">
+                                                    <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
+                                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
+                                                        <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(chapter.id, index); }} disabled={regeneratingImage !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50" title="Пересоздать"><RedoIcon /></button>
+                                                        <button onClick={(e) => { e.stopPropagation(); setThumbnailBaseImage(imgSrc); }} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30" title="Сделать фоном для обложки"><ImageIcon /></button>
+                                                        <a href={imgSrc} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
+                                                    </div>
+                                                    {regeneratingImage?.chapterId === chapter.id && regeneratingImage?.index === index && (
+                                                    <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
+                                                    )}
                                                 </div>
-                                                {regeneratingImage?.chapterId === chapter.id && regeneratingImage?.index === index && (
-                                                <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
+                                                {podcast.videoPacingMode === 'manual' && (
+                                                    <div className="mt-2">
+                                                        <label htmlFor={`duration-${chapter.id}-${index}`} className="block text-xs font-medium text-slate-400 mb-1">Длительность (сек)</label>
+                                                        <input
+                                                            type="number"
+                                                            id={`duration-${chapter.id}-${index}`}
+                                                            value={chapter.imageDurations?.[index] ?? 60}
+                                                            onChange={(e) => setImageDuration(chapter.id, index, parseInt(e.target.value, 10))}
+                                                            className="w-full bg-slate-800 border border-slate-600 rounded-md p-1.5 text-white text-center"
+                                                            min="1"
+                                                        />
+                                                    </div>
                                                 )}
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="text-center mt-4">
-                                        <button onClick={() => regenerateChapterImages(chapter.id)} disabled={chapter.status === 'images_generating'} className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600 transition-colors disabled:bg-slate-500 mr-4">
+                                    <div className="flex justify-center items-center gap-4 mt-4">
+                                        <button onClick={() => regenerateChapterImages(chapter.id)} disabled={chapter.status === 'images_generating'} className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600 transition-colors disabled:bg-slate-500">
                                            {chapter.status === 'images_generating' ? <Spinner className="w-5 h-5"/> : <RedoIcon className="w-5 h-5"/>} <span>Обновить все</span>
                                         </button>
                                         <button onClick={() => generateMoreImages(chapter.id)} disabled={generatingMoreImages === chapter.id} className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-cyan-600/80 text-white font-bold rounded-lg hover:bg-cyan-700/80 transition-colors disabled:bg-slate-500">
@@ -609,30 +644,30 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                 <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><WrenchIcon /> Инструменты</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                    <button onClick={regenerateText} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
+                    <button onClick={() => regenerateText()} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
                         {isRegeneratingText ? <Spinner className="w-6 h-6"/> : <ScriptIcon />}
                         <span className="font-semibold text-sm">Обновить текст</span>
                     </button>
-                    <button onClick={regenerateAllAudio} disabled={isRegeneratingAudio} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
+                    <button onClick={() => regenerateAllAudio()} disabled={isRegeneratingAudio} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
                         {isRegeneratingAudio ? <Spinner className="w-6 h-6"/> : <SpeakerWaveIcon />}
                         <span className="font-semibold text-sm">Переозвучить всё</span>
                     </button>
                     <button 
-                        onClick={generateVideo} 
+                        onClick={() => generateVideo(podcast)} 
                         disabled={!allChaptersDone || isGeneratingVideo} 
                         className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-800/60 rounded-lg hover:bg-purple-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-purple-300">
                         {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
                         <span className="font-semibold text-sm">Создать Видео</span>
                     </button>
                      <button 
-                        onClick={generatePartialVideo}
+                        onClick={() => generatePartialVideo()}
                         disabled={!someChaptersDone || isGeneratingVideo}
                         className="flex flex-col items-center justify-center gap-2 p-4 bg-teal-800/60 rounded-lg hover:bg-teal-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-teal-300"
                         title="Собрать видео из уже сгенерированных глав">
                         {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
                         <span className="font-semibold text-sm text-center">Видео из готового</span>
                     </button>
-                    <button onClick={regenerateProject} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-red-300">
+                    <button onClick={() => regenerateProject()} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-red-300">
                         <RedoIcon />
                         <span className="font-semibold text-sm">Пересоздать проект</span>
                     </button>
@@ -724,7 +759,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </div>
 
                 <button 
-                    onClick={generateSrt} 
+                    onClick={() => generateSrt()} 
                     disabled={!allChaptersDone || isGeneratingSrt}
                     className="w-full flex-grow flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-400 hover:to-purple-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-lg shadow-indigo-500/20 hover:shadow-purple-500/30"
                 >

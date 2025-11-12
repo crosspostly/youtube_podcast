@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
 import { generateSrtFile } from '../services/srtService';
@@ -219,7 +216,8 @@ export const usePodcast = (
                 designConcepts: designConcepts || [], knowledgeBaseText: knowledgeBaseText,
                 creativeFreedom: creativeFreedom, totalDurationMinutes: totalDurationMinutes,
                 narrationMode, characterVoices: finalCharacterVoices, monologueVoice,
-                backgroundMusicVolume: 0.02, initialImageCount, thumbnailBaseImage
+                backgroundMusicVolume: 0.02, initialImageCount, thumbnailBaseImage,
+                videoPacingMode: 'auto', // Initialize with auto pacing
             };
             const CHAPTER_DURATION_MIN = 7;
             const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN));
@@ -282,6 +280,7 @@ export const usePodcast = (
                 youtubeThumbnails: [],
                 designConcepts: [],
                 thumbnailBaseImage: TEST_PODCAST_BLUEPRINT.chapters[0].generatedImages?.[0],
+                videoPacingMode: 'auto',
             };
             updateStatus('Загрузка тестового проекта', 'completed');
             
@@ -340,15 +339,17 @@ export const usePodcast = (
                 extension = 'mp3';
             }
 
-            const url = (window as any).URL.createObjectURL(finalBlob);
-            // FIX: Use window.document to access the DOM
-            const a = (window as any).document.createElement('a');
+            const url = URL.createObjectURL(finalBlob);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            const a = window.document.createElement('a');
             a.href = url;
             a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.${extension}`;
-            (window as any).document.body.appendChild(a);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.appendChild(a);
             a.click();
-            (window as any).document.body.removeChild(a);
-            (window as any).URL.revokeObjectURL(url);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (err: any) {
             setError('Ошибка при сборке аудиофайла.');
             log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: err});
@@ -363,15 +364,17 @@ export const usePodcast = (
         setIsGeneratingSrt(true);
         try {
             const srtBlob = await generateSrtFile(podcast, log);
-            const url = (window as any).URL.createObjectURL(srtBlob);
-            // FIX: Use window.document to access the DOM
-            const a = (window as any).document.createElement('a');
+            const url = URL.createObjectURL(srtBlob);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            const a = window.document.createElement('a');
             a.href = url;
             a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.srt`;
-            (window as any).document.body.appendChild(a);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.appendChild(a);
             a.click();
-            (window as any).document.body.removeChild(a);
-            (window as any).URL.revokeObjectURL(url);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (err: any) {
             setError('Ошибка при создании SRT файла.');
             log({type: 'error', message: 'Ошибка при генерации SRT', data: err});
@@ -380,29 +383,35 @@ export const usePodcast = (
         }
     };
     
-    const generateVideo = async () => {
-        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
+    const generateVideo = async (podcastToRender: Podcast) => {
         setIsGeneratingVideo(true);
         setVideoGenerationProgress({ progress: 0, message: 'Подготовка...' });
         try {
-            const finalAudioBlob = await combineAndMixAudio(podcast);
+            const finalAudioBlob = await combineAndMixAudio(podcastToRender);
+
+            const manualDurations = podcastToRender.videoPacingMode === 'manual'
+                ? podcastToRender.chapters.flatMap(c => c.imageDurations || Array(c.generatedImages?.length || 0).fill(60))
+                : undefined;
             
             const videoBlob = await generateVideoService(
-                podcast,
+                podcastToRender,
                 finalAudioBlob,
                 (progress, message) => setVideoGenerationProgress({ progress, message }),
-                log
+                log,
+                manualDurations
             );
 
-            const url = (window as any).URL.createObjectURL(videoBlob);
-            // FIX: Use window.document to access the DOM
-            const a = (window as any).document.createElement('a');
+            const url = URL.createObjectURL(videoBlob);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            const a = window.document.createElement('a');
             a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.mp4`;
-            (window as any).document.body.appendChild(a);
+            a.download = `${podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.mp4`;
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.appendChild(a);
             a.click();
-            (window as any).document.body.removeChild(a);
-            (window as any).URL.revokeObjectURL(url);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         } catch (err: any) {
             setError('Ошибка при создании видеофайла.');
             log({type: 'error', message: 'Ошибка при генерации видео', data: err});
@@ -411,47 +420,20 @@ export const usePodcast = (
         }
     };
 
-    const generatePartialVideo = async () => {
+    const handleGenerateFullVideo = () => {
+        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
+        generateVideo(podcast);
+    };
+
+    const handleGeneratePartialVideo = () => {
         if (!podcast) return;
         const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.audioBlob);
         if (completedChapters.length === 0) {
             setError('Нет ни одной завершенной главы для создания видео.');
             return;
         }
-
-        setIsGeneratingVideo(true);
-        setVideoGenerationProgress({ progress: 0, message: 'Подготовка...' });
-        try {
-            // Create a temporary podcast object with only the completed chapters
-            const partialPodcast = {
-                ...podcast,
-                chapters: completedChapters,
-            };
-
-            const finalAudioBlob = await combineAndMixAudio(partialPodcast);
-            
-            const videoBlob = await generateVideoService(
-                partialPodcast,
-                finalAudioBlob,
-                (progress, message) => setVideoGenerationProgress({ progress, message }),
-                log
-            );
-
-            const url = (window as any).URL.createObjectURL(videoBlob);
-            // FIX: Use window.document to access the DOM
-            const a = (window as any).document.createElement('a');
-            a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}_partial.mp4`;
-            (window as any).document.body.appendChild(a);
-            a.click();
-            (window as any).document.body.removeChild(a);
-            (window as any).URL.revokeObjectURL(url);
-        } catch (err: any) {
-            setError('Ошибка при создании видеофайла.');
-            log({type: 'error', message: 'Ошибка при генерации частичного видео', data: err});
-        } finally {
-            setIsGeneratingVideo(false);
-        }
+        const partialPodcast = { ...podcast, chapters: completedChapters };
+        generateVideo(partialPodcast);
     };
 
     const saveThumbnail = (updatedThumbnail: YoutubeThumbnail) => {
@@ -497,11 +479,44 @@ export const usePodcast = (
         });
     }, [setPodcast]);
 
+    const setVideoPacingMode = useCallback((mode: 'auto' | 'manual') => {
+        setPodcast(p => {
+            if (!p) return null;
+            if (mode === 'manual' && p.videoPacingMode !== 'manual') {
+                // Initialize durations if switching to manual for the first time
+                const updatedChapters = p.chapters.map(c => {
+                    const imageCount = c.generatedImages?.length || 0;
+                    const durations = c.imageDurations && c.imageDurations.length === imageCount 
+                        ? c.imageDurations 
+                        : Array(imageCount).fill(60); // Default to 60s as requested
+                    return { ...c, imageDurations: durations };
+                });
+                return { ...p, videoPacingMode: mode, chapters: updatedChapters };
+            }
+            return { ...p, videoPacingMode: mode };
+        });
+    }, [setPodcast]);
+    
+    const setImageDuration = useCallback((chapterId: string, imageIndex: number, duration: number) => {
+        setPodcast(p => {
+            if (!p) return null;
+            const updatedChapters = p.chapters.map(c => {
+                if (c.id === chapterId) {
+                    const newDurations = [...(c.imageDurations || [])];
+                    newDurations[imageIndex] = duration > 0 ? duration : 1; // Ensure duration is at least 1s
+                    return { ...c, imageDurations: newDurations };
+                }
+                return c;
+            });
+            return { ...p, chapters: updatedChapters };
+        });
+    }, [setPodcast]);
+
 
     const regenerateProject = () => {
         if (!podcast) return;
-        // FIX: Use window.confirm for browser confirmation dialog
-        if ((window as any).confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
+        // FIX: Prefix `confirm` with `window.` to resolve missing DOM type error.
+        if (window.confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
             startNewProject(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, podcast.totalDurationMinutes, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, podcast.initialImageCount);
         }
     };
@@ -563,7 +578,9 @@ export const usePodcast = (
         updateChapterState(chapterId, 'images_generating');
         try {
             const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys);
-            updateChapterState(chapterId, 'completed', { generatedImages: newImages }); // Assuming it goes back to completed
+            // Reset durations when all images are regenerated in manual mode
+            const newDurations = podcastRef.current?.videoPacingMode === 'manual' ? Array(newImages.length).fill(60) : undefined;
+            updateChapterState(chapterId, 'completed', { generatedImages: newImages, imageDurations: newDurations }); // Assuming it goes back to completed
         } catch (err: any) {
             log({type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: err});
             updateChapterState(chapterId, 'error', { error: "Ошибка регенерации изображений" });
@@ -651,7 +668,15 @@ export const usePodcast = (
                 if (!p) return null;
                 const newChapters = p.chapters.map(c => {
                     if (c.id === chapterId) {
-                        return { ...c, generatedImages: [...(c.generatedImages || []), ...newImages] };
+                        const existingImages = c.generatedImages || [];
+                        const updatedImages = [...existingImages, ...newImages];
+                        let updatedDurations = c.imageDurations;
+                        if (p.videoPacingMode === 'manual') {
+                            const newImageDurations = Array(newImages.length).fill(60);
+                            const oldDurations = c.imageDurations?.length === existingImages.length ? c.imageDurations : Array(existingImages.length).fill(60);
+                            updatedDurations = [...oldDurations, ...newImageDurations];
+                        }
+                        return { ...c, generatedImages: updatedImages, imageDurations: updatedDurations };
                     }
                     return c;
                 });
@@ -781,7 +806,8 @@ export const usePodcast = (
         isRegeneratingText, isRegeneratingAudio,
         regeneratingImage, generatingMoreImages,
         isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
-        startNewProject, handleGenerateChapter, combineAndDownload, generateVideo, generatePartialVideo,
+        startNewProject, handleGenerateChapter, combineAndDownload, 
+        generateVideo: handleGenerateFullVideo, generatePartialVideo: handleGeneratePartialVideo,
         saveThumbnail, regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
@@ -791,5 +817,6 @@ export const usePodcast = (
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
         setThumbnailBaseImage,
         startVideoTest,
+        setVideoPacingMode, setImageDuration,
     };
 };

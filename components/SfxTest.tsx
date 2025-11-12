@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useRef } from 'react';
 import { findSfxWithAi } from '../services/ttsService';
 import { LogEntry, SoundEffect } from '../types';
@@ -52,7 +49,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
-        // FIX: Cast audioRef.current to any to access properties in a non-DOM environment
+        // FIX: Cast audioRef.current to `any` to access audio properties.
         const audio = audioRef.current as any;
         const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
@@ -87,8 +84,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Add explicit event type to correctly access e.target.value
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
+                    // FIX: Cast event target to HTMLInputElement to access value property.
+                    onChange={(e) => setDescription((e.target as HTMLInputElement).value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

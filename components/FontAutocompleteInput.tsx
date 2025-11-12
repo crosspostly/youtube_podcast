@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { GOOGLE_FONTS } from '../services/googleFonts';
 import { SearchIcon } from './Icons';
@@ -22,24 +19,23 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
     }, [value]);
 
     useEffect(() => {
-        // FIX: Cast event to any to avoid MouseEvent/Node type errors.
-        const handleClickOutside = (event: any) => {
-            // FIX: Cast wrapperRef.current to any to use 'contains'.
-            if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target)) {
+        const handleClickOutside = (event: MouseEvent) => {
+            // FIX: Cast wrapperRef.current and event.target to `any` to use `contains` method.
+            if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target as any)) {
                 setIsOpen(false);
             }
         };
-        // FIX: Use window.document to access document object.
-        (window as any).document.addEventListener('mousedown', handleClickOutside);
+        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+        window.document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            // FIX: Use window.document to access document object.
-            (window as any).document.removeEventListener('mousedown', handleClickOutside);
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            window.document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
-    // FIX: Add explicit type to event to correctly access e.target.value.
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const newSearchTerm = e.target.value;
+        // FIX: Cast event target to HTMLInputElement to access value property.
+        const newSearchTerm = (e.target as HTMLInputElement).value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {
             const filtered = GOOGLE_FONTS.filter(font =>

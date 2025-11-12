@@ -14,10 +14,7 @@
     "@google/genai": "^1.29.0",
     "lamejs": "1.2.1",
     "@ffmpeg/ffmpeg": "0.12.10",
-    "@ffmpeg/util": "0.12.1",
-    "webworker": "^0.8.4",
-    "module": "^2.0.0",
-    "esnext": "^3.3.1"
+    "@ffmpeg/util": "0.12.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

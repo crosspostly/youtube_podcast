@@ -1,9 +1,6 @@
 
 
 
-
-
-
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
@@ -161,8 +158,8 @@ export const generateYoutubeThumbnails = async (
     }
     log({ type: 'info', message: 'Создание обложек для YouTube по AI-концепциям...' });
 
-    // FIX: Use window.Image to explicitly use the browser's Image constructor.
-    const img = new (window as any).Image();
+    // FIX: Use `window.Image` to resolve missing DOM type error.
+    const img = new window.Image();
     img.crossOrigin = "anonymous";
     
     // Wrap image loading in a promise
@@ -175,8 +172,8 @@ export const generateYoutubeThumbnails = async (
         img.src = baseImageSrc;
     });
 
-    // FIX: Use window.document to access the document object in a browser environment.
-    const canvas = (window as any).document.createElement('canvas');
+    // FIX: Use `window.document` to resolve missing DOM type error.
+    const canvas = window.document.createElement('canvas');
     canvas.width = 1280;
     canvas.height = 720;
     const ctx = canvas.getContext('2d');
@@ -206,7 +203,7 @@ export const generateYoutubeThumbnails = async (
         };
         
         // Drawing is now async because of font loading
-        await drawCanvas(ctx, img, options);
+        await drawCanvas(ctx, img as any, options);
         
         results.push({
             styleName: concept.name,

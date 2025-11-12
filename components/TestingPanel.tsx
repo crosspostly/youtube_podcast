@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useRef, useEffect } from 'react';
 import { generateThumbnailDesignConcepts } from '../services/ttsService';
 import { drawCanvas } from '../services/canvasUtils';
@@ -34,8 +31,8 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
     // Preload the placeholder image
     useEffect(() => {
-        // FIX: Use window.Image to explicitly use the browser's Image constructor.
-        const img = new (window as any).Image();
+        // FIX: Use `window.Image` to resolve missing DOM type error.
+        const img = new window.Image();
         img.crossOrigin = "anonymous";
         img.src = PLACEHOLDER_IMAGE_URL;
         img.onload = () => {
@@ -52,8 +49,8 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
     const runDesignerTest = async () => {
         if (!imageRef.current) {
-            // FIX: Use window.alert for browser alert.
-            (window as any).alert("Тестовое изображение еще не загружено. Пожалуйста, подождите.");
+            // FIX: Use `window.alert` to resolve missing DOM type error.
+            window.alert("Тестовое изображение еще не загружено. Пожалуйста, подождите.");
             return;
         }
 
@@ -72,8 +69,8 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
             try {
                 const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys.gemini);
                 
-                // FIX: Use window.document to access document in a browser environment.
-                const canvas = (window as any).document.createElement('canvas');
+                // FIX: Use `window.document` to resolve missing DOM type error.
+                const canvas = window.document.createElement('canvas');
                 canvas.width = 1280;
                 canvas.height = 720;
                 const ctx = canvas.getContext('2d');

@@ -1,6 +1,3 @@
-
-
-
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
@@ -54,7 +51,7 @@ const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChanne
     return new Blob([view], { type: 'audio/wav' });
 };
 
-// FIX: Change AudioBuffer to any to resolve missing DOM type.
+// FIX: Use `any` for AudioBuffer as the type is not available in the current context.
 const audioBufferToWavBlob = (buffer: any): Blob => {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
@@ -103,7 +100,7 @@ const audioBufferToWavBlob = (buffer: any): Blob => {
 };
 
 export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
-    // FIX: Cast window to any to access Web Audio API properties.
+    // FIX: Use `(window as any)` to access AudioContext to resolve missing DOM type error.
     const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
 
     // Create a new array containing only chapters with audio blobs.
@@ -122,7 +119,7 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
     const sampleRate = chapterAudioBuffers[0].sampleRate;
     const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
 
-    // FIX: Cast window to any to access Web Audio API properties.
+    // FIX: Use `(window as any)` to access OfflineAudioContext to resolve missing DOM type error.
     const offlineContext = new (window as any).OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
     let speechTimeCursor = 0;
@@ -246,28 +243,26 @@ export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<
 // --- SCRIPT & AUDIO GENERATION ---
 
 const getScriptLengthInstruction = (totalDurationMinutes: number): string => {
-    // A baseline to calculate chapter count. Let's assume an average chapter is about 7 minutes.
-    const CHAPTER_DURATION_MIN_FOR_CALC = 7;
-    const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN_FOR_CALC));
-    const durationPerChapter = totalDurationMinutes / totalChapters;
-
-    // Estimate: ~1200 characters per minute of spoken text.
-    // The original prompt used 8500-9500 for a 7-8 min chapter, which is ~1200 chars/min.
-    const charsPerMinute = 1200;
-    const targetCharCount = Math.round(durationPerChapter * charsPerMinute);
-    
-    // Create a +/- 10% range for flexibility.
-    const minCharCount = Math.round(targetCharCount * 0.9);
-    const maxCharCount = Math.round(targetCharCount * 1.1);
-
-    // If the video is very short, be more precise.
+    // If the total requested duration is very short, create a proportionally short script.
     if (totalDurationMinutes < 5) {
-         return `The script should be approximately ${durationPerChapter.toFixed(1)} minutes long when spoken. **CRITICAL: The total text volume of this chapter's script MUST be between ${minCharCount} and ${maxCharCount} characters.**`;
+        // Estimate: ~1200 characters per minute of spoken text.
+        const charsPerMinute = 1200;
+        const targetCharCount = Math.round(totalDurationMinutes * charsPerMinute);
+        
+        // Create a +/- 10% range for flexibility.
+        const minCharCount = Math.round(targetCharCount * 0.9);
+        const maxCharCount = Math.round(targetCharCount * 1.1);
+
+        return `The script should be approximately ${totalDurationMinutes.toFixed(1)} minutes long when spoken. **CRITICAL: The total text volume of this chapter's script MUST be between ${minCharCount} and ${maxCharCount} characters.**`;
     }
 
-    // For longer videos, provide a slightly broader minute range.
-    const minMinutes = Math.floor(durationPerChapter);
-    const maxMinutes = Math.ceil(durationPerChapter);
+    // For longer videos, the user wants a fixed, substantial chapter length.
+    // This range corresponds to approximately 7-8 minutes of speech.
+    const minCharCount = 8500;
+    const maxCharCount = 9500;
+    const minMinutes = 7;
+    const maxMinutes = 8;
+    
     return `The script should be approximately ${minMinutes}-${maxMinutes} minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between ${minCharCount} and ${maxCharCount} characters.**`;
 };
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { findMusicWithAi } from '../services/ttsService';
 import { LogEntry, MusicTrack } from '../types';
@@ -89,8 +88,7 @@ const PodcastGenerationTest: React.FC<PodcastGenerationTestProps> = ({ onClose }
                 <input
                     type="text"
                     value={topic}
-                    // FIX: Add explicit event type to correctly access e.target.value
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopic(e.target.value)}
+                    onChange={(e) => setTopic(e.target.value)}
                     placeholder="Введите тему для подбора музыки..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}
