@@ -1,4 +1,3 @@
-
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { Podcast, LogEntry } from '../types';
@@ -7,18 +6,17 @@ import { generateSrtFile } from './srtService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
-// Указаны точные URL для всех компонентов FFmpeg.
+// Все компоненты FFmpeg должны быть из пакета @ffmpeg/core для совместимости
 const FFMPEG_CORE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js';
 const FFMPEG_WASM_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js';
+const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js';
 
 
 let ffmpeg: FFmpeg | null = null;
 
-// FIX: Change return type to `any` because `HTMLImageElement` is a DOM type and not available.
-const loadImage = (src: string): Promise<any> => {
+// Загрузка изображения с обработкой CORS
+const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
-        // FIX: Use `window.Image` to resolve missing DOM type error.
         const img = new window.Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => resolve(img);
@@ -38,11 +36,14 @@ export const generateVideo = async (
     // --- 1. Initialization ---
     onProgress(0, 'Загрузка видео-движка FFmpeg...');
     log({ type: 'info', message: 'Загрузка FFmpeg...' });
+    
     if (!ffmpeg) {
         ffmpeg = new FFmpeg();
         ffmpeg.on('log', ({ message }) => {
             log({ type: 'info', message: `[FFMPEG] ${message}` });
         });
+        
+        // toBlobURL создает локальные blob-ссылки, что решает проблемы CORS и SharedArrayBuffer
         await ffmpeg.load({
             coreURL: await toBlobURL(FFMPEG_CORE_URL, 'text/javascript'),
             wasmURL: await toBlobURL(FFMPEG_WASM_URL, 'application/wasm'),
@@ -55,7 +56,7 @@ export const generateVideo = async (
     onProgress(0.05, 'Подготовка ресурсов и анализ темпа...');
     
     let totalDuration: number;
-    let imagesToUse: any[]; // Use `any` for loaded images
+    let imagesToUse: HTMLImageElement[];
     let imageDurations: number[];
 
     const allGeneratedImages = podcast.chapters.flatMap(c => c.generatedImages || []);
@@ -74,8 +75,14 @@ export const generateVideo = async (
         // AUTOMATIC PACING
         log({ type: 'info', message: `Используется автоматический режим расстановки времени.` });
         onProgress(0.1, 'Анализ темпа повествования...');
-        // FIX: Use `(window as any)` to access AudioContext to resolve missing DOM type error.
-        const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+        
+        // Кроссбраузерная поддержка AudioContext
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) {
+            throw new Error('Web Audio API не поддерживается в этом браузере');
+        }
+        
+        const audioContext = new AudioContextClass();
         const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
         totalDuration = audioBuffer.duration;
         
@@ -112,17 +119,15 @@ export const generateVideo = async (
 
     // --- 3. Write Assets to FFmpeg Memory ---
     onProgress(0.15, 'Запись ресурсов в память FFmpeg...');
-    const assetWritePromises: Promise<any>[] = [];
+    const assetWritePromises: Promise<void>[] = [];
     assetWritePromises.push(ffmpeg.writeFile('audio.wav', await fetchFile(audioBlob)));
     const srtBlob = await generateSrtFile(podcast, log);
     assetWritePromises.push(ffmpeg.writeFile('subtitles.srt', await fetchFile(srtBlob)));
     
     for (let i = 0; i < imagesToUse.length; i++) {
-        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
         const canvas = window.document.createElement('canvas');
-        // FIX: Cast image to `any` to access width/height properties.
-        canvas.width = (imagesToUse[i] as any).width;
-        canvas.height = (imagesToUse[i] as any).height;
+        canvas.width = imagesToUse[i].width;
+        canvas.height = imagesToUse[i].height;
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
         ctx.drawImage(imagesToUse[i], 0, 0);
