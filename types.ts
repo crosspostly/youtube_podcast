@@ -28,7 +28,7 @@ export interface ScriptLine {
   soundEffectVolume?: number;
 }
 
-export type ChapterStatus = 'pending' | 'script_generating' | 'audio_generating' | 'completed' | 'error';
+export type ChapterStatus = 'pending' | 'script_generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';
 
 export interface MusicTrack {
   id: string;
@@ -46,6 +46,10 @@ export interface Chapter {
   error?: string;
   backgroundMusic?: MusicTrack;
   backgroundMusicVolume?: number;
+  // Per-chapter image generation
+  imagePrompts: string[];
+  generatedImages?: string[];
+  selectedBgIndex: number;
 }
 
 export interface TextOptions {
@@ -112,11 +116,9 @@ export interface Podcast {
   selectedTitle: string;
   description: string;
   seoKeywords: string[];
-  imagePrompts: string[];
   characters: Character[];
   sources: Source[];
   chapters: Chapter[];
-  generatedImages?: string[];
   youtubeThumbnails?: YoutubeThumbnail[];
   designConcepts?: ThumbnailDesignConcept[];
   knowledgeBaseText?: string;
@@ -126,8 +128,9 @@ export interface Podcast {
   narrationMode: NarrationMode;
   characterVoices: { [characterName: string]: string };
   monologueVoice: string;
-  selectedBgIndex: number;
   initialImageCount: number;
   // New fields for background music
   backgroundMusicVolume: number;
+  // New field for thumbnail background
+  thumbnailBaseImage?: string;
 }

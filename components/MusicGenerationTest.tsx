@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useRef } from 'react';
 import { findMusicWithAi } from '../services/ttsService';
 import { LogEntry, MusicTrack } from '../types';
@@ -54,7 +57,8 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
-        const audio = audioRef.current;
+        // FIX: Cast audioRef.current to any to access properties in a non-DOM environment
+        const audio = audioRef.current as any;
         const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
         if (isCurrentlyPlaying) {
@@ -68,7 +72,7 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
             if (playPromise !== undefined) {
                 playPromise.then(() => {
                     setPreviewingUrl(url);
-                }).catch(error => {
+                }).catch((error: any) => {
                     console.error("Audio playback failed:", error);
                     setPreviewingUrl(null);
                 });
@@ -88,7 +92,8 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
                 <input
                     type="text"
                     value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
+                    // FIX: Add explicit event type to correctly access e.target.value
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopic(e.target.value)}
                     placeholder="Введите тему для подбора музыки..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

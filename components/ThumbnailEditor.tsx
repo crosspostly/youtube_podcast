@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { YoutubeThumbnail, TextOptions } from '../types';
 import { drawCanvas, loadGoogleFont } from '../services/canvasUtils';
@@ -37,14 +40,16 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
 
     const redrawCanvas = useCallback(() => {
         if (!canvasRef.current || !imageRef.current || isFontLoading) return;
-        const ctx = canvasRef.current.getContext('2d');
+        // FIX: Cast canvas ref to any to access getContext
+        const ctx = (canvasRef.current as any).getContext('2d');
         if (ctx) {
             drawCanvas(ctx, imageRef.current, options);
         }
     }, [options, isFontLoading]);
 
     useEffect(() => {
-        const img = new Image();
+        // FIX: Use window.Image to explicitly use the browser's Image constructor.
+        const img = new (window as any).Image();
         img.crossOrigin = "anonymous";
         img.src = baseImageSrc;
         img.onload = () => {
@@ -68,9 +73,10 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
     const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        // FIX: Cast canvas ref to any to access DOM properties
+        const rect = (canvas as any).getBoundingClientRect();
+        const x = (e.clientX - rect.left) * ((canvas as any).width / rect.width);
+        const y = (e.clientY - rect.top) * ((canvas as any).height / rect.height);
         setIsDragging(true);
         setDragStart({ x: x - options.position.x, y: y - options.position.y });
     };
@@ -79,9 +85,10 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
         if (!isDragging) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        // FIX: Cast canvas ref to any to access DOM properties
+        const rect = (canvas as any).getBoundingClientRect();
+        const x = (e.clientX - rect.left) * ((canvas as any).width / rect.width);
+        const y = (e.clientY - rect.top) * ((canvas as any).height / rect.height);
         handleOptionChange('position', { x: x - dragStart.x, y: y - dragStart.y });
     };
 
@@ -94,7 +101,8 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
         onSave({
             ...thumbnail,
             options,
-            dataUrl: canvas.toDataURL('image/png'),
+            // FIX: Cast canvas ref to any to access toDataURL
+            dataUrl: (canvas as any).toDataURL('image/png'),
         });
     };
 
@@ -107,7 +115,8 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Текст</label>
-                            <textarea value={options.text} onChange={(e) => handleOptionChange('text', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
+                            {/* FIX: Add explicit event type to correctly access e.target.value */}
+                            <textarea value={options.text} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleOptionChange('text', e.target.value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Шрифт (Google Fonts)</label>
@@ -119,17 +128,21 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
                                 <label className="block text-sm font-medium text-slate-300">Размер</label>
-                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number(e.target.value))} className="w-full mt-1"/>
+                                {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
-                             <input type="number" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number(e.target.value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
+                             {/* FIX: Add explicit event type to correctly access e.target.value */}
+                             <input type="number" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number(e.target.value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
                         </div>
                         <div className="flex items-center gap-4">
                              <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                             <input type="color" value={options.fillStyle} onChange={(e) => handleOptionChange('fillStyle', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                             {/* FIX: Add explicit event type to correctly access e.target.value */}
+                             <input type="color" value={options.fillStyle} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fillStyle', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Выравнивание</label>
-                            <select value={options.textAlign} onChange={(e) => handleOptionChange('textAlign', e.target.value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
+                            {/* FIX: Add explicit event type to correctly access e.target.value */}
+                            <select value={options.textAlign} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleOptionChange('textAlign', e.target.value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
                                 <option value="left">По левому краю</option>
                                 <option value="center">По центру</option>
                                 <option value="right">По правому краю</option>
@@ -140,11 +153,13 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
                              <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e) => handleOptionChange('strokeColor', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeColor', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                              </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Толщина: {options.strokeWidth || 0}px</label>
-                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e) => handleOptionChange('strokeWidth', Number(e.target.value))} className="w-full mt-1"/>
+                                {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeWidth', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                         </div>
 
@@ -152,19 +167,23 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Тень</h4>
                             <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 <input type="color" value={options.shadow.color} onChange={(e) => handleShadowChange('color', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                 <input type="color" value={options.shadow.color} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('color', e.target.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Размытие: {options.shadow.blur}px</label>
-                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e) => handleShadowChange('blur', Number(e.target.value))} className="w-full mt-1"/>
+                                {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('blur', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение X: {options.shadow.offsetX}px</label>
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e) => handleShadowChange('offsetX', Number(e.target.value))} className="w-full mt-1"/>
+                                {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetX', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение Y: {options.shadow.offsetY}px</label>
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e) => handleShadowChange('offsetY', Number(e.target.value))} className="w-full mt-1"/>
+                                {/* FIX: Add explicit event type to correctly access e.target.value */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetY', Number(e.target.value))} className="w-full mt-1"/>
                             </div>
                         </div>
                     </div>

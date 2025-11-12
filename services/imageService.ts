@@ -1,5 +1,9 @@
 
 
+
+
+
+
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
@@ -157,7 +161,8 @@ export const generateYoutubeThumbnails = async (
     }
     log({ type: 'info', message: 'Создание обложек для YouTube по AI-концепциям...' });
 
-    const img = new Image();
+    // FIX: Use window.Image to explicitly use the browser's Image constructor.
+    const img = new (window as any).Image();
     img.crossOrigin = "anonymous";
     
     // Wrap image loading in a promise
@@ -170,7 +175,8 @@ export const generateYoutubeThumbnails = async (
         img.src = baseImageSrc;
     });
 
-    const canvas = document.createElement('canvas');
+    // FIX: Use window.document to access the document object in a browser environment.
+    const canvas = (window as any).document.createElement('canvas');
     canvas.width = 1280;
     canvas.height = 720;
     const ctx = canvas.getContext('2d');

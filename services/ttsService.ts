@@ -1,3 +1,6 @@
+
+
+
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
@@ -51,7 +54,8 @@ const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChanne
     return new Blob([view], { type: 'audio/wav' });
 };
 
-const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
+// FIX: Change AudioBuffer to any to resolve missing DOM type.
+const audioBufferToWavBlob = (buffer: any): Blob => {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
     const format = 1; // PCM
@@ -99,11 +103,18 @@ const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
 };
 
 export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const chapterBlobs = podcast.chapters.map(c => c.audioBlob).filter((b): b is Blob => !!b);
-    if (chapterBlobs.length === 0) throw new Error("Нет аудиофайлов для сборки.");
+    // FIX: Cast window to any to access Web Audio API properties.
+    const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
 
-    const chapterAudioBuffers = await Promise.all(chapterBlobs.map(b => b.arrayBuffer().then(ab => audioContext.decodeAudioData(ab))));
+    // Create a new array containing only chapters with audio blobs.
+    // This makes indexing straightforward and robust, fixing bugs with partial generation.
+    const chaptersToProcess = podcast.chapters.filter((c): c is (Chapter & { audioBlob: Blob }) => !!c.audioBlob);
+    
+    if (chaptersToProcess.length === 0) throw new Error("Нет аудиофайлов для сборки.");
+
+    const chapterAudioBuffers = await Promise.all(
+        chaptersToProcess.map(c => c.audioBlob.arrayBuffer().then(ab => audioContext.decodeAudioData(ab)))
+    );
     
     const totalDuration = chapterAudioBuffers.reduce((sum, buffer) => sum + buffer.duration, 0);
     if (totalDuration === 0) throw new Error("Общая длительность аудио равна нулю.");
@@ -111,14 +122,14 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
     const sampleRate = chapterAudioBuffers[0].sampleRate;
     const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
 
-    const offlineContext = new OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
+    // FIX: Cast window to any to access Web Audio API properties.
+    const offlineContext = new (window as any).OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
     let speechTimeCursor = 0;
-    // Layer 1: Speech and Music
-    for (let i = 0; i < podcast.chapters.length; i++) {
-        const chapter = podcast.chapters[i];
+    // Layer 1: Speech and Music - Iterate over the clean list of chapters with audio.
+    for (let i = 0; i < chaptersToProcess.length; i++) {
+        const chapter = chaptersToProcess[i];
         const speechBuffer = chapterAudioBuffers[i];
-        if (!speechBuffer) continue;
         
         const speechSource = offlineContext.createBufferSource();
         speechSource.buffer = speechBuffer;
@@ -141,12 +152,13 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                 const fadeInStartTime = speechTimeCursor;
                 const fadeOutEndTime = speechTimeCursor + speechBuffer.duration;
                 
-                if (i === 0 || podcast.chapters[i-1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
+                // Crossfade logic now correctly checks for adjacency in the list of chapters being processed.
+                if (i === 0 || chaptersToProcess[i-1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
                     musicGainNode.gain.setValueAtTime(0, fadeInStartTime);
                     musicGainNode.gain.linearRampToValueAtTime(chapterVolume, fadeInStartTime + crossfadeDuration);
                 }
 
-                if (i === podcast.chapters.length - 1 || podcast.chapters[i+1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
+                if (i === chaptersToProcess.length - 1 || chaptersToProcess[i+1]?.backgroundMusic?.id !== chapter.backgroundMusic.id) {
                      musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
                      musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
                 }
@@ -186,8 +198,14 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                 sfxSource.buffer = sfxBuffer;
                 sfxSource.connect(sfxGainNode);
                 
-                // Play the SFX at the estimated time, ensuring it doesn't go past the end
-                sfxSource.start(Math.min(estimatedTimeCursor, totalDuration - sfxBuffer.duration));
+                // Calculate the latest possible start time so the SFX doesn't play past the total duration.
+                // This value is clamped at 0 to prevent negative start times if the SFX is longer than the audio.
+                const maxStartTime = Math.max(0, totalDuration - sfxBuffer.duration);
+
+                // Schedule the SFX at the estimated time, but not later than the max possible start time.
+                const startTime = Math.min(estimatedTimeCursor, maxStartTime);
+                
+                sfxSource.start(startTime);
 
             } catch(e) { console.error(`Не удалось обработать SFX: ${line.soundEffect.name}`, e); }
         }
@@ -226,6 +244,33 @@ export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<
 
 
 // --- SCRIPT & AUDIO GENERATION ---
+
+const getScriptLengthInstruction = (totalDurationMinutes: number): string => {
+    // A baseline to calculate chapter count. Let's assume an average chapter is about 7 minutes.
+    const CHAPTER_DURATION_MIN_FOR_CALC = 7;
+    const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN_FOR_CALC));
+    const durationPerChapter = totalDurationMinutes / totalChapters;
+
+    // Estimate: ~1200 characters per minute of spoken text.
+    // The original prompt used 8500-9500 for a 7-8 min chapter, which is ~1200 chars/min.
+    const charsPerMinute = 1200;
+    const targetCharCount = Math.round(durationPerChapter * charsPerMinute);
+    
+    // Create a +/- 10% range for flexibility.
+    const minCharCount = Math.round(targetCharCount * 0.9);
+    const maxCharCount = Math.round(targetCharCount * 1.1);
+
+    // If the video is very short, be more precise.
+    if (totalDurationMinutes < 5) {
+         return `The script should be approximately ${durationPerChapter.toFixed(1)} minutes long when spoken. **CRITICAL: The total text volume of this chapter's script MUST be between ${minCharCount} and ${maxCharCount} characters.**`;
+    }
+
+    // For longer videos, provide a slightly broader minute range.
+    const minMinutes = Math.floor(durationPerChapter);
+    const maxMinutes = Math.ceil(durationPerChapter);
+    return `The script should be approximately ${minMinutes}-${maxMinutes} minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between ${minCharCount} and ${maxCharCount} characters.**`;
+};
+
 
 const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey?: string): Promise<any> => {
     log({ type: 'response', message: 'Сырой ответ от Gemini', data: rawText });
@@ -285,7 +330,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string, freesound?: string }): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, log: LogFunction, apiKeys?: { gemini?: string, freesound?: string }): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
 
     const sourceInstruction = knowledgeBaseText
@@ -304,6 +349,8 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         ? `\n\n**Knowledge Base (Sole Source of Facts):**\n---\n${knowledgeBaseText}\n---`
         : "";
 
+    const scriptLengthInstruction = getScriptLengthInstruction(totalDurationMinutes);
+
     const prompt = `You are an AI screenwriter and YouTube producer. Your task is to create a complete package of materials for a compelling YouTube video on the topic: "${topic}".
     
     **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
@@ -313,9 +360,10 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
 
     **General Task Requirements:**
     1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
-    2.  **YouTube Assets:** Create YouTube-optimized text assets (title options, description, tags) and 10 image prompts.
-    3.  **Script:** Write the script for the FIRST CHAPTER. The script should be approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
+    2.  **YouTube Assets:** Create YouTube-optimized text assets (title options, description, tags).
+    3.  **Script:** Write the script for the FIRST CHAPTER. ${scriptLengthInstruction}
     4.  **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. Format all sound effect cues as a separate element with the speaker "SFX". **Example: { "speaker": "SFX", "text": "Sound of a creaking door opening..." }**
+    5.  **Image Prompts:** Based on the script content, create 3 detailed, cinematic image prompts in English.
 
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -324,9 +372,6 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
       "youtubeTitleOptions": [ "An array of 3-5 clickable, intriguing, and SEO-optimized titles for the YouTube video" ],
       "description": "A detailed description for the YouTube video (2-3 paragraphs). It should engage the viewer, summarize the content, and include a call to action (subscribe, like).",
       "seoKeywords": ["list", "of", "10-15", "relevant", "tags", "for", "the YouTube video"],
-      "imagePrompts": [
-        "10 unique, detailed prompts in English for image generation."
-      ],
       "characters": [
         { "name": "Character Name 1", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." },
         { "name": "Character Name 2", "description": "Brief description, gender, and voice character. E.g., Female, calm, intriguing voice." }
@@ -337,6 +382,11 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
           { "speaker": "SFX", "text": "Sound of a creaking door opening..." },
           { "speaker": "Character Name 1", "text": "Intriguing introduction text..." },
           { "speaker": "Character Name 2", "text": "Mysterious response..." }
+        ],
+        "imagePrompts": [
+            "A hyperrealistic cinematic shot of...",
+            "An eerie, atmospheric photo of...",
+            "A mysterious, wide-angle view of..."
         ]
       }
     }${knowledgeBaseBlock}`;
@@ -368,6 +418,8 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
             title: data.chapter.title,
             script: data.chapter.script,
             status: 'pending',
+            imagePrompts: data.chapter.imagePrompts || [],
+            selectedBgIndex: 0,
         };
         
         log({ type: 'info', message: 'Концепция подкаста и первая глава успешно созданы.' });
@@ -375,7 +427,6 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
             youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
             seoKeywords: data.seoKeywords,
-            imagePrompts: data.imagePrompts,
             characters: data.characters,
             sources,
             chapters: [firstChapter]
@@ -424,7 +475,7 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }
 };
 
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<{title: string, script: ScriptLine[]}> => {
+export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDurationMinutes: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<{title: string, script: ScriptLine[], imagePrompts: string[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
@@ -441,6 +492,8 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
         ? `\n\n**Knowledge Base (Source of Facts):**\n---\n${knowledgeBaseText}\n---`
         : "";
 
+    const scriptLengthInstruction = getScriptLengthInstruction(totalDurationMinutes);
+
     const prompt = `You are a master of suspense, an AI screenwriter continuing a long-form podcast.
 
     Podcast Topic: "${topic}"
@@ -453,8 +506,9 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
 
     Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter.
-    - **Script Length:** Approximately 7-8 minutes long when spoken. **IMPORTANT: The total text volume of this chapter's script MUST be between 8500 and 9500 characters.**
+    - **Script Length:** ${scriptLengthInstruction}
     - **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere.
+    - **Image Prompts:** Based on the new script content, create 3 detailed, cinematic image prompts in English.
     - **Formatting:** Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}. Format all cues and sound effects as a separate element with the speaker "SFX".
     - ${styleInstruction}
     ${sourceInstruction}
@@ -462,7 +516,8 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     Structure: {
         "title": "Title of this new chapter",
-        "script": [{ "speaker": "SFX", "text": "..." }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }]
+        "script": [{ "speaker": "SFX", "text": "..." }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }],
+        "imagePrompts": ["Prompt 1 in English", "Prompt 2 in English", "Prompt 3 in English"]
     }${knowledgeBaseBlock}`;
     
     try {
@@ -661,55 +716,23 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
         return data.concepts.slice(0, 3);
     } catch (error) {
         log({ type: 'error', message: 'Ошибка при генерации дизайн-концепций. Будут использованы стандартные.', data: error });
-        // Fallback to default concepts on error
-        return [
-            { name: "Контрастный Удар (Резервный)", fontFamily: "Anton", fontSize: 110, textColor: "#FFFF00", shadowColor: "#000000", overlayOpacity: 0.3, textTransform: 'uppercase', strokeColor: "#000000", strokeWidth: 8 },
-            { name: "Классический Триллер (Резервный)", fontFamily: "Roboto Slab", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5, textTransform: 'uppercase', strokeColor: "transparent", strokeWidth: 0 },
-            { name: "Современный Градиент (Резервный)", fontFamily: "Bebas Neue", fontSize: 130, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4, textTransform: 'uppercase', gradientColors: ["#00FFFF", "#FF00FF"] }
-        ];
-    }
-};
-
-// --- SRT SUBTITLE GENERATION ---
-
-const formatSrtTime = (seconds: number): string => {
-    const date = new Date(0);
-    date.setSeconds(seconds);
-    const time = date.toISOString().substr(11, 12);
-    return time.replace('.', ',');
-};
-
-// New, fast SRT generation based on text estimation
-export const generateSrtFile = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
-    log({ type: 'info', message: 'Начало быстрой генерации SRT-субтитров.' });
-    let srtContent = '';
-    let currentTime = 0;
-    let subtitleIndex = 1;
-
-    // Average characters per second for speech. This is an estimate.
-    const CHARS_PER_SECOND = 15;
-    
-    const allLines = podcast.chapters.flatMap(c => c.script.filter(s => s.speaker.toUpperCase() !== 'SFX'));
-
-    for (const line of allLines) {
-        // Estimate duration based on text length. Minimum 1 second.
-        const duration = Math.max(1, line.text.length / CHARS_PER_SECOND);
-
-        const startTime = formatSrtTime(currentTime);
-        const endTime = formatSrtTime(currentTime + duration);
         
-        srtContent += `${subtitleIndex}\n`;
-        srtContent += `${startTime} --> ${endTime}\n`;
-        srtContent += `${line.text}\n\n`;
-
-        currentTime += duration;
-        subtitleIndex++;
+        const fallbackConcepts: { [key: string]: ThumbnailDesignConcept[] } = {
+            "Русский": [
+                { name: "Контрастный Удар (Резервный)", fontFamily: "Anton", fontSize: 110, textColor: "#FFFF00", shadowColor: "#000000", overlayOpacity: 0.3, textTransform: 'uppercase', strokeColor: "#000000", strokeWidth: 8 },
+                { name: "Классический Триллер (Резервный)", fontFamily: "Roboto Slab", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5, textTransform: 'uppercase', strokeColor: "transparent", strokeWidth: 0 },
+                { name: "Современный Градиент (Резервный)", fontFamily: "Bebas Neue", fontSize: 130, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4, textTransform: 'uppercase', gradientColors: ["#00FFFF", "#FF00FF"] }
+            ],
+            "English": [
+                 { name: "Contrast Punch (Fallback)", fontFamily: "Anton", fontSize: 110, textColor: "#FFFF00", shadowColor: "#000000", overlayOpacity: 0.3, textTransform: 'uppercase', strokeColor: "#000000", strokeWidth: 8 },
+                 { name: "Classic Thriller (Fallback)", fontFamily: "Roboto Slab", fontSize: 100, textColor: "#FFFFFF", shadowColor: "#000000", overlayOpacity: 0.5, textTransform: 'uppercase', strokeColor: "transparent", strokeWidth: 0 },
+                 { name: "Modern Gradient (Fallback)", fontFamily: "Bebas Neue", fontSize: 130, textColor: "#FFFFFF", shadowColor: "transparent", overlayOpacity: 0.4, textTransform: 'uppercase', gradientColors: ["#00FFFF", "#FF00FF"] }
+            ]
+        };
+        
+        return fallbackConcepts[language as keyof typeof fallbackConcepts] || fallbackConcepts["English"];
     }
-    
-    log({ type: 'info', message: 'Генерация SRT-субтитров завершена.' });
-    return new Blob([srtContent], { type: 'text/srt' });
 };
-
 
 // --- AI MUSIC FINDER ---
 
@@ -787,23 +810,21 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: 
         const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
 
-        let tracks = await performJamendoSearch(keywords, log);
-        
-        if (tracks.length === 0) {
-            log({ type: 'info', message: 'По данным ключевым словам музыка в Jamendo не найдена. Попытка с более широким запросом...' });
-            const keywordParts = keywords.split(/[\s,]+/);
-            if (keywordParts.length > 1) {
-                const fallbackKeywords = keywordParts.slice(0, -1).join(' ');
-                tracks = await performJamendoSearch(fallbackKeywords, log);
+        let searchTerms = keywords.split(/[\s,]+/);
+        while (searchTerms.length > 0) {
+            const currentQuery = searchTerms.join(' ');
+            log({ type: 'info', message: `Поиск музыки по запросу: "${currentQuery}"` });
+            const musicResults = await performJamendoSearch(currentQuery, log);
+            if (musicResults.length > 0) {
+                log({ type: 'info', message: `Найдено ${musicResults.length} треков по запросу "${currentQuery}".` });
+                return musicResults;
             }
+            log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
+            searchTerms.pop(); // Remove the last keyword and retry
         }
-        
-        if (tracks.length === 0) {
-            log({ type: 'info', message: 'Резервный поиск также не дал результатов.' });
-        } else {
-            log({ type: 'response', message: 'Музыкальные треки успешно получены.' });
-        }
-        return tracks;
+
+        log({ type: 'info', message: 'Не удалось найти музыку даже после сокращения запроса.' });
+        return []; // Return empty if all attempts fail
 
     } catch (error) {
         log({ type: 'error', message: 'Ошибка в процессе поиска музыки с ИИ.', data: error });
@@ -868,7 +889,21 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
 
-        return performFreesoundSearch(keywords, log, apiKeys?.freesound);
+        let searchTerms = keywords.split(/[\s,]+/);
+        while (searchTerms.length > 0) {
+            const currentQuery = searchTerms.join(' ');
+            log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
+            const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys?.freesound);
+            if (sfxResults.length > 0) {
+                log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
+                return sfxResults;
+            }
+            log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
+            searchTerms.pop(); // Remove the last keyword and retry
+        }
+
+        log({ type: 'info', message: 'Не удалось найти SFX даже после сокращения запроса.' });
+        return []; // Return empty if all attempts fail
     } catch (error) {
         log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error });
         throw new Error('Не удалось подобрать SFX.');

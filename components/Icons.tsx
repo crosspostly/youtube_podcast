@@ -177,3 +177,9 @@ export const BeakerIcon: React.FC<IconProps> = ({ className = 'w-6 h-6' }) => (
       <path strokeLinecap="round" strokeLinejoin="round" d="M14.73 21.66A12.022 12.022 0 0112 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10c0 2.345-.82 4.512-2.27 6.34" />
     </svg>
 );
+
+export const VideoCameraIcon: React.FC<IconProps> = ({ className = "w-6 h-6" }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+    </svg>
+);

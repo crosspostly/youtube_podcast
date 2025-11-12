@@ -1,3 +1,6 @@
+
+
+
 import React, { useState } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
@@ -67,7 +70,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="geminiApiKeyInput"
                                     type="password"
                                     value={geminiApiKey}
-                                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                                    // FIX: Add explicit event type to correctly access e.target.value
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGeminiApiKey(e.target.value)}
                                     placeholder="Введите ваш ключ API..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -87,7 +91,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="openRouterApiKeyInput"
                                     type="password"
                                     value={openRouterApiKey}
-                                    onChange={(e) => setOpenRouterApiKey(e.target.value)}
+                                    // FIX: Add explicit event type to correctly access e.target.value
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setOpenRouterApiKey(e.target.value)}
                                     placeholder="Введите ваш ключ OpenRouter..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -107,7 +112,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="freesoundApiKeyInput"
                                     type="password"
                                     value={freesoundApiKey}
-                                    onChange={(e) => setFreesoundApiKey(e.target.value)}
+                                    // FIX: Add explicit event type to correctly access e.target.value
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFreesoundApiKey(e.target.value)}
                                     placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />

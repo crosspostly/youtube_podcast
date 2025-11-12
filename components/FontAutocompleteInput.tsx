@@ -1,3 +1,6 @@
+
+
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { GOOGLE_FONTS } from '../services/googleFonts';
 import { SearchIcon } from './Icons';
@@ -19,17 +22,22 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
     }, [value]);
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        // FIX: Cast event to any to avoid MouseEvent/Node type errors.
+        const handleClickOutside = (event: any) => {
+            // FIX: Cast wrapperRef.current to any to use 'contains'.
+            if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target)) {
                 setIsOpen(false);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
+        // FIX: Use window.document to access document object.
+        (window as any).document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
+            // FIX: Use window.document to access document object.
+            (window as any).document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
+    // FIX: Add explicit type to event to correctly access e.target.value.
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newSearchTerm = e.target.value;
         setSearchTerm(newSearchTerm);

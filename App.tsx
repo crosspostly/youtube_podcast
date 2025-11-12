@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Podcast, YoutubeThumbnail, LogEntry } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
-import PodcastTest from './components/PodcastTest';
+import TestingPanel from './components/TestingPanel';
 import SfxTest from './components/SfxTest';
 import { JournalIcon, CloseIcon, KeyIcon } from './components/Icons';
 import { PodcastProvider, usePodcastContext } from './context/PodcastContext';
@@ -11,6 +11,7 @@ import MusicGenerationTest from './components/MusicGenerationTest';
 import ProjectSetup from './components/ProjectSetup';
 import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
+import VideoTestPanel from './components/VideoTestPanel';
 
 
 const AppUI: React.FC<{
@@ -26,6 +27,7 @@ const AppUI: React.FC<{
     const [isDesignerTestPanelVisible, setIsDesignerTestPanelVisible] = useState<boolean>(false);
     const [isMusicTestPanelVisible, setIsMusicTestPanelVisible] = useState<boolean>(false);
     const [isSfxTestPanelVisible, setIsSfxTestPanelVisible] = useState<boolean>(false);
+    const [isVideoTestPanelVisible, setIsVideoTestPanelVisible] = useState<boolean>(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
 
     useEffect(() => {
@@ -45,9 +47,10 @@ const AppUI: React.FC<{
 
     return (
         <>
-            {isDesignerTestPanelVisible && <PodcastTest onClose={() => setIsDesignerTestPanelVisible(false)} />}
+            {isDesignerTestPanelVisible && <TestingPanel onClose={() => setIsDesignerTestPanelVisible(false)} />}
             {isMusicTestPanelVisible && <MusicGenerationTest onClose={() => setIsMusicTestPanelVisible(false)} />}
             {isSfxTestPanelVisible && <SfxTest onClose={() => setIsSfxTestPanelVisible(false)} />}
+            {isVideoTestPanelVisible && <VideoTestPanel onClose={() => setIsVideoTestPanelVisible(false)} />}
             {isLogVisible && (
                 <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={onCloseLog}>
                     <div className="w-full max-w-2xl h-full bg-slate-800 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
@@ -68,10 +71,10 @@ const AppUI: React.FC<{
                     </div>
                 </div>
             )}
-            {isEditorOpen && editingThumbnail && podcast?.generatedImages && (
+            {isEditorOpen && editingThumbnail && podcast?.thumbnailBaseImage && (
                 <ThumbnailEditor
                     thumbnail={editingThumbnail}
-                    baseImageSrc={podcast.generatedImages[podcast.selectedBgIndex || 0]}
+                    baseImageSrc={podcast.thumbnailBaseImage}
                     onSave={handleSaveThumbnail}
                     onClose={() => setIsEditorOpen(false)}
                 />
@@ -101,6 +104,7 @@ const AppUI: React.FC<{
                             onOpenDesignerTest={() => setIsDesignerTestPanelVisible(true)}
                             onOpenMusicTest={() => setIsMusicTestPanelVisible(true)}
                             onOpenSfxTest={() => setIsSfxTestPanelVisible(true)}
+                            onOpenVideoTest={() => setIsVideoTestPanelVisible(true)}
                         />
                     )}
                 </main>

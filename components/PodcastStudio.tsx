@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
 import Spinner from './Spinner';
-import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon } from './Icons';
+import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon, VideoCameraIcon } from './Icons';
 
 interface PodcastStudioProps {
     onEditThumbnail: (thumbnail: YoutubeThumbnail) => void;
@@ -43,18 +43,19 @@ const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boole
 
 const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const {
-        podcast, setPodcast, isLoading,
+        podcast,
         audioUrls, isGenerationPaused, setIsGenerationPaused,
-        isRegeneratingText, isRegeneratingImages, isRegeneratingAudio,
-        regeneratingImageIndex, isGeneratingMoreImages,
-        isConvertingToMp3, isGeneratingSrt,
-        handleGenerateChapter, combineAndDownload,
+        isRegeneratingText, isRegeneratingAudio,
+        regeneratingImage, generatingMoreImages,
+        isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
+        handleGenerateChapter, combineAndDownload, generateVideo, generatePartialVideo,
         regenerateProject, regenerateText,
-        regenerateImages, regenerateAllAudio, regenerateSingleImage,
-        generateMoreImages, handleTitleSelection, handleBgSelection, setGlobalMusicVolume, setChapterMusicVolume,
+        regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
+        generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
         manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter, findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
+        setThumbnailBaseImage, setPodcast,
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -89,7 +90,14 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
         const [manualSearchQuery, setManualSearchQuery] = useState('');
         const [tempSelectedSfx, setTempSelectedSfx] = useState<SoundEffect | null>(line.soundEffect || null);
+        const [previewVolume, setPreviewVolume] = useState(line.soundEffectVolume ?? 0.5);
     
+        useEffect(() => {
+            if (audioPlayerRef.current && previewingUrl) {
+                audioPlayerRef.current.volume = previewVolume;
+            }
+        }, [previewVolume, previewingUrl]);
+
         const handleFindWithAI = async () => {
             setIsFinding(true);
             setFoundSfx([]);
@@ -101,8 +109,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             }
         };
 
-        const handleManualSearch = async (e: React.FormEvent) => {
-            e.preventDefault();
+        const handleManualSearch = async () => {
             if (!manualSearchQuery.trim()) return;
             setIsFindingManually(true);
             setFoundSfx([]);
@@ -125,7 +132,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             } else {
                 audio.pause();
                 audio.src = url;
-                audio.volume = line.soundEffectVolume ?? 0.5;
+                audio.volume = previewVolume;
                 const playPromise = audio.play();
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
@@ -140,6 +147,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     
         const handleSave = () => {
             setSfxForLine(chapterId, lineIndex, tempSelectedSfx);
+            setSfxVolume(chapterId, lineIndex, previewVolume);
             setSfxModalLine(null);
         };
     
@@ -162,17 +170,50 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         <button onClick={() => setSfxModalLine(null)} className="text-slate-400 hover:text-white"><CloseIcon /></button>
                     </div>
                      <div className="p-6 space-y-4 flex-grow overflow-y-auto">
-                        <form onSubmit={handleManualSearch} className="flex gap-2">
-                             <input type="text" placeholder="Ручной поиск (e.g., door creak)" value={manualSearchQuery} onChange={(e) => setManualSearchQuery(e.target.value)} className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"/>
-                            <button type="submit" disabled={isFindingManually || !manualSearchQuery.trim()} className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:bg-slate-500">
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="Ручной поиск (e.g., door creak)" 
+                                value={manualSearchQuery} 
+                                onChange={(e) => setManualSearchQuery(e.target.value)} 
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleManualSearch();
+                                    }
+                                }}
+                                className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                            />
+                            <button 
+                                type="button" 
+                                onClick={handleManualSearch} 
+                                disabled={isFindingManually || !manualSearchQuery.trim()} 
+                                className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:bg-slate-500"
+                            >
                                 {isFindingManually ? <Spinner className="w-5 h-5" /> : <SearchIcon />} Найти
                             </button>
-                        </form>
+                        </div>
+                        <p className="text-xs text-center text-slate-400 mt-2">Поиск по ключевым словам в библиотеке Freesound.</p>
+
                          <div className="flex items-center gap-4"><hr className="flex-grow border-slate-600"/><span className="text-slate-400 text-sm">ИЛИ</span><hr className="flex-grow border-slate-600"/></div>
-                        <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700">
-                            {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />} Подобрать с помощью ИИ
-                        </button>
-                        <div className="space-y-2 pt-4">
+                        <div>
+                            <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700">
+                                {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />} Подобрать с помощью ИИ
+                            </button>
+                             <p className="text-xs text-center text-slate-400 mt-2">ИИ проанализирует описание и подберет ключевые слова.</p>
+                        </div>
+                        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-600">
+                            <label className="text-sm font-medium text-slate-300 whitespace-nowrap">Громкость:</label>
+                            <input 
+                                type="range"
+                                min="0" max="1" step="0.05"
+                                value={previewVolume}
+                                onChange={e => setPreviewVolume(Number(e.target.value))}
+                                className="w-full"
+                            />
+                            <span className="text-sm font-bold text-cyan-300 w-12 text-center">{Math.round(previewVolume * 100)}%</span>
+                        </div>
+                        <div className="space-y-2 pt-2">
                              {(isFinding || isFindingManually) && <div className="flex justify-center"><Spinner/></div>}
                              {displaySfx.length > 0 ? (
                                 displaySfx.map(sfx => (
@@ -194,7 +235,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                     </div>
                      <div className="flex justify-end gap-4 p-4 border-t border-slate-700 flex-shrink-0 bg-slate-800/50 rounded-b-lg">
                         <button onClick={() => setSfxModalLine(null)} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
-                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Сохранить</button>
+                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
                     </div>
                 </div>
             </div>
@@ -211,6 +252,13 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
         const [manualSearchQuery, setManualSearchQuery] = useState('');
         const [tempSelectedTrack, setTempSelectedTrack] = useState<MusicTrack | null>(musicModalChapter.backgroundMusic || null);
+        const [previewVolume, setPreviewVolume] = useState(musicModalChapter.backgroundMusicVolume ?? podcast?.backgroundMusicVolume ?? 0.1);
+
+        useEffect(() => {
+            if (audioPlayerRef.current && previewingUrl) {
+                audioPlayerRef.current.volume = previewVolume;
+            }
+        }, [previewVolume, previewingUrl]);
 
         const handleFindWithAI = async () => {
             setIsFinding(true);
@@ -223,8 +271,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             }
         };
 
-        const handleManualSearch = async (e: React.FormEvent) => {
-            e.preventDefault();
+        const handleManualSearch = async () => {
             if (!manualSearchQuery.trim()) return;
             setIsFindingManually(true);
             setFoundTracks([]);
@@ -248,7 +295,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 audio.pause(); 
                 
                 audio.src = url;
-                audio.volume = musicModalChapter.backgroundMusicVolume ?? podcast?.backgroundMusicVolume ?? 0.02;
+                audio.volume = previewVolume;
                 const playPromise = audio.play();
 
                 if (playPromise !== undefined) {
@@ -266,6 +313,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             if (tempSelectedTrack) {
                 setChapterMusic(musicModalChapter.id, tempSelectedTrack, false);
             }
+            // Save the volume setting for this chapter specifically
+            setChapterMusicVolume(musicModalChapter.id, previewVolume);
             setMusicModalChapter(null);
         };
 
@@ -288,19 +337,31 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         <button onClick={() => setMusicModalChapter(null)} className="text-slate-400 hover:text-white"><CloseIcon /></button>
                     </div>
                     <div className="p-6 space-y-4 flex-grow overflow-y-auto">
-                        <form onSubmit={handleManualSearch} className="flex gap-2">
+                        <div className="flex gap-2">
                             <input 
                                 type="text"
                                 placeholder="Ручной поиск (e.g., epic cinematic)"
                                 value={manualSearchQuery}
                                 onChange={(e) => setManualSearchQuery(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleManualSearch();
+                                    }
+                                }}
                                 className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                             />
-                            <button type="submit" disabled={isFindingManually || !manualSearchQuery.trim()} className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none">
+                            <button 
+                                type="button" 
+                                onClick={handleManualSearch} 
+                                disabled={isFindingManually || !manualSearchQuery.trim()} 
+                                className="w-32 flex items-center justify-center gap-2 px-4 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none"
+                            >
                                 {isFindingManually ? <Spinner className="w-5 h-5" /> : <SearchIcon />}
                                 Найти
                             </button>
-                        </form>
+                        </div>
+                        <p className="text-xs text-center text-slate-400 mt-2">Поиск по ключевым словам в библиотеке Jamendo.</p>
 
                         <div className="flex items-center gap-4">
                             <hr className="flex-grow border-slate-600"/>
@@ -308,12 +369,27 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                             <hr className="flex-grow border-slate-600"/>
                         </div>
 
-                        <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none">
-                            {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />}
-                            Подобрать треки с помощью ИИ
-                        </button>
+                        <div>
+                            <button onClick={handleFindWithAI} disabled={isFinding} className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-bold rounded-lg hover:from-indigo-600 hover:to-purple-700 transition-all disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none">
+                                {isFinding ? <Spinner className="w-5 h-5" /> : <SearchIcon />}
+                                Подобрать треки с помощью ИИ
+                            </button>
+                            <p className="text-xs text-center text-slate-400 mt-2">ИИ проанализирует содержание главы и предложит ключевые слова для поиска.</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 mt-4 pt-4 border-t border-slate-600">
+                            <label className="text-sm font-medium text-slate-300 whitespace-nowrap">Громкость предпрослушивания:</label>
+                            <input 
+                                type="range"
+                                min="0" max="0.5" step="0.01"
+                                value={previewVolume}
+                                onChange={e => setPreviewVolume(Number(e.target.value))}
+                                className="w-full"
+                            />
+                            <span className="text-sm font-bold text-cyan-300 w-12 text-center">{Math.round(previewVolume * 100)}%</span>
+                        </div>
 
-                        <div className="space-y-2 pt-4">
+                        <div className="space-y-2 pt-2">
                             {(isFinding || isFindingManually) && <div className="flex justify-center"><Spinner/></div>}
                             {displayTracks.length > 0 ? (
                                 displayTracks.map(track => (
@@ -343,7 +419,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                     </div>
                      <div className="flex justify-end gap-4 p-4 border-t border-slate-700 flex-shrink-0 bg-slate-800/50 rounded-b-lg">
                         <button onClick={() => setMusicModalChapter(null)} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
-                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Сохранить</button>
+                        <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Применить</button>
                     </div>
                 </div>
             </div>
@@ -353,6 +429,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     if (!podcast) return null;
 
     const allChaptersDone = podcast.chapters.every(c => c.status === 'completed');
+    const someChaptersDone = podcast.chapters.some(c => c.status === 'completed');
     const isQueueActive = !allChaptersDone && podcast.chapters.some(c => c.status !== 'error');
 
     const handleSfxPreview = (url: string, volume: number) => {
@@ -369,6 +446,22 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
 
     return (
         <div className="w-full max-w-5xl mx-auto">
+            {isGeneratingVideo && (
+                <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-slate-800/80 rounded-lg shadow-2xl w-full max-w-lg p-8 text-center">
+                        <Spinner className="w-16 h-16 mx-auto mb-6" />
+                        <h3 className="text-2xl font-bold text-white mb-2">Идет создание видео...</h3>
+                        <p className="text-cyan-300 mb-6">{videoGenerationProgress.message}</p>
+                        <div className="w-full bg-slate-700 rounded-full h-4">
+                            <div 
+                                className="bg-gradient-to-r from-teal-400 to-cyan-500 h-4 rounded-full" 
+                                style={{ width: `${videoGenerationProgress.progress * 100}%`, transition: 'width 0.3s ease' }}
+                            ></div>
+                        </div>
+                        <p className="text-white font-bold text-lg mt-2">{Math.round(videoGenerationProgress.progress * 100)}%</p>
+                    </div>
+                </div>
+            )}
             <audio ref={audioPlayerRef} className="hidden" />
             <MusicFinderModal />
             <SfxFinderModal />
@@ -390,21 +483,6 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 <p className="text-slate-300 mt-2">{podcast.description}</p>
             </header>
 
-            {podcast.characters && podcast.characters.length > 0 && (
-                <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><UserCircleIcon /> Персонажи и голоса</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {podcast.characters.map((char) => (
-                            <div key={char.name} className="bg-slate-900/70 p-4 rounded-lg border border-slate-800">
-                                <p className="font-bold text-cyan-400 text-lg">{char.name}</p>
-                                <p className="text-slate-300 italic text-sm mb-2">{char.description}</p>
-                                    <p className="text-xs text-slate-400">Голос: <span className="font-semibold text-cyan-300">{podcast.characterVoices[char.name] || 'Не назначен'}</span></p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-            
             <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                 <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><SpeakerWaveIcon /> Общие настройки аудио</h3>
                 <div>
@@ -432,7 +510,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         </button>
                     </div>
                 )}
-                {podcast.chapters.map((chapter) => (
+                {podcast.chapters.map((chapter, chapterIndex) => (
                     <div key={chapter.id} className="bg-slate-900/60 backdrop-blur-lg border border-slate-700 rounded-2xl shadow-lg shadow-black/20 overflow-hidden">
                         <div className="p-4 flex items-start sm:items-center justify-between gap-4 flex-col sm:flex-row">
                             <div className="flex items-center gap-4 flex-grow w-full">
@@ -461,97 +539,110 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 </div>
                             </div>
                              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
-                                {(chapter.status === 'script_generating' || chapter.status === 'audio_generating') && <Spinner className="w-5 h-5"/>}
+                                {(chapter.status === 'script_generating' || chapter.status === 'audio_generating' || chapter.status === 'images_generating') && <Spinner className="w-5 h-5"/>}
                                 {chapter.status === 'completed' && audioUrls[chapter.id] && <audio src={audioUrls[chapter.id]} controls className="h-8 w-60 sm:w-72"/>}
                                 {(chapter.status === 'error' || chapter.status === 'completed') && (
                                     <button onClick={() => handleGenerateChapter(chapter.id)} className={`p-1.5 rounded-full ${chapter.status === 'error' ? 'text-red-400 bg-red-900/50 hover:bg-red-800' : 'text-blue-400 bg-blue-900/50 hover:bg-blue-800'}`} title="Повторить генерацию"><RedoIcon className="w-4 h-4"/></button>
                                 )}
                             </div>
                         </div>
-                        {chapter.script.some(l => l.speaker.toUpperCase() === 'SFX') && (
-                            <div className="bg-slate-950/50 p-4 border-t border-slate-700">
-                                <h5 className="font-semibold text-slate-300 mb-3 text-sm">Звуковые эффекты</h5>
-                                <div className="space-y-2">
-                                    {chapter.script.map((line, lineIndex) => line.speaker.toUpperCase() === 'SFX' && (
-                                        <div key={lineIndex} className="grid grid-cols-[1fr_auto_150px] items-center gap-4 p-2 bg-slate-800/50 rounded-lg">
-                                            <div className="truncate">
-                                                <p className="text-slate-300 text-sm truncate italic">"{line.text}"</p>
-                                                <p className="text-xs text-cyan-400 truncate">{line.soundEffect?.name || 'Не выбран'}</p>
+
+                        {(chapter.generatedImages && chapter.generatedImages.length > 0) && (
+                             <details className="bg-slate-950/30 border-t border-slate-700">
+                                <summary className="p-4 cursor-pointer font-semibold text-slate-300 hover:bg-slate-800/50">Изображения для главы ({chapter.generatedImages.length})</summary>
+                                <div className="p-4 border-t border-slate-700">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {chapter.generatedImages.map((imgSrc, index) => (
+                                            <div key={index} className="group relative cursor-pointer" onClick={() => {}}>
+                                                <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
+                                                    <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(chapter.id, index); }} disabled={regeneratingImage !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50" title="Пересоздать"><RedoIcon /></button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setThumbnailBaseImage(imgSrc); }} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30" title="Сделать фоном для обложки"><ImageIcon /></button>
+                                                    <a href={imgSrc} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
+                                                </div>
+                                                {regeneratingImage?.chapterId === chapter.id && regeneratingImage?.index === index && (
+                                                <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
+                                                )}
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews['preview-hq-mp3'], line.soundEffectVolume ?? 0.5)} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-4 h-4"/></button>}
-                                                <button onClick={() => setSfxModalLine({ chapterId: chapter.id, line, lineIndex })} className="p-2 bg-indigo-600/80 rounded-full text-white hover:bg-indigo-700"><EditIcon className="w-4 h-4"/></button>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <SpeakerWaveIcon className="w-4 h-4 text-slate-400"/>
-                                                <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.5} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number(e.target.value))} className="w-full"/>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        ))}
+                                    </div>
+                                    <div className="text-center mt-4">
+                                        <button onClick={() => regenerateChapterImages(chapter.id)} disabled={chapter.status === 'images_generating'} className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600 transition-colors disabled:bg-slate-500 mr-4">
+                                           {chapter.status === 'images_generating' ? <Spinner className="w-5 h-5"/> : <RedoIcon className="w-5 h-5"/>} <span>Обновить все</span>
+                                        </button>
+                                        <button onClick={() => generateMoreImages(chapter.id)} disabled={generatingMoreImages === chapter.id} className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-cyan-600/80 text-white font-bold rounded-lg hover:bg-cyan-700/80 transition-colors disabled:bg-slate-500">
+                                            {generatingMoreImages === chapter.id ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>} <span>+5 изображений</span>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
+                            </details>
+                        )}
+                        
+                        {chapter.script.some(l => l.speaker.toUpperCase() === 'SFX') && (
+                             <details className="bg-slate-950/50 border-t border-slate-700">
+                                <summary className="p-4 cursor-pointer font-semibold text-slate-300 hover:bg-slate-800/50">Звуковые эффекты</summary>
+                                <div className="p-4 border-t border-slate-700">
+                                    <div className="space-y-2">
+                                        {chapter.script.map((line, lineIndex) => line.speaker.toUpperCase() === 'SFX' && (
+                                            <div key={lineIndex} className="grid grid-cols-[1fr_auto_150px] items-center gap-4 p-2 bg-slate-800/50 rounded-lg">
+                                                <div className="truncate">
+                                                    <p className="text-slate-300 text-sm truncate italic">"{line.text}"</p>
+                                                    <p className="text-xs text-cyan-400 truncate">{line.soundEffect?.name || 'Не выбран'}</p>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews['preview-hq-mp3'], line.soundEffectVolume ?? 0.5)} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-4 h-4"/></button>}
+                                                    <button onClick={() => setSfxModalLine({ chapterId: chapter.id, line, lineIndex })} className="p-2 bg-indigo-600/80 rounded-full text-white hover:bg-indigo-700"><EditIcon className="w-4 h-4"/></button>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <SpeakerWaveIcon className="w-4 h-4 text-slate-400"/>
+                                                    <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.5} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number(e.target.value))} className="w-full"/>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </details>
                         )}
                     </div>
                 ))}
             </div>
                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                 <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><WrenchIcon /> Инструменты</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
                     <button onClick={regenerateText} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
                         {isRegeneratingText ? <Spinner className="w-6 h-6"/> : <ScriptIcon />}
                         <span className="font-semibold text-sm">Обновить текст</span>
-                    </button>
-                    <button onClick={regenerateImages} disabled={isRegeneratingImages} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
-                        {isRegeneratingImages ? <Spinner className="w-6 h-6"/> : <ImageIcon />}
-                        <span className="font-semibold text-sm">Новые изображения</span>
                     </button>
                     <button onClick={regenerateAllAudio} disabled={isRegeneratingAudio} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
                         {isRegeneratingAudio ? <Spinner className="w-6 h-6"/> : <SpeakerWaveIcon />}
                         <span className="font-semibold text-sm">Переозвучить всё</span>
                     </button>
-                    <button onClick={regenerateProject} disabled={isLoading} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-red-300">
+                    <button 
+                        onClick={generateVideo} 
+                        disabled={!allChaptersDone || isGeneratingVideo} 
+                        className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-800/60 rounded-lg hover:bg-purple-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-purple-300">
+                        {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
+                        <span className="font-semibold text-sm">Создать Видео</span>
+                    </button>
+                     <button 
+                        onClick={generatePartialVideo}
+                        disabled={!someChaptersDone || isGeneratingVideo}
+                        className="flex flex-col items-center justify-center gap-2 p-4 bg-teal-800/60 rounded-lg hover:bg-teal-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-teal-300"
+                        title="Собрать видео из уже сгенерированных глав">
+                        {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
+                        <span className="font-semibold text-sm text-center">Видео из готового</span>
+                    </button>
+                    <button onClick={regenerateProject} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-red-300">
                         <RedoIcon />
                         <span className="font-semibold text-sm">Пересоздать проект</span>
                     </button>
                 </div>
             </div>
-
-            {(podcast.generatedImages && podcast.generatedImages.length > 0) && (
-                <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                        <div className="mb-8">
-                        <h4 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Галерея Фонов</h4>
-                        <p className="text-sm text-slate-400 mb-4">Нажмите на изображение, чтобы выбрать его в качестве активного фона для всех вариантов обложек.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {podcast.generatedImages.map((imgSrc, index) => (
-                                    <div key={index} className="group relative cursor-pointer" onClick={() => handleBgSelection(index)}>
-                                    <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 ${podcast.selectedBgIndex === index ? 'border-cyan-500' : 'border-transparent'}`} />
-                                        {podcast.selectedBgIndex === index && (
-                                        <div className="absolute top-2 right-2 bg-cyan-600 text-white text-xs font-bold px-2 py-1 rounded">Активный фон</div>
-                                        )}
-                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
-                                            <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(index); }} disabled={regeneratingImageIndex !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50 disabled:cursor-not-allowed" title="Пересоздать это изображение"><RedoIcon /></button>
-                                            <a href={imgSrc} download={`image_${index + 1}_${podcast.topic.replace(/[^a-z0-9а-яё]/gi, '_')}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
-                                        </div>
-                                        {regeneratingImageIndex === index && (
-                                        <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                        <div className="text-center mt-4">
-                            <button
-                                onClick={generateMoreImages}
-                                disabled={isGeneratingMoreImages}
-                                className="flex items-center justify-center gap-2 mx-auto px-4 py-2 bg-cyan-600/80 text-white font-bold rounded-lg hover:bg-cyan-700/80 transition-colors disabled:bg-slate-500"
-                            >
-                                {isGeneratingMoreImages ? <Spinner className="w-5 h-5"/> : <ImageIcon className="w-5 h-5"/>}
-                                <span>Сгенерировать ещё 5</span>
-                            </button>
-                        </div>
-                    </div>
-                    
+            
+            {podcast.thumbnailBaseImage && (
+                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                     {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 && (
-                        <div className="border-t border-slate-700 pt-6">
+                        <div>
                             <div className="mb-8">
                                 <h4 className="text-lg font-semibold text-slate-200 flex items-center gap-3 mb-4"><SubtitleIcon /> Выбор заголовка для обложки</h4>
                                 <div className="space-y-3">
@@ -618,11 +709,11 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 <div className="relative flex-grow" ref={downloadMenuRef}>
                     <button 
                         onClick={() => setIsDownloadMenuOpen(prev => !prev)}
-                        disabled={!allChaptersDone || isLoading || isConvertingToMp3} 
+                        disabled={!allChaptersDone || isConvertingToMp3} 
                         className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-bold rounded-lg hover:from-green-400 hover:to-emerald-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-500/20 hover:shadow-emerald-500/30"
                     >
                         <DownloadIcon />
-                        {isConvertingToMp3 ? `Конвертация в MP3...` : isLoading ? `Сборка WAV...` : allChaptersDone ? "Скачать финальный подкаст" : `Завершите ${podcast.chapters.filter(c => c.status !== 'completed').length} глав`}
+                        {isConvertingToMp3 ? `Конвертация в MP3...` : allChaptersDone ? "Скачать финальный подкаст" : `Завершите ${podcast.chapters.filter(c => c.status !== 'completed').length} глав`}
                     </button>
                     {isDownloadMenuOpen && allChaptersDone && (
                         <div className="absolute bottom-full mb-2 w-full bg-slate-700 rounded-lg shadow-lg z-10 border border-slate-600">
@@ -642,7 +733,11 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </button>
             </div>
             <div className="text-center mt-4">
-                    <button onClick={() => setPodcast(null)} className="px-8 py-4 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600">Начать новый проект</button>
+                    <button onClick={() => {
+                        if (window.confirm("Вы уверены, что хотите вернуться в главное меню? Текущий проект будет сохранен в истории.")) {
+                            setPodcast(null);
+                        }
+                    }} className="px-8 py-4 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600">Вернуться в главное меню</button>
             </div>
         </div>
     );

@@ -1,10 +1,14 @@
+
+
+
 import type { TextOptions } from '../types';
 
 // A cache to avoid re-fetching font CSS
 const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
-    if (!fontFamily || document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
+    // FIX: Use window.document to access the DOM
+    if (!fontFamily || (window.document as any).fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
 
@@ -13,14 +17,17 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
-        if (!document.querySelector(`link[href="${fontUrl}"]`)) {
-            const link = document.createElement('link');
+        // FIX: Use window.document to access the DOM
+        if (!(window.document as any).querySelector(`link[href="${fontUrl}"]`)) {
+            const link = (window.document as any).createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
-            document.head.appendChild(link);
+            // FIX: Use window.document to access the DOM
+            (window.document as any).head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            await document.fonts.load(`900 12px "${fontFamily}"`);
+            // FIX: Use window.document to access the DOM
+            await (window.document as any).fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
     } catch (error) {
@@ -29,8 +36,8 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
     }
 };
 
-
-const wrapText = (context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+// FIX: Change CanvasRenderingContext2D to any to resolve missing type
+const wrapText = (context: any, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
     if (words.length === 0) return [];
     
@@ -53,8 +60,9 @@ const wrapText = (context: CanvasRenderingContext2D, text: string, maxWidth: num
 
 
 export const drawCanvas = async (
-  context: CanvasRenderingContext2D,
-  baseImage: HTMLImageElement,
+  // FIX: Change CanvasRenderingContext2D and HTMLImageElement to any to resolve missing types
+  context: any,
+  baseImage: any,
   options: TextOptions
 ): Promise<void> => {
     const { width, height } = context.canvas;

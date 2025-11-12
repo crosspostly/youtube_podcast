@@ -21,6 +21,7 @@ interface ProjectSetupProps {
     onOpenDesignerTest: () => void;
     onOpenMusicTest: () => void;
     onOpenSfxTest: () => void;
+    onOpenVideoTest: () => void;
 }
 
 const sampleArticles = [
@@ -79,11 +80,11 @@ const VOICES: Voice[] = [
 ];
 
 
-const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesignerTest, onOpenMusicTest, onOpenSfxTest }) => {
+const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesignerTest, onOpenMusicTest, onOpenSfxTest, onOpenVideoTest }) => {
     const {
         isLoading, log, setError,
         history, setPodcast: setPodcastInHistory, clearHistory,
-        saveMediaInHistory, setSaveMediaInHistory,
+        saveMediaInHistory, setSaveMediaInHistory, startVideoTest,
     } = usePodcastContext();
     
     const [projectTitleInput, setProjectTitleInput] = useState<string>('');
@@ -91,7 +92,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const [googleSearchQuestion, setGoogleSearchQuestion] = useState('');
     const [isGoogling, setIsGoogling] = useState(false);
     const [creativeFreedom, setCreativeFreedom] = useState(true);
-    const [totalDurationMinutes, setTotalDurationMinutes] = useState(40);
+    const [totalDurationMinutes, setTotalDurationMinutes] = useState(10);
     const [language, setLanguage] = useState('Русский');
     const [initialImageCount, setInitialImageCount] = useState(3);
     
@@ -311,24 +312,34 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                         <label className="block text-lg font-medium text-slate-200 mb-2">
                             Желаемая длительность: <span className="font-bold text-cyan-400">{totalDurationMinutes} минут</span>
                         </label>
-                        <input
-                            type="range"
-                            min="10"
-                            max="240"
-                            step="5"
-                            value={totalDurationMinutes}
-                            onChange={(e) => setTotalDurationMinutes(Number(e.target.value))}
-                            className="w-full"
-                        />
+                         <div className="flex items-center gap-4">
+                            <input
+                                type="range"
+                                min="1"
+                                max="240"
+                                step="1"
+                                value={totalDurationMinutes}
+                                onChange={(e) => setTotalDurationMinutes(Number(e.target.value))}
+                                className="w-full"
+                            />
+                            <input 
+                                type="number"
+                                min="1"
+                                max="240"
+                                value={totalDurationMinutes}
+                                onChange={(e) => setTotalDurationMinutes(Number(e.target.value))}
+                                className="w-24 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"
+                            />
+                        </div>
                     </div>
                         <div>
                         <label className="block text-lg font-medium text-slate-200 mb-2">
-                            Количество фоновых изображений: <span className="font-bold text-cyan-400">{initialImageCount}</span>
+                            Количество фоновых изображений (на главу): <span className="font-bold text-cyan-400">{initialImageCount}</span>
                         </label>
                         <input
                             type="range"
                             min="1"
-                            max="15"
+                            max="10"
                             step="1"
                             value={initialImageCount}
                             onChange={(e) => setInitialImageCount(Number(e.target.value))}
@@ -402,7 +413,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
             <div className="w-full flex flex-col gap-4 mb-8">
                 <button onClick={handleStartProjectClick} disabled={isLoading || !projectTitleInput} className="w-full px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-xl font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 hover:shadow-blue-500/30 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none disabled:cursor-not-allowed">Начать проект</button>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <button onClick={onOpenDesignerTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
                         <BeakerIcon className="w-6 h-6"/>
                         <span>Тест AI-дизайнера</span>
@@ -414,6 +425,14 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                      <button onClick={onOpenSfxTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
                         <BeakerIcon className="w-6 h-6"/>
                         <span>Тест SFX</span>
+                    </button>
+                    <button onClick={startVideoTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-purple-800/60 text-white font-bold rounded-lg hover:bg-purple-700/80 transition-colors">
+                        <BeakerIcon className="w-6 h-6"/>
+                        <span>Тест Видео-движка</span>
+                    </button>
+                     <button onClick={onOpenVideoTest} className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 transition-colors">
+                        <BeakerIcon className="w-6 h-6"/>
+                        <span>Диагностика Видео</span>
                     </button>
                 </div>
             </div>
