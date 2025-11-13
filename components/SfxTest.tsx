@@ -59,14 +59,30 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
             setPreviewingUrl(null);
         } else {
             audio.pause();
-            audio.src = url;
+            // Use audio proxy to avoid CORS issues
+            const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+            audio.src = proxyUrl;
             audio.volume = 0.5;
+            
+            // Log CORS proxy usage
+            log({ 
+                type: 'info', 
+                message: `Using audio proxy for freesound URL`,
+                data: { originalUrl: url, proxyUrl }
+            });
+            
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
                     setPreviewingUrl(url);
                 }).catch((error: any) => {
                     console.error("Audio playback failed:", error);
+                    // Log CORS or other playback errors
+                    log({ 
+                        type: 'error', 
+                        message: `Audio playback failed via proxy`,
+                        data: { error: error.message, originalUrl: url, proxyUrl }
+                    });
                     setPreviewingUrl(null);
                 });
             }
