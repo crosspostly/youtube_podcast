@@ -1,3 +1,4 @@
+﻿import { safeLower } from './utils/safeLower';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NarrationMode, Voice } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
