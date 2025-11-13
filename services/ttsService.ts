@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
-import { withRetries, generateContentWithFallback } from './geminiService';
+import { withQueueAndRetries, generateContentWithFallback } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -568,7 +568,7 @@ const generateAudioWithRetries = async (
     try {
         log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
         const generateCall = () => ai.models.generateContent({ model, ...params });
-        const response = await withRetries(generateCall, log);
+        const response = await withQueueAndRetries(generateCall, log);
         log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
         return response;
     } catch (error) {

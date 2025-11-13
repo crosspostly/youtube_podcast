@@ -1,11 +1,139 @@
-﻿import { safeLower } from './utils/safeLower';
-
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
 type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response'; message: string; data?: any; }) => void;
+
+// Queue implementation for Gemini API requests
+interface QueueItem {
+    id: string;
+    execute: () => Promise<any>;
+    resolve: (result: any) => void;
+    reject: (error: any) => void;
+    timestamp: number;
+}
+
+class GeminiRequestQueue {
+    private queue: QueueItem[] = [];
+    private isProcessing = false;
+    private lastRequestTime = 0;
+    private readonly minDelayBetweenRequests = 150; // 150ms between requests
+    private readonly maxConcurrentRequests = 1; // Only 1 request at a time
+    private currentRequests = 0;
+    private log: LogFunction;
+
+    constructor(log: LogFunction) {
+        this.log = log;
+    }
+
+    async add<T>(executeFn: () => Promise<T>): Promise<T> {
+        return new Promise<T>((resolve, reject) => {
+            const item: QueueItem = {
+                id: crypto.randomUUID(),
+                execute: executeFn,
+                resolve,
+                reject,
+                timestamp: Date.now()
+            };
+
+            this.queue.push(item);
+            this.log({ 
+                type: 'info', 
+                message: `Request added to queue. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
+            });
+
+            this.processQueue();
+        });
+    }
+
+    private async processQueue(): Promise<void> {
+        if (this.isProcessing || this.currentRequests >= this.maxConcurrentRequests || this.queue.length === 0) {
+            return;
+        }
+
+        this.isProcessing = true;
+
+        while (this.queue.length > 0 && this.currentRequests < this.maxConcurrentRequests) {
+            const item = this.queue.shift();
+            if (!item) break;
+
+            this.currentRequests++;
+            this.log({ 
+                type: 'info', 
+                message: `Processing request ${item.id}. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
+            });
+
+            // Calculate delay needed since last request
+            const now = Date.now();
+            const timeSinceLastRequest = now - this.lastRequestTime;
+            const delayNeeded = Math.max(0, this.minDelayBetweenRequests - timeSinceLastRequest);
+
+            if (delayNeeded > 0) {
+                this.log({ 
+                    type: 'info', 
+                    message: `Delaying request ${item.id} by ${delayNeeded}ms to respect rate limits` 
+                });
+                await this.delay(delayNeeded);
+            }
+
+            // Execute the request
+            this.executeRequest(item);
+        }
+
+        this.isProcessing = false;
+    }
+
+    private async executeRequest(item: QueueItem): Promise<void> {
+        try {
+            this.log({ 
+                type: 'request', 
+                message: `Executing request ${item.id}` 
+            });
+            
+            this.lastRequestTime = Date.now();
+            const result = await item.execute();
+            
+            this.log({ 
+                type: 'response', 
+                message: `Request ${item.id} completed successfully` 
+            });
+            
+            item.resolve(result);
+        } catch (error) {
+            this.log({ 
+                type: 'error', 
+                message: `Request ${item.id} failed`, 
+                data: error 
+            });
+            
+            item.reject(error);
+        } finally {
+            this.currentRequests--;
+            this.log({ 
+                type: 'info', 
+                message: `Request ${item.id} finished. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
+            });
+            
+            // Process next items in queue
+            this.processQueue();
+        }
+    }
+
+    private delay(ms: number): Promise<void> {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+}
+
+// Global queue instance
+let globalQueue: GeminiRequestQueue | null = null;
+
+const getQueue = (log: LogFunction): GeminiRequestQueue => {
+    if (!globalQueue) {
+        globalQueue = new GeminiRequestQueue(log);
+        log({ type: 'info', message: 'Gemini API request queue initialized' });
+    }
+    return globalQueue;
+};
 
 // Centralized client creation.
 const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
@@ -55,6 +183,13 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
     throw new Error("Exhausted all retries. This should not be reached.");
 };
 
+// Queue-aware retry wrapper for any async function.
+// Combines queue management with retry logic for better rate limit handling.
+export const withQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
+    const queue = getQueue(log);
+    return await queue.add(() => withRetries(fn, log, retries, initialDelay));
+};
+
 // Define primary and fallback models for text generation
 // FIX: Use the more capable model as primary and the faster model as fallback.
 const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
@@ -67,6 +202,8 @@ export const generateContentWithFallback = async (
     customApiKey?: string
 ): Promise<GenerateContentResponse> => {
     
+    const queue = getQueue(log);
+    
     const attemptGeneration = (model: string) => {
         log({ type: 'request', message: `Attempting generation with model: ${model}`, data: { contents: params.contents } });
         const ai = getAiClient(customApiKey, log);
@@ -74,15 +211,15 @@ export const generateContentWithFallback = async (
     };
 
     try {
-        // First, try the primary model, wrapped in our retry logic.
-        return await withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log);
+        // First, try the primary model, wrapped in our retry logic and queue.
+        return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log));
     } catch (primaryError) {
         log({ type: 'error', message: `Primary model (${PRIMARY_TEXT_MODEL}) failed after all retries.`, data: primaryError });
         log({ type: 'info', message: `Switching to fallback model: ${FALLBACK_TEXT_MODEL}` });
         
         try {
-            // If the primary fails, try the fallback model, also with retries.
-            return await withRetries(() => attemptGeneration(FALLBACK_TEXT_MODEL), log);
+            // If the primary fails, try the fallback model, also with retries and queue.
+            return await queue.add(() => withRetries(() => attemptGeneration(FALLBACK_TEXT_MODEL), log));
         } catch (fallbackError) {
             log({ type: 'error', message: `Fallback model (${FALLBACK_TEXT_MODEL}) also failed after all retries.`, data: fallbackError });
             // If both fail, throw a comprehensive error.
