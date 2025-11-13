@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
 import { withQueueAndRetries, generateContentWithFallback } from './geminiService';
@@ -270,50 +270,31 @@ const getScriptLengthInstruction = (totalDurationMinutes: number): string => {
 const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey?: string): Promise<any> => {
     log({ type: 'response', message: 'Сырой ответ от Gemini', data: rawText });
     const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
-    let jsonText = jsonMatch ? jsonMatch[1] : rawText;
+    const jsonText = jsonMatch ? jsonMatch[1] : rawText;
 
-    // A common failure is the model returning a simple string instead of JSON.
-    // Let's try to detect that and wrap it into a valid JSON structure if the schema expects it.
     try {
-        // Attempt to parse directly
         return JSON.parse(jsonText);
-    } catch (initialError) {
-        // It failed. Check if it's a simple string that needs fixing.
-        if (!jsonText.trim().startsWith('{') && !jsonText.trim().startsWith('[')) {
-             log({ type: 'info', message: 'Ответ не похож на JSON, попытка исправления...' });
-             // Try to find if there's a JSON object hidden inside.
-             const hiddenJsonMatch = jsonText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-             if (hiddenJsonMatch) {
-                 jsonText = hiddenJsonMatch[0];
-                 try {
-                     return JSON.parse(jsonText);
-                 } catch (secondError) {
-                     // The hidden JSON was also malformed. Fallback to AI correction.
-                 }
-             }
-        }
-    }
-
-    // If all else fails, use the AI to fix it.
-    log({ type: 'error', message: 'Не удалось распарсить JSON, попытка исправления с помощью ИИ...', data: { error: "Malformed JSON", text: jsonText } });
-    
-    const correctionPrompt = `The following text is a malformed JSON response from an API. Please correct any syntax errors (like trailing commas, missing brackets, or unescaped quotes) and return ONLY the valid JSON object. Do not include any explanatory text or markdown formatting like \`\`\`json.
-
-    Malformed JSON:
-    ${jsonText}`;
-
-    try {
-        const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKey);
-        const correctedRawText = correctionResponse.text;
-        log({ type: 'info', message: 'Получен исправленный JSON от ИИ.', data: correctedRawText });
+    } catch (jsonError) {
+        log({ type: 'error', message: 'Не удалось распарсить JSON, попытка исправления с помощью ИИ...', data: { error: jsonError, text: jsonText } });
         
-        const correctedJsonMatch = correctedRawText.match(/```json\s*([\s\S]*?)\s*```/);
-        const correctedJsonText = correctedJsonMatch ? correctedJsonMatch[1] : correctedRawText;
-        return JSON.parse(correctedJsonText);
+        const correctionPrompt = `The following text is a malformed JSON response from an API. Please correct any syntax errors (like trailing commas, missing brackets, or unescaped quotes) and return ONLY the valid JSON object. Do not include any explanatory text or markdown formatting like \`\`\`json.
 
-    } catch (correctionError) {
-         log({ type: 'error', message: 'Не удалось исправить и распарсить JSON даже после второй попытки.', data: correctionError });
-         throw new Error(`Ответ модели не является валидным JSON, и попытка автоматического исправления не удалась.`);
+        Malformed JSON:
+        ${jsonText}`;
+
+        try {
+            const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKey);
+            const correctedRawText = correctionResponse.text;
+            log({ type: 'info', message: 'Получен исправленный JSON от ИИ.', data: correctedRawText });
+            
+            const correctedJsonMatch = correctedRawText.match(/```json\s*([\s\S]*?)\s*```/);
+            const correctedJsonText = correctedJsonMatch ? correctedJsonMatch[1] : correctedRawText;
+            return JSON.parse(correctedJsonText);
+
+        } catch (correctionError) {
+             log({ type: 'error', message: 'Не удалось исправить и распарсить JSON даже после второй попытки.', data: correctionError });
+             throw new Error(`Ответ модели не является валидным JSON, и попытка автоматического исправления не удалась.`);
+        }
     }
 };
 
@@ -410,35 +391,28 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKeys?.gemini);
         const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
 
+        // Auto-find SFX for the generated script
+        const populatedScript = await Promise.all(data.chapter.script.map(async (line: ScriptLine) => {
+            if (line.speaker.toUpperCase() === 'SFX') {
+                try {
+                    const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
+                    if (sfxTracks.length > 0) {
+                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                    }
+                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
+            }
+            return line;
+        }));
+        data.chapter.script = populatedScript;
+
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
         const sources: Source[] = knowledgeBaseText ? [] : Array.from(new Map<string, Source>(groundingChunks.map((c: any) => c.web).filter((w: any) => w?.uri).map((w: any) => [w.uri, { uri: w.uri, title: w.title?.trim() || w.uri }])).values());
         
-        // --- BATCH SFX PROCESSING ---
-        const sfxLines = data.chapter.script.map((line: ScriptLine, index: number) => ({ ...line, originalIndex: index }))
-                                            .filter((line: ScriptLine & { originalIndex: number }) => line.speaker.toUpperCase() === 'SFX');
-        
-        if (sfxLines.length > 0) {
-            const sfxDescriptions = sfxLines.map((line: ScriptLine) => line.text);
-            try {
-                const sfxResults = await findSfxBatchWithAi(sfxDescriptions, log, apiKeys);
-                sfxResults.forEach((sfxResult, i) => {
-                    if (sfxResult && sfxLines[i]) {
-                        const originalIndex = sfxLines[i].originalIndex;
-                        data.chapter.script[originalIndex].soundEffect = sfxResult;
-                        data.chapter.script[originalIndex].soundEffectVolume = 0.5;
-                    }
-                });
-            } catch (e) {
-                log({ type: 'error', message: 'Ошибка при пакетном поиске SFX, эффекты не будут добавлены автоматически.', data: e });
-            }
-        }
-        // --- END BATCH SFX PROCESSING ---
-
         const firstChapter: Chapter = {
             id: crypto.randomUUID(),
             title: data.chapter.title,
             script: data.chapter.script,
-            status: 'script_generating', // Script is ready, media is next
+            status: 'pending',
             imagePrompts: data.chapter.imagePrompts || [],
             selectedBgIndex: 0,
         };
@@ -545,27 +519,20 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
         const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
         const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
 
-        // --- BATCH SFX PROCESSING ---
-        const sfxLines = data.script.map((line: ScriptLine, index: number) => ({ ...line, originalIndex: index }))
-                                      .filter((line: ScriptLine & { originalIndex: number }) => line.speaker.toUpperCase() === 'SFX');
-
-        if (sfxLines.length > 0) {
-            const sfxDescriptions = sfxLines.map((line: ScriptLine) => line.text);
-            try {
-                const sfxResults = await findSfxBatchWithAi(sfxDescriptions, log, apiKeys);
-                sfxResults.forEach((sfxResult, i) => {
-                    if (sfxResult && sfxLines[i]) {
-                        const originalIndex = sfxLines[i].originalIndex;
-                        data.script[originalIndex].soundEffect = sfxResult;
-                        data.script[originalIndex].soundEffectVolume = 0.5;
+        // Auto-find SFX for the generated script
+        const populatedScript = await Promise.all(data.script.map(async (line: ScriptLine) => {
+            if (line.speaker.toUpperCase() === 'SFX') {
+                try {
+                    const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
+                    if (sfxTracks.length > 0) {
+                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
                     }
-                });
-            } catch (e) {
-                log({ type: 'error', message: 'Ошибка при пакетном поиске SFX для новой главы.', data: e });
+                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
             }
-        }
-        // --- END BATCH SFX PROCESSING ---
-        
+            return line;
+        }));
+        data.script = populatedScript;
+
         log({ type: 'info', message: `Сценарий для главы ${chapterIndex + 1} успешно создан.` });
         return data;
     } catch (error) {
@@ -835,11 +802,10 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: 
         Keywords:`;
         
         const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKey);
-        // Sanitize the response to remove any markdown or prefixes.
-        const keywords = keywordsResponse.text.replace(/(\*\*Keywords:\*\*|\*|Keywords:)/gi, '').trim();
+        const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
 
-        let searchTerms = keywords.split(/[\s,]+/).filter(Boolean);
+        let searchTerms = keywords.split(/[\s,]+/);
         while (searchTerms.length > 0) {
             const currentQuery = searchTerms.join(' ');
             log({ type: 'info', message: `Поиск музыки по запросу: "${currentQuery}"` });
@@ -902,10 +868,9 @@ export const findSfxManually = async (keywords: string, log: LogFunction, apiKey
 };
 
 export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<SoundEffect[]> => {
-    log({ type: 'info', message: `Запрос к ИИ для подбора ключевых слов для SFX: "${description}"` });
-    
+    log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
     try {
-        const keywordsPrompt = `Analyze the following sound effect description: "${description}".
+        const prompt = `Analyze the following sound effect description: "${description}".
         Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
         Focus on the core sound, avoiding generic terms like "sound of".
         
@@ -916,12 +881,12 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         
         Description: "${description}"
         Keywords:`;
-        
-        const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKeys?.gemini);
-        const keywords = keywordsResponse.text.replace(/(\*\*Keywords:\*\*|\*|Keywords:)/gi, '').trim();
+
+        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
+        const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
 
-        let searchTerms = keywords.split(/[\s,]+/).filter(Boolean);
+        let searchTerms = keywords.split(/[\s,]+/);
         while (searchTerms.length > 0) {
             const currentQuery = searchTerms.join(' ');
             log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
@@ -931,100 +896,13 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
                 return sfxResults;
             }
             log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
-            searchTerms.pop();
+            searchTerms.pop(); // Remove the last keyword and retry
         }
 
         log({ type: 'info', message: 'Не удалось найти SFX даже после сокращения запроса.' });
-        return [];
-
+        return []; // Return empty if all attempts fail
     } catch (error) {
         log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error });
-        throw new Error('Не удалось подобрать SFX.');
-    }
-};
-
-
-export const findSfxBatchWithAi = async (descriptions: string[], log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<(SoundEffect | null)[]> => {
-    if (descriptions.length === 0) return [];
-    
-    log({ type: 'info', message: `Начало пакетного подбора ключевых слов для ${descriptions.length} SFX.` });
-
-    try {
-        const prompt = `You are an expert sound designer. Analyze the following list of sound effect descriptions. For each description, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org. Focus on the core sound, avoiding generic terms like "sound of".
-        
-        Return the result as a SINGLE VALID JSON OBJECT with a "queries" key containing an array of strings. The array must have the exact same number of elements as the input array.
-        
-        Example Input:
-        [
-            "Sound of a heavy wooden door creaking open",
-            "A wolf howls at the full moon in a forest",
-            "Footsteps on wet pavement"
-        ]
-        
-        Example Output:
-        {
-            "queries": [
-                "heavy door creak",
-                "wolf howl forest",
-                "footsteps wet pavement"
-            ]
-        }
-        
-        Descriptions:
-        ${JSON.stringify(descriptions, null, 2)}`;
-
-        const response = await generateContentWithFallback({
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.OBJECT,
-                    properties: {
-                        queries: {
-                            type: Type.ARRAY,
-                            items: { type: Type.STRING }
-                        }
-                    }
-                }
-            }
-        }, log, apiKeys?.gemini);
-
-        const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
-        const keywordsArray = data.queries;
-
-        if (!Array.isArray(keywordsArray) || keywordsArray.length !== descriptions.length) {
-            throw new Error(`AI returned an incorrect number of keyword sets. Expected ${descriptions.length}, got ${keywordsArray?.length || 0}`);
-        }
-
-        log({ type: 'info', message: 'Ключевые слова для SFX получены, начинаем параллельный поиск на Freesound.' });
-
-        const searchPromises = keywordsArray.map(async (keywords: string, index: number) => {
-            if (!keywords || typeof keywords !== 'string' || !keywords.trim()) {
-                log({ type: 'info', message: `ИИ не вернул ключевых слов для описания #${index + 1}, поиск невозможен.` });
-                return null;
-            }
-            
-            const sanitizedKeywords = keywords.replace(/(\*\*Keywords:\*\*|\*|Keywords:)/gi, '').trim();
-            let searchTerms = sanitizedKeywords.split(/[\s,]+/).filter(Boolean);
-            
-            while (searchTerms.length > 0) {
-                const currentQuery = searchTerms.join(' ');
-                const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys?.freesound);
-                if (sfxResults.length > 0) {
-                    log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
-                    return sfxResults[0]; // Return the most relevant result
-                }
-                searchTerms.pop(); // Remove the last keyword and retry
-            }
-            return null; // No results found
-        });
-
-        const results = await Promise.all(searchPromises);
-        log({ type: 'response', message: 'Пакетный поиск SFX завершен.' });
-        return results;
-
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка в процессе пакетного поиска SFX с ИИ.', data: error });
         throw new Error('Не удалось подобрать SFX.');
     }
 };

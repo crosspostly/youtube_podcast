@@ -1,9 +1,11 @@
 import { safeLower } from '../utils/safeLower-util';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, regenerateTextAssets, generateThumbnailDesignConcepts, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually, findSfxBatchWithAi } from '../services/ttsService';
+import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
+import { generateSrtFile } from '../services/srtService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
+import { generateVideo as generateVideoService } from '../services/videoService';
 import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect } from '../types';
 import { TEST_PODCAST_BLUEPRINT } from '../services/testData';
 
@@ -37,10 +39,11 @@ export const usePodcast = (
     const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false);
     const [editingThumbnail, setEditingThumbnail] = useState<YoutubeThumbnail | null>(null);
 
-    const podcastRef = React.useRef(podcast);
-    useEffect(() => {
-        podcastRef.current = podcast;
-    }, [podcast]);
+    const [isConvertingToMp3, setIsConvertingToMp3] = useState(false);
+    const [isGeneratingSrt, setIsGeneratingSrt] = useState(false);
+    const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+    const [videoGenerationProgress, setVideoGenerationProgress] = useState<{ progress: number, message: string }>({ progress: 0, message: '' });
+
 
     const setPodcast = useCallback((updater: React.SetStateAction<Podcast | null>) => {
         setPodcastState(prev => {
@@ -80,100 +83,62 @@ export const usePodcast = (
         if (!imagePrompts || imagePrompts.length === 0) return [];
 
         try {
-            const newImages = await generateStyleImages(imagePrompts, podcastRef.current?.initialImageCount || 3, log, apiKeys);
+            const newImages = await generateStyleImages(imagePrompts, 3, log, apiKeys);
             return newImages;
         } catch (err: any) {
             const chapterTitle = podcastRef.current?.chapters.find(c => c.id === chapterId)?.title || `ID: ${chapterId}`;
             log({type: 'error', message: `Ошибка при генерации изображений для главы ${chapterTitle}`, data: err});
             updateChapterState(chapterId, 'error', { error: "Ошибка генерации изображений" });
-            throw err;
+            return [];
         }
     }, [updateChapterState, log, apiKeys]);
 
-    const generateChapterAssets = useCallback(async (chapterId: string, script: ScriptLine[], imagePrompts: string[]) => {
-        const currentPodcast = podcastRef.current;
-        if (!currentPodcast || !script || script.length === 0) return;
-
-        try {
-            updateChapterState(chapterId, 'audio_generating');
-            
-            const scriptText = script.map(line => line.text).join(' ');
-            
-            const [musicTracks, newImages, audioBlob] = await Promise.all([
-                findMusicWithAi(scriptText, log, apiKeys.gemini),
-                generateImagesForChapter(chapterId, imagePrompts),
-                generateChapterAudio(script, currentPodcast.narrationMode, currentPodcast.characterVoices, currentPodcast.monologueVoice, log, apiKeys.gemini)
-            ]);
-            
-            const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
-            
-            updateChapterState(chapterId, 'completed', { 
-                audioBlob,
-                generatedImages: newImages || [],
-                backgroundMusic
-            });
-            
-            const chapterIndex = currentPodcast.chapters.findIndex(c => c.id === chapterId);
-            if (chapterIndex === 0 && podcastRef.current && (!podcastRef.current.youtubeThumbnails || podcastRef.current.youtubeThumbnails.length === 0)) {
-                log({ type: 'info', message: 'Первая глава готова, запускаем генерацию обложек.' });
-                const baseImage = newImages && newImages.length > 0 ? newImages[0] : undefined;
-                if (baseImage) {
-                    try {
-                        const designConcepts = await generateThumbnailDesignConcepts(podcastRef.current.topic, podcastRef.current.language, log, apiKeys.gemini);
-                        const youtubeThumbnails = await generateYoutubeThumbnails(baseImage, podcastRef.current.selectedTitle, designConcepts, log, defaultFont);
-                        setPodcast(p => p ? { ...p, youtubeThumbnails, designConcepts, thumbnailBaseImage: baseImage } : null);
-                    } catch (thumbError) {
-                        log({ type: 'error', message: 'Не удалось сгенерировать обложки.', data: thumbError });
-                    }
-                }
-            }
-
-        } catch (err: any) {
-             const chapterIndex = currentPodcast.chapters.findIndex(c => c.id === chapterId);
-             const errorMessage = err.message || 'Неизвестная ошибка при генерации ресурсов главы.';
-             log({type: 'error', message: `Ошибка при генерации ресурсов для главы ${chapterIndex + 1}`, data: err});
-             updateChapterState(chapterId, 'error', { error: errorMessage });
-        }
-
-    }, [log, updateChapterState, generateImagesForChapter, apiKeys, setPodcast, defaultFont]);
-
 
     const handleGenerateChapter = useCallback(async (chapterId: string) => {
-        const currentPodcast = podcastRef.current;
-        if (!currentPodcast) return;
-        const chapterIndex = currentPodcast.chapters.findIndex(c => c.id === chapterId);
+        if (!podcast) return;
+        const chapterIndex = podcast.chapters.findIndex(c => c.id === chapterId);
         if (chapterIndex === -1) return;
     
         try {
-            // Step 1: Generate Script (and image prompts)
+            // Step 1: Generate Script
             updateChapterState(chapterId, 'script_generating');
-            const chapterData = await generateNextChapterScript(currentPodcast.topic, currentPodcast.selectedTitle, currentPodcast.characters, currentPodcast.chapters.slice(0, chapterIndex), chapterIndex, currentPodcast.totalDurationMinutes, currentPodcast.knowledgeBaseText || '', currentPodcast.creativeFreedom, currentPodcast.language, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+            const chapterData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.totalDurationMinutes, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
             
-            setPodcast(p => {
-                if (!p) return null;
-                const newChapters = p.chapters.map(c => c.id === chapterId ? {
-                    ...c, 
-                    script: chapterData.script, 
-                    title: chapterData.title, 
-                    imagePrompts: chapterData.imagePrompts,
-                } : c);
-                return {...p, chapters: newChapters};
+            // Step 2: Find Music
+            const scriptText = chapterData.script.map(line => line.text).join(' ');
+            const musicTracks = await findMusicWithAi(scriptText, log, apiKeys.gemini);
+            const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
+            
+            updateChapterState(chapterId, 'images_generating', { 
+                script: chapterData.script, 
+                title: chapterData.title, 
+                imagePrompts: chapterData.imagePrompts,
+                backgroundMusic
             });
 
-            // Step 2: Generate assets in parallel, passing fresh data to avoid stale state
-            await generateChapterAssets(chapterId, chapterData.script, chapterData.imagePrompts);
+            // Step 3: Generate Images (using prompts from Step 1)
+            const newImages = await generateImagesForChapter(chapterId, chapterData.imagePrompts);
+            updateChapterState(chapterId, 'audio_generating', { generatedImages: newImages });
+
+            // Step 4: Generate Audio (using the script from Step 1)
+            const audioBlob = await generateChapterAudio(chapterData.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys.gemini);
+            updateChapterState(chapterId, 'completed', { audioBlob });
 
         } catch (err: any) {
             const errorMessage = err.message || 'Неизвестная ошибка при генерации главы.';
             log({type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1}`, data: err});
             updateChapterState(chapterId, 'error', { error: errorMessage });
         }
-    }, [log, updateChapterState, generateChapterAssets, apiKeys, setPodcast]);
+    }, [podcast, log, updateChapterState, generateImagesForChapter, apiKeys]);
+
+    const podcastRef = React.useRef(podcast);
+    useEffect(() => {
+        podcastRef.current = podcast;
+    }, [podcast]);
 
     useEffect(() => {
         const pendingChapter = podcast?.chapters.find(c => c.status === 'pending');
-        // IMPORTANT: The first chapter is now handled by startNewProject, so this effect only runs for subsequent chapters.
-        if (pendingChapter && podcast && podcast.chapters.findIndex(c => c.id === pendingChapter.id) > 0 && !isLoading && !isGeneratingChapter && !isGenerationPaused) {
+        if (pendingChapter && !isLoading && !isGeneratingChapter && !isGenerationPaused) {
             setIsGeneratingChapter(true);
             handleGenerateChapter(pendingChapter.id).finally(() => setIsGeneratingChapter(false));
         }
@@ -188,11 +153,35 @@ export const usePodcast = (
         setGenerationProgress(0);
         setIsGenerationPaused(false);
 
-        setLoadingStatus([{ label: 'Анализ темы и создание концепции...', status: 'in_progress' }]);
+        const initialSteps: LoadingStatus[] = [
+            { label: 'Анализ темы и создание концепции', status: 'pending' },
+            { label: 'Подбор музыки и SFX для первой главы', status: 'pending' },
+            { label: 'Генерация изображений для первой главы', status: 'pending' },
+            { label: 'Озвучивание первой главы', status: 'pending' },
+            { label: 'Разработка дизайн-концепций обложек', status: 'pending' },
+            { label: 'Создание вариантов обложек для YouTube', status: 'pending' }
+        ];
+        setLoadingStatus(initialSteps);
+    
+        const updateStatus = (label: string, status: LoadingStatus['status']) => {
+            setLoadingStatus(prev => prev.map(step => step.label === label ? { ...step, status } : step));
+        };
         
         try {
+            updateStatus('Анализ темы и создание концепции', 'in_progress');
             const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+            updateStatus('Анализ темы и создание концепции', 'completed');
+            setGenerationProgress(15);
             
+            updateStatus('Подбор музыки и SFX для первой главы', 'in_progress');
+            const firstChapterScriptText = blueprint.chapters[0].script.map(line => line.text).join(' ');
+            const musicTracks = await findMusicWithAi(firstChapterScriptText, log, apiKeys.gemini);
+            if (musicTracks.length > 0) {
+                blueprint.chapters[0].backgroundMusic = musicTracks[0];
+            }
+            updateStatus('Подбор музыки и SFX для первой главы', 'completed');
+            setGenerationProgress(30);
+
             const finalCharacterVoices: { [key: string]: string } = {};
             if (blueprint.characters.length > 0 && characterVoicePrefs.character1) {
                 finalCharacterVoices[blueprint.characters[0].name] = characterVoicePrefs.character1;
@@ -201,13 +190,35 @@ export const usePodcast = (
                 finalCharacterVoices[blueprint.characters[1].name] = characterVoicePrefs.character2;
             }
 
-            const selectedTitle = blueprint.youtubeTitleOptions[0] || topic;
+            updateStatus('Генерация изображений для первой главы', 'in_progress');
+            const generatedImages = await generateStyleImages(blueprint.chapters[0].imagePrompts, initialImageCount, log, apiKeys);
+            blueprint.chapters[0].generatedImages = generatedImages;
+            updateStatus('Генерация изображений для первой главы', 'completed');
+            setGenerationProgress(p => p + 25);
+
+            updateStatus('Озвучивание первой главы', 'in_progress');
+            const firstChapterAudio = await generateChapterAudio(blueprint.chapters[0].script, narrationMode, finalCharacterVoices, monologueVoice, log, apiKeys.gemini);
+            updateStatus('Озвучивание первой главы', 'completed');
+            setGenerationProgress(p => p + 20);
             
+            updateStatus('Разработка дизайн-концепций обложек', 'in_progress');
+            const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys.gemini);
+            updateStatus('Разработка дизайн-концепций обложек', 'completed');
+            setGenerationProgress(p => p + 5);
+            
+            const selectedTitle = blueprint.youtubeTitleOptions[0] || topic;
+            const thumbnailBaseImage = generatedImages.length > 0 ? generatedImages[0] : undefined;
+
+            updateStatus('Создание вариантов обложек для YouTube', 'in_progress');
+            const youtubeThumbnails = thumbnailBaseImage ? await generateYoutubeThumbnails(thumbnailBaseImage, selectedTitle, designConcepts, log, defaultFont) : [];
+            updateStatus('Создание вариантов обложек для YouTube', 'completed');
+            setGenerationProgress(100);
+
             const CHAPTER_DURATION_MIN = 7;
             const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN));
+            const firstChapter: Chapter = { ...blueprint.chapters[0], status: 'completed', audioBlob: firstChapterAudio };
             
-            const firstChapter: Chapter = { ...blueprint.chapters[0], status: 'audio_generating' }; // Status is now audio_generating
-            
+            // Refactored to use a functional approach instead of a loop with .push()
             const additionalChapters: Chapter[] = Array.from({ length: Math.max(0, totalChapters - 1) }, (_, i) => ({
                 id: crypto.randomUUID(),
                 title: `Глава ${i + 2}`,
@@ -220,27 +231,31 @@ export const usePodcast = (
             const newPodcast: Podcast = {
                 id: crypto.randomUUID(), ...blueprint, topic, selectedTitle, language,
                 chapters: [firstChapter, ...additionalChapters],
-                youtubeThumbnails: [],
-                designConcepts: [], knowledgeBaseText: knowledgeBaseText,
+                youtubeThumbnails: youtubeThumbnails || [],
+                designConcepts: designConcepts || [], knowledgeBaseText: knowledgeBaseText,
                 creativeFreedom: creativeFreedom, totalDurationMinutes: totalDurationMinutes,
                 narrationMode, characterVoices: finalCharacterVoices, monologueVoice,
-                backgroundMusicVolume: 0.02, initialImageCount,
+                backgroundMusicVolume: 0.02, initialImageCount, thumbnailBaseImage,
                 videoPacingMode: 'auto',
             };
             
             setPodcast(newPodcast);
-
-            // Fire and forget: start generating assets for the first chapter in the background, passing fresh data
-            generateChapterAssets(firstChapter.id, firstChapter.script, firstChapter.imagePrompts);
-
         } catch (err: any) {
-            setLoadingStatus([{ label: 'Ошибка при создании концепции', status: 'error' }]);
+            setLoadingStatus(prev => {
+                const currentStepIndex = prev.findIndex(s => s.status === 'in_progress');
+                if (currentStepIndex !== -1) {
+                    const newStatus = [...prev];
+                    newStatus[currentStepIndex] = { ...newStatus[currentStepIndex], status: 'error' };
+                    return newStatus;
+                }
+                return prev;
+            });
             setError(err.message || 'Произошла неизвестная ошибка.');
             log({ type: 'error', message: 'Критическая ошибка при инициализации проекта', data: err });
         } finally {
             setIsLoading(false);
         }
-    }, [log, setPodcast, apiKeys, generateChapterAssets]);
+    }, [log, setPodcast, apiKeys, defaultFont]);
 
     const startVideoTest = useCallback(async () => {
         setIsLoading(true);
@@ -321,6 +336,120 @@ export const usePodcast = (
             setIsLoading(false);
         }
     }, [log, setPodcast, apiKeys.gemini]);
+
+    const combineAndDownload = async (format: 'wav' | 'mp3' = 'wav') => {
+        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
+        
+        const setLoading = format === 'mp3' ? setIsConvertingToMp3 : setIsLoading;
+        setLoading(true);
+        setLoadingStatus([{ label: 'Сборка и микширование аудио...', status: 'in_progress' }]);
+
+        try {
+            let finalBlob = await combineAndMixAudio(podcast);
+            let extension = 'wav';
+
+            if (format === 'mp3') {
+                setLoadingStatus([{ label: 'Конвертация в MP3...', status: 'in_progress' }]);
+                finalBlob = await convertWavToMp3(finalBlob, log);
+                extension = 'mp3';
+            }
+
+            const url = URL.createObjectURL(finalBlob);
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            const a = (window as any).document.createElement('a');
+            a.href = url;
+            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.${extension}`;
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.appendChild(a);
+            a.click();
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            setError('Ошибка при сборке аудиофайла.');
+            log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: err});
+        } finally {
+            setLoading(false);
+            setLoadingStatus([]);
+        }
+    };
+
+    const generateSrt = async () => {
+        if (!podcast) return;
+        setIsGeneratingSrt(true);
+        try {
+            const srtBlob = await generateSrtFile(podcast, log);
+            const url = URL.createObjectURL(srtBlob);
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            const a = (window as any).document.createElement('a');
+            a.href = url;
+            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.srt`;
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.appendChild(a);
+            a.click();
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            setError('Ошибка при создании SRT файла.');
+            log({type: 'error', message: 'Ошибка при генерации SRT', data: err});
+        } finally {
+            setIsGeneratingSrt(false);
+        }
+    };
+    
+    const generateVideo = async (podcastToRender: Podcast) => {
+        setIsGeneratingVideo(true);
+        setVideoGenerationProgress({ progress: 0, message: 'Подготовка...' });
+        try {
+            const finalAudioBlob = await combineAndMixAudio(podcastToRender);
+
+            const manualDurations = podcastToRender.videoPacingMode === 'manual'
+                ? podcastToRender.chapters.flatMap(c => c.imageDurations || Array(c.generatedImages?.length || 0).fill(60))
+                : undefined;
+            
+            const videoBlob = await generateVideoService(
+                podcastToRender,
+                finalAudioBlob,
+                (progress, message) => setVideoGenerationProgress({ progress, message }),
+                log,
+                manualDurations
+            );
+
+            const url = URL.createObjectURL(videoBlob);
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            const a = (window as any).document.createElement('a');
+            a.href = url;
+            a.download = `${safeLower(podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.mp4`;
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.appendChild(a);
+            a.click();
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            setError('Ошибка при создании видеофайла.');
+            log({type: 'error', message: 'Ошибка при генерации видео', data: err});
+        } finally {
+            setIsGeneratingVideo(false);
+        }
+    };
+
+    const handleGenerateFullVideo = () => {
+        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
+        generateVideo(podcast);
+    };
+
+    const handleGeneratePartialVideo = () => {
+        if (!podcast) return;
+        const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.audioBlob);
+        if (completedChapters.length === 0) {
+            setError('Нет ни одной завершенной главы для создания видео.');
+            return;
+        }
+        const partialPodcast = { ...podcast, chapters: completedChapters };
+        generateVideo(partialPodcast);
+    };
 
     const saveThumbnail = (updatedThumbnail: YoutubeThumbnail) => {
         setPodcast(p => {
@@ -691,11 +820,13 @@ export const usePodcast = (
         editingThumbnail, setEditingThumbnail,
         isRegeneratingText, isRegeneratingAudio,
         regeneratingImage, generatingMoreImages,
-        startNewProject, handleGenerateChapter, 
+        isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
+        startNewProject, handleGenerateChapter, combineAndDownload, 
+        generateVideo: handleGenerateFullVideo, generatePartialVideo: handleGeneratePartialVideo,
         saveThumbnail, regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
-        manualTtsScript, subtitleText, setChapterMusic,
+        manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter,
         findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
