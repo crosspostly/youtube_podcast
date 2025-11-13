@@ -27,17 +27,17 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
                 setIsOpen(false);
             }
         };
-        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-        window.document.addEventListener('mousedown', handleClickOutside);
+        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+        (window as any).document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-            window.document.removeEventListener('mousedown', handleClickOutside);
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            (window as any).document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // FIX: Cast event target to HTMLInputElement to access value property.
-        const newSearchTerm = (e.target as HTMLInputElement).value;
+        // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+        const newSearchTerm = (e.currentTarget as any).value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {
             const filtered = GOOGLE_FONTS.filter(font =>

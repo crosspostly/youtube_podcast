@@ -121,11 +121,13 @@ const App: React.FC = () => {
 
     useEffect(() => {
         try {
-            const storedKeys = localStorage.getItem('apiKeys');
+            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
+            const storedKeys = (window as any).localStorage.getItem('apiKeys');
             if (storedKeys) {
                 setApiKeys(JSON.parse(storedKeys));
             }
-            const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
+            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
+            const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
@@ -134,8 +136,10 @@ const App: React.FC = () => {
         setApiKeys(data.keys);
         setDefaultFont(data.defaultFont);
         try {
-            localStorage.setItem('apiKeys', JSON.stringify(data.keys));
-            localStorage.setItem('channelDefaultFont', data.defaultFont);
+            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
+            (window as any).localStorage.setItem('apiKeys', JSON.stringify(data.keys));
+            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
+            (window as any).localStorage.setItem('channelDefaultFont', data.defaultFont);
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
     };
     

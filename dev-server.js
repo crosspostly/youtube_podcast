@@ -80,15 +80,17 @@ app.get('/api/audio-proxy', async (req, res) => {
   }
 });
 
-app.get('/api/freesound', async (req, res) => {
+// FIX: Changed to handle POST requests to match Vercel function and client-side usage.
+app.post('/api/freesound', async (req, res) => {
   try {
-    const { query } = req.query;
+    // FIX: Get query and customApiKey from request body for POST requests.
+    const { query, customApiKey } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+    const apiKey = customApiKey || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
     const searchUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
 
     const response = await fetch(searchUrl, {
@@ -126,5 +128,5 @@ app.listen(PORT, () => {
   console.log(`Development API server running on http://localhost:${PORT}`);
   console.log('Available endpoints:');
   console.log('  GET /api/audio-proxy?url=<encoded_url>');
-  console.log('  GET /api/freesound?query=<search_query>');
+  console.log('  POST /api/freesound (body: { query, customApiKey })');
 });

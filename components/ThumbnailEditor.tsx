@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { YoutubeThumbnail, TextOptions } from '../types';
 import { drawCanvas, loadGoogleFont } from '../services/canvasUtils';
@@ -47,7 +46,7 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
 
     useEffect(() => {
         // FIX: Use `window.Image` to resolve missing DOM type error.
-        const img = new window.Image();
+        const img = new (window as any).Image();
         img.crossOrigin = "anonymous";
         img.src = baseImageSrc;
         img.onload = () => {
@@ -113,8 +112,8 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Текст</label>
-                            {/* FIX: Cast event target to HTMLTextAreaElement to access value property. */}
-                            <textarea value={options.text} onChange={(e) => handleOptionChange('text', (e.target as HTMLTextAreaElement).value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
+                            {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                            <textarea value={options.text} onChange={(e) => handleOptionChange('text', (e.currentTarget as any).value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Шрифт (Google Fonts)</label>
@@ -126,21 +125,21 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
                                 <label className="block text-sm font-medium text-slate-300">Размер</label>
-                                {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number((e.target as HTMLInputElement).value))} className="w-full mt-1"/>
+                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number((e.currentTarget as any).value))} className="w-full mt-1"/>
                             </div>
-                             {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                             <input type="number" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number((e.target as HTMLInputElement).value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
+                             {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                             <input type="number" value={options.fontSize} onChange={(e) => handleOptionChange('fontSize', Number((e.currentTarget as any).value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
                         </div>
                         <div className="flex items-center gap-4">
                              <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                             {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                             <input type="color" value={options.fillStyle} onChange={(e) => handleOptionChange('fillStyle', (e.target as HTMLInputElement).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                             {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                             <input type="color" value={options.fillStyle} onChange={(e) => handleOptionChange('fillStyle', (e.currentTarget as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Выравнивание</label>
-                            {/* FIX: Cast event target to HTMLSelectElement to access value property. */}
-                            <select value={options.textAlign} onChange={(e) => handleOptionChange('textAlign', (e.target as HTMLSelectElement).value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
+                            {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                            <select value={options.textAlign} onChange={(e) => handleOptionChange('textAlign', (e.currentTarget as any).value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
                                 <option value="left">По левому краю</option>
                                 <option value="center">По центру</option>
                                 <option value="right">По правому краю</option>
@@ -151,13 +150,13 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
                              <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e) => handleOptionChange('strokeColor', (e.target as HTMLInputElement).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e) => handleOptionChange('strokeColor', (e.currentTarget as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                              </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Толщина: {options.strokeWidth || 0}px</label>
-                                {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e) => handleOptionChange('strokeWidth', Number((e.target as HTMLInputElement).value))} className="w-full mt-1"/>
+                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e) => handleOptionChange('strokeWidth', Number((e.currentTarget as any).value))} className="w-full mt-1"/>
                             </div>
                         </div>
 
@@ -165,23 +164,23 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Тень</h4>
                             <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                 <input type="color" value={options.shadow.color} onChange={(e) => handleShadowChange('color', (e.target as HTMLInputElement).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                 <input type="color" value={options.shadow.color} onChange={(e) => handleShadowChange('color', (e.currentTarget as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Размытие: {options.shadow.blur}px</label>
-                                {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e) => handleShadowChange('blur', Number((e.target as HTMLInputElement).value))} className="w-full mt-1"/>
+                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e) => handleShadowChange('blur', Number((e.currentTarget as any).value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение X: {options.shadow.offsetX}px</label>
-                                {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e) => handleShadowChange('offsetX', Number((e.target as HTMLInputElement).value))} className="w-full mt-1"/>
+                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e) => handleShadowChange('offsetX', Number((e.currentTarget as any).value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение Y: {options.shadow.offsetY}px</label>
-                                {/* FIX: Cast event target to HTMLInputElement to access value property. */}
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e) => handleShadowChange('offsetY', Number((e.target as HTMLInputElement).value))} className="w-full mt-1"/>
+                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e) => handleShadowChange('offsetY', Number((e.currentTarget as any).value))} className="w-full mt-1"/>
                             </div>
                         </div>
                     </div>

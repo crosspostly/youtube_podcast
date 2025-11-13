@@ -1,4 +1,5 @@
 
+
 import type { TextOptions } from '../types';
 
 // A cache to avoid re-fetching font CSS
@@ -6,7 +7,7 @@ const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
     // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-    if (!fontFamily || window.document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
+    if (!fontFamily || (window as any).document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
 
@@ -16,17 +17,17 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
     try {
         // Using a more direct way to add stylesheet which is broadly supported
         // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-        if (!window.document.querySelector(`link[href="${fontUrl}"]`)) {
+        if (!(window as any).document.querySelector(`link[href="${fontUrl}"]`)) {
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-            const link = window.document.createElement('link');
+            const link = (window as any).document.createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-            window.document.head.appendChild(link);
+            (window as any).document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-            await window.document.fonts.load(`900 12px "${fontFamily}"`);
+            await (window as any).document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
     } catch (error) {

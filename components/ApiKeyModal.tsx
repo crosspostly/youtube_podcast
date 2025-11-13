@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
@@ -68,8 +67,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="geminiApiKeyInput"
                                     type="password"
                                     value={geminiApiKey}
-                                    // FIX: Cast event target to HTMLInputElement to access value property.
-                                    onChange={(e) => setGeminiApiKey((e.target as HTMLInputElement).value)}
+                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                    onChange={(e) => setGeminiApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ API..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -89,8 +88,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="openRouterApiKeyInput"
                                     type="password"
                                     value={openRouterApiKey}
-                                    // FIX: Cast event target to HTMLInputElement to access value property.
-                                    onChange={(e) => setOpenRouterApiKey((e.target as HTMLInputElement).value)}
+                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                    onChange={(e) => setOpenRouterApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ OpenRouter..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -110,8 +109,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     id="freesoundApiKeyInput"
                                     type="password"
                                     value={freesoundApiKey}
-                                    // FIX: Cast event target to HTMLInputElement to access value property.
-                                    onChange={(e) => setFreesoundApiKey((e.target as HTMLInputElement).value)}
+                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                    onChange={(e) => setFreesoundApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />

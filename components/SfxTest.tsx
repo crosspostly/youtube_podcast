@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { findSfxWithAi } from '../services/ttsService';
 import { LogEntry, SoundEffect } from '../types';
@@ -101,8 +100,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Cast event target to HTMLInputElement to access value property.
-                    onChange={(e) => setDescription((e.target as HTMLInputElement).value)}
+                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                    onChange={(e) => setDescription((e.currentTarget as any).value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

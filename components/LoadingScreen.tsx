@@ -1,6 +1,5 @@
 import React from 'react';
 import Spinner from './Spinner';
-import { CheckIcon, CloseIcon } from './Icons';
 
 interface LoadingStatus {
     label: string;
@@ -9,32 +8,23 @@ interface LoadingStatus {
 
 interface LoadingScreenProps {
     loadingStatus: LoadingStatus[];
-    generationProgress: number;
+    generationProgress: number; // Keep for potential future use, but hide from UI
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ loadingStatus, generationProgress }) => (
-    <div className="text-center p-8 w-full max-w-lg">
-        <Spinner className="w-16 h-16 mb-6 mx-auto" />
-        <h2 className="text-2xl font-bold text-white mb-4">Генерация проекта...</h2>
-        <div className="text-left space-y-2 mb-6">
-            {loadingStatus.map(step => (
-                <div key={step.label} className="flex items-center gap-3 transition-opacity duration-300" style={{ opacity: step.status === 'pending' ? 0.5 : 1 }}>
-                    <div className="w-6 h-6 flex-shrink-0">
-                        {step.status === 'completed' && <CheckIcon className="w-6 h-6 text-green-400" />}
-                        {step.status === 'in_progress' && <Spinner className="w-5 h-5" />}
-                        {step.status === 'pending' && <div className="w-5 h-5 rounded-full border-2 border-slate-500"></div>}
-                        {step.status === 'error' && <CloseIcon className="w-6 h-6 text-red-400" />}
-                    </div>
-                    <p className={`text-lg ${step.status === 'in_progress' ? 'text-cyan-300 animate-pulse' : 'text-slate-200'}`}>
-                        {step.label}
-                    </p>
-                </div>
-            ))}
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ loadingStatus }) => {
+    const currentStatus = loadingStatus.find(s => s.status === 'in_progress' || s.status === 'error') || loadingStatus[0];
+
+    return (
+        <div className="text-center p-8 w-full max-w-lg">
+            <Spinner className="w-16 h-16 mb-6 mx-auto" />
+            <h2 className="text-2xl font-bold text-white mb-4">Создаем концепцию вашего проекта...</h2>
+            {currentStatus && (
+                <p className={`text-lg animate-pulse ${currentStatus.status === 'error' ? 'text-red-400' : 'text-cyan-300'}`}>
+                    {currentStatus.label}
+                </p>
+            )}
         </div>
-        <div className="w-full bg-slate-700 rounded-full h-2.5">
-            <div className="bg-gradient-to-r from-teal-400 to-cyan-500 h-2.5 rounded-full" style={{ width: `${generationProgress}%`, transition: 'width 0.5s ease-in-out' }}></div>
-        </div>
-    </div>
-);
+    );
+};
 
 export default LoadingScreen;

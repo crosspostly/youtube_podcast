@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { findMusicWithAi } from '../services/ttsService';
 import { LogEntry, MusicTrack } from '../types';
@@ -92,8 +91,8 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
                 <input
                     type="text"
                     value={topic}
-                    // FIX: Cast event target to HTMLInputElement to access value property.
-                    onChange={(e) => setTopic((e.target as HTMLInputElement).value)}
+                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                    onChange={(e) => setTopic((e.currentTarget as any).value)}
                     placeholder="Введите тему для подбора музыки..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

@@ -11,7 +11,8 @@ interface PodcastStudioProps {
 const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boolean; icon?: React.ReactNode }> = ({ label, value, isTextarea = false, icon }) => {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {
-        navigator.clipboard.writeText(value);
+        // FIX: Cast `window` to `any` to access `navigator` because DOM types are missing in the environment.
+        (window as any).navigator.clipboard.writeText(value);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -69,15 +70,19 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-             if (downloadMenuRef.current && !downloadMenuRef.current.contains(event.target as Node)) {
+             // FIX: Cast ref to `any` to use `contains` method due to missing DOM types.
+             if (downloadMenuRef.current && !(downloadMenuRef.current as any).contains(event.target as any)) {
                 setIsDownloadMenuOpen(false);
             }
-            if (volumePopoverRef.current && !volumePopoverRef.current.contains(event.target as Node)) {
+            // FIX: Cast ref to `any` to use `contains` method due to missing DOM types.
+            if (volumePopoverRef.current && !(volumePopoverRef.current as any).contains(event.target as any)) {
                 setVolumePopoverChapterId(null);
             }
         };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+        (window as any).document.addEventListener('mousedown', handleClickOutside);
+        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+        return () => (window as any).document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const SfxFinderModal = () => {
@@ -93,8 +98,9 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         const [previewVolume, setPreviewVolume] = useState(line.soundEffectVolume ?? 0.5);
     
         useEffect(() => {
+            // FIX: Cast `audioPlayerRef.current` to `any` to access `volume` property.
             if (audioPlayerRef.current && previewingUrl) {
-                audioPlayerRef.current.volume = previewVolume;
+                (audioPlayerRef.current as any).volume = previewVolume;
             }
         }, [previewVolume, previewingUrl]);
 
@@ -123,7 +129,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     
         const togglePreview = (url: string) => {
             if (!audioPlayerRef.current) return;
-            const audio = audioPlayerRef.current;
+            // FIX: Cast `audioPlayerRef.current` to `any` to access audio properties.
+            const audio = audioPlayerRef.current as any;
             const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
             if (isCurrentlyPlaying) {
@@ -137,7 +144,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         setPreviewingUrl(url);
-                    }).catch(error => {
+                    }).catch((error: any) => {
                         console.error("SFX playback failed:", error);
                         setPreviewingUrl(null);
                     });
@@ -175,7 +182,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 type="text" 
                                 placeholder="Ручной поиск (e.g., door creak)" 
                                 value={manualSearchQuery} 
-                                onChange={(e) => setManualSearchQuery(e.target.value)} 
+                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                onChange={(e) => setManualSearchQuery((e.currentTarget as any).value)} 
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
@@ -208,7 +216,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 type="range"
                                 min="0" max="1" step="0.05"
                                 value={previewVolume}
-                                onChange={e => setPreviewVolume(Number(e.target.value))}
+                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                onChange={e => setPreviewVolume(Number((e.currentTarget as any).value))}
                                 className="w-full"
                             />
                             <span className="text-sm font-bold text-cyan-300 w-12 text-center">{Math.round(previewVolume * 100)}%</span>
@@ -255,8 +264,9 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         const [previewVolume, setPreviewVolume] = useState(musicModalChapter.backgroundMusicVolume ?? podcast?.backgroundMusicVolume ?? 0.1);
 
         useEffect(() => {
+            // FIX: Cast `audioPlayerRef.current` to `any` to access `volume` property.
             if (audioPlayerRef.current && previewingUrl) {
-                audioPlayerRef.current.volume = previewVolume;
+                (audioPlayerRef.current as any).volume = previewVolume;
             }
         }, [previewVolume, previewingUrl]);
 
@@ -285,7 +295,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     
         const togglePreview = (url: string) => {
             if (!audioPlayerRef.current) return;
-            const audio = audioPlayerRef.current;
+            // FIX: Cast `audioPlayerRef.current` to `any` to access audio properties.
+            const audio = audioPlayerRef.current as any;
             const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
             if (isCurrentlyPlaying) {
@@ -307,7 +318,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         setPreviewingUrl(url);
-                    }).catch(error => {
+                    }).catch((error: any) => {
                         console.error("Audio playback failed via proxy:", error);
                         setPreviewingUrl(null);
                     });
@@ -348,7 +359,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 type="text"
                                 placeholder="Ручной поиск (e.g., epic cinematic)"
                                 value={manualSearchQuery}
-                                onChange={(e) => setManualSearchQuery(e.target.value)}
+                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                onChange={(e) => setManualSearchQuery((e.currentTarget as any).value)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
                                         e.preventDefault();
@@ -389,7 +401,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 type="range"
                                 min="0" max="0.5" step="0.01"
                                 value={previewVolume}
-                                onChange={e => setPreviewVolume(Number(e.target.value))}
+                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                onChange={e => setPreviewVolume(Number((e.currentTarget as any).value))}
                                 className="w-full"
                             />
                             <span className="text-sm font-bold text-cyan-300 w-12 text-center">{Math.round(previewVolume * 100)}%</span>
@@ -440,7 +453,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
 
     const handleSfxPreview = (url: string, volume: number) => {
         if (!audioPlayerRef.current) return;
-        const audio = audioPlayerRef.current;
+        // FIX: Cast `audioPlayerRef.current` to `any` to access audio properties.
+        const audio = audioPlayerRef.current as any;
         audio.pause();
         
         // Use audio proxy to avoid CORS issues
@@ -453,7 +467,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => console.error("SFX playback failed via proxy:", error));
+            playPromise.catch((error: any) => console.error("SFX playback failed via proxy:", error));
         }
     };
 
@@ -508,7 +522,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         max="0.5" // Max volume at 50% to not overpower speech
                         step="0.01"
                         value={podcast.backgroundMusicVolume}
-                        onChange={e => setGlobalMusicVolume(Number(e.target.value))}
+                        // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                        onChange={e => setGlobalMusicVolume(Number((e.currentTarget as any).value))}
                         className="w-full"
                     />
                 </div>
@@ -563,7 +578,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                             {volumePopoverChapterId === chapter.id && (
                                                 <div ref={volumePopoverRef} className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-900 border border-slate-600 rounded-lg p-3 shadow-lg z-20">
                                                     <label className="block text-xs text-slate-300 mb-1">Громкость музыки</label>
-                                                    <input type="range" min="0" max="0.5" step="0.01" value={chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume} onChange={e => setChapterMusicVolume(chapter.id, Number(e.target.value))} className="w-full"/>
+                                                    {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                                    <input type="range" min="0" max="0.5" step="0.01" value={chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume} onChange={e => setChapterMusicVolume(chapter.id, Number((e.currentTarget as any).value))} className="w-full"/>
                                                     <button onClick={() => setChapterMusicVolume(chapter.id, null)} className="mt-2 w-full text-xs text-center text-slate-400 hover:text-white">Сброс</button>
                                                 </div>
                                             )}
@@ -605,7 +621,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                             type="number"
                                                             id={`duration-${chapter.id}-${index}`}
                                                             value={chapter.imageDurations?.[index] ?? 60}
-                                                            onChange={(e) => setImageDuration(chapter.id, index, parseInt(e.target.value, 10))}
+                                                            // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
+                                                            onChange={(e) => setImageDuration(chapter.id, index, parseInt((e.currentTarget as any).value, 10))}
                                                             className="w-full bg-slate-800 border border-slate-600 rounded-md p-1.5 text-white text-center"
                                                             min="1"
                                                         />
@@ -643,7 +660,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <SpeakerWaveIcon className="w-4 h-4 text-slate-400"/>
-                                                    <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.5} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number(e.target.value))} className="w-full"/>
+                                                    {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
+                                                    <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.5} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number((e.currentTarget as any).value))} className="w-full"/>
                                                 </div>
                                             </div>
                                         ))}
@@ -666,7 +684,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         <span className="font-semibold text-sm">Переозвучить всё</span>
                     </button>
                     <button 
-                        onClick={() => generateVideo(podcast)} 
+                        onClick={() => generateVideo()} 
                         disabled={!allChaptersDone || isGeneratingVideo} 
                         className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-800/60 rounded-lg hover:bg-purple-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-purple-300">
                         {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
@@ -782,7 +800,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             </div>
             <div className="text-center mt-4">
                     <button onClick={() => {
-                        if (window.confirm("Вы уверены, что хотите вернуться в главное меню? Текущий проект будет сохранен в истории.")) {
+                        // FIX: Cast `window` to `any` to access `confirm` because DOM types are missing in the environment.
+                        if ((window as any).confirm("Вы уверены, что хотите вернуться в главное меню? Текущий проект будет сохранен в истории.")) {
                             setPodcast(null);
                         }
                     }} className="px-8 py-4 bg-slate-700 text-white font-bold rounded-lg hover:bg-slate-600">Вернуться в главное меню</button>

@@ -7,9 +7,9 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
 // Все компоненты FFmpeg должны быть из пакета @ffmpeg/core для совместимости
-const FFMPEG_CORE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js';
-const FFMPEG_WASM_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js';
+const FFMPEG_CORE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
+const FFMPEG_WASM_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
+const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
 
 
 let ffmpeg: FFmpeg | null = null;
@@ -17,7 +17,8 @@ let ffmpeg: FFmpeg | null = null;
 // Загрузка изображения с обработкой CORS
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
-        const img = new window.Image();
+        // FIX: Prefix `Image` with `window.` to resolve missing DOM type error.
+        const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         img.onload = () => resolve(img);
         img.onerror = (err) => reject(new Error(`Failed to load image: ${src.substring(0, 100)}...`));
@@ -77,7 +78,8 @@ export const generateVideo = async (
         onProgress(0.1, 'Анализ темпа повествования...');
         
         // Кроссбраузерная поддержка AudioContext
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        // FIX: Prefix `AudioContext` with `window.` to resolve missing DOM type error.
+        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (!AudioContextClass) {
             throw new Error('Web Audio API не поддерживается в этом браузере');
         }
@@ -119,25 +121,32 @@ export const generateVideo = async (
 
     // --- 3. Write Assets to FFmpeg Memory ---
     onProgress(0.15, 'Запись ресурсов в память FFmpeg...');
-    const assetWritePromises: Promise<void>[] = [];
-    assetWritePromises.push(ffmpeg.writeFile('audio.wav', await fetchFile(audioBlob)));
+    await ffmpeg.writeFile('audio.wav', await fetchFile(audioBlob));
     const srtBlob = await generateSrtFile(podcast, log);
-    assetWritePromises.push(ffmpeg.writeFile('subtitles.srt', await fetchFile(srtBlob)));
+    await ffmpeg.writeFile('subtitles.srt', await fetchFile(srtBlob));
     
+    // STABILITY IMPROVEMENT: Write images sequentially instead of all at once.
+    // This prevents a massive memory spike by not creating all image blobs concurrently.
     for (let i = 0; i < imagesToUse.length; i++) {
-        const canvas = window.document.createElement('canvas');
-        canvas.width = imagesToUse[i].width;
-        canvas.height = imagesToUse[i].height;
+        const image = imagesToUse[i];
+        const progress = 0.15 + (i / imagesToUse.length) * 0.15; // This stage takes 15% of progress
+        onProgress(progress, `Запись изображения ${i + 1}/${imagesToUse.length}...`);
+        
+        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+        const canvas = (window as any).document.createElement('canvas');
+        // FIX: Cast image to `any` to access width/height properties.
+        canvas.width = (image as any).width;
+        canvas.height = (image as any).height;
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
-        ctx.drawImage(imagesToUse[i], 0, 0);
+        ctx.drawImage(image, 0, 0);
         const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
         if (blob) {
-            assetWritePromises.push(ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob)));
+            await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
         }
     }
-    await Promise.all(assetWritePromises);
     onProgress(0.3, 'Ресурсы записаны.');
+
 
     // --- 4. Build FFmpeg Command with Complex Filter ---
     const FPS = 30;

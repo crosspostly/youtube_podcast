@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { generateThumbnailDesignConcepts } from '../services/ttsService';
 import { drawCanvas } from '../services/canvasUtils';
@@ -33,7 +32,7 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
     // Preload the placeholder image
     useEffect(() => {
         // FIX: Use `window.Image` to resolve missing DOM type error.
-        const img = new window.Image();
+        const img = new (window as any).Image();
         img.crossOrigin = "anonymous";
         img.src = PLACEHOLDER_IMAGE_URL;
         img.onload = () => {
@@ -50,8 +49,8 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
     const runDesignerTest = async () => {
         if (!imageRef.current) {
-            // FIX: Use `window.alert` to resolve missing DOM type error.
-            window.alert("Тестовое изображение еще не загружено. Пожалуйста, подождите.");
+            // FIX: Cast `window` to `any` to access `alert` because DOM types are missing in the environment.
+            (window as any).alert("Тестовое изображение еще не загружено. Пожалуйста, подождите.");
             return;
         }
 
@@ -71,7 +70,7 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
                 const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys.gemini);
                 
                 // FIX: Use `window.document` to resolve missing DOM type error.
-                const canvas = window.document.createElement('canvas');
+                const canvas = (window as any).document.createElement('canvas');
                 canvas.width = 1280;
                 canvas.height = 720;
                 const ctx = canvas.getContext('2d');
@@ -134,12 +133,12 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
                     <div className="space-y-6">
                         {renderedResults.map(result => (
                             <div key={result.topic}>
-                                <h4 className="font-semibold text-white text-lg mb-2 border-b border-slate-600 pb-1">Тема: "{result.topic}"</h4>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <h4 className="font-semibold text-white text-lg mb-2 border-b border-slate-700 pb-2">{result.topic}</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {result.thumbnails.map(thumb => (
-                                        <div key={thumb.name} className="text-center">
-                                            <img src={thumb.dataUrl} alt={thumb.name} className="rounded-md border border-slate-500 mb-1"/>
-                                            <p className="text-xs text-slate-300">{thumb.name}</p>
+                                        <div key={thumb.name}>
+                                            <p className="text-sm text-slate-300 text-center mb-1">{thumb.name}</p>
+                                            <img src={thumb.dataUrl} alt={thumb.name} className="rounded-md w-full" />
                                         </div>
                                     ))}
                                 </div>
@@ -147,12 +146,14 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
                         ))}
                     </div>
                 )}
-                 {logs.length > 0 && !isTesting && renderedResults.length === 0 && (
-                     <div className="mt-4 p-2 bg-slate-900 rounded-md max-h-40 overflow-y-auto text-xs font-mono">
-                         <p className="text-red-400 font-bold mb-2">Тест завершился с ошибками:</p>
-                         {logs.map((l, i) => <p key={i} className="text-slate-400">{l}</p>)}
-                     </div>
-                 )}
+                 {logs.length > 0 && (
+                    <div className="mt-4">
+                        <h4 className="font-semibold text-white mb-2">Логи</h4>
+                        <div className="bg-slate-900 p-2 rounded-md text-xs font-mono max-h-40 overflow-y-auto">
+                            {logs.map((log, index) => <p key={index} className="whitespace-pre-wrap">{log}</p>)}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
