@@ -294,15 +294,21 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             } else {
                 audio.pause(); 
                 
-                audio.src = url;
+                // Use audio proxy to avoid CORS issues
+                const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+                audio.src = proxyUrl;
                 audio.volume = previewVolume;
+                
+                // Log CORS proxy usage
+                console.log(`Using audio proxy for SFX: ${url} -> ${proxyUrl}`);
+                
                 const playPromise = audio.play();
 
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         setPreviewingUrl(url);
                     }).catch(error => {
-                        console.error("Audio playback failed:", error);
+                        console.error("Audio playback failed via proxy:", error);
                         setPreviewingUrl(null);
                     });
                 }
@@ -436,11 +442,18 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         if (!audioPlayerRef.current) return;
         const audio = audioPlayerRef.current;
         audio.pause();
-        audio.src = url;
+        
+        // Use audio proxy to avoid CORS issues
+        const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+        audio.src = proxyUrl;
         audio.volume = volume;
+        
+        // Log CORS proxy usage
+        console.log(`Using audio proxy for SFX preview: ${url} -> ${proxyUrl}`);
+        
         const playPromise = audio.play();
         if (playPromise !== undefined) {
-            playPromise.catch(error => console.error("SFX playback failed:", error));
+            playPromise.catch(error => console.error("SFX playback failed via proxy:", error));
         }
     };
 
