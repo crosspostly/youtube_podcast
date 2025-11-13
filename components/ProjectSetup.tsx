@@ -1,4 +1,4 @@
-﻿import { safeLower } from './utils/safeLower';
+import { safeLower, safeIncludes } from '../utils/safeLower-util';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NarrationMode, Voice } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
@@ -110,7 +110,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const langDropdownRef = useRef<HTMLDivElement>(null);
 
     const filteredLanguages = useMemo(() => 
-        languages.filter(l => l.name.toLowerCase().includes(langSearchTerm.toLowerCase())),
+        languages.filter(l => safeIncludes(l.name, langSearchTerm)),
     [langSearchTerm]);
 
     const filteredVoices = useMemo(() => {

@@ -1,4 +1,4 @@
-﻿import { safeLower } from './utils/safeLower';
+import { safeLower, safeIncludes } from '../utils/safeLower-util';
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { GOOGLE_FONTS } from '../services/googleFonts';
@@ -41,7 +41,7 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {
             const filtered = GOOGLE_FONTS.filter(font =>
-                font.toLowerCase().includes(newSearchTerm.toLowerCase())
+                safeIncludes(font, newSearchTerm)
             ).slice(0, 100); // Limit results for performance
             setSuggestions(filtered);
             setIsOpen(true);

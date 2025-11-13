@@ -1,4 +1,5 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { safeLower } from '../utils/safeLower-util';
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
@@ -158,8 +159,8 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
             return await fn();
         } catch (error: any) {
             // Check for common retryable error patterns in message, status, or code.
-            const errorMessage = (error?.message || '').toLowerCase();
-            const errorStatus = (error?.status || '').toLowerCase();
+            const errorMessage = safeLower(error?.message || '');
+            const errorStatus = safeLower(error?.status || '');
             const isRetryable = 
                 error?.code === 503 || 
                 error?.code === 429 || 

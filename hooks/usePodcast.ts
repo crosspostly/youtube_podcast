@@ -1,4 +1,4 @@
-﻿import { safeLower } from './utils/safeLower';
+import { safeLower } from '../utils/safeLower-util';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
@@ -345,7 +345,7 @@ export const usePodcast = (
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             const a = window.document.createElement('a');
             a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.${extension}`;
+            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.${extension}`;
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             window.document.body.appendChild(a);
             a.click();
@@ -370,7 +370,7 @@ export const usePodcast = (
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             const a = window.document.createElement('a');
             a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.srt`;
+            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.srt`;
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             window.document.body.appendChild(a);
             a.click();
@@ -407,7 +407,7 @@ export const usePodcast = (
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             const a = window.document.createElement('a');
             a.href = url;
-            a.download = `${podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}.mp4`;
+            a.download = `${safeLower(podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.mp4`;
             // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
             window.document.body.appendChild(a);
             a.click();
