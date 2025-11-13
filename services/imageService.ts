@@ -5,7 +5,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
-import { withRetries } from './geminiService';
+import { withQueueAndRetries } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini: string; openRouter: string; };
@@ -69,7 +69,7 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction, ap
             },
         });
 
-        const response: GenerateContentResponse = await withRetries(generateCall, log);
+        const response: GenerateContentResponse = await withQueueAndRetries(generateCall, log);
 
         // Safely access response data
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
