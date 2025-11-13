@@ -829,33 +829,35 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: 
 
 // --- AI SFX FINDER ---
 const FREESOUND_API_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk'; // Default key
-const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
+const FREESOUND_PROXY_URL = '/api/freesound'; // Use proxy endpoint instead of direct API
 
 export const performFreesoundSearch = async (searchTags: string, log: LogFunction, customApiKey?: string): Promise<SoundEffect[]> => {
-    const apiKey = customApiKey || FREESOUND_API_KEY;
-    if (!apiKey) {
-        log({ type: 'error', message: 'Ключ API Freesound не настроен.' });
-        return [];
-    }
     const tags = searchTags.trim().replace(/,\s*/g, ' ');
     if (!tags) return [];
 
-    const searchUrl = `${FREESOUND_API_URL}?query=${encodeURIComponent(tags)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
-    log({ type: 'request', message: 'Запрос SFX с Freesound', data: { url: searchUrl } });
+    log({ type: 'request', message: 'Запрос SFX с Freesound через прокси', data: { query: tags } });
 
     try {
-        const response = await fetch(searchUrl, {
-            headers: { 'Authorization': `Token ${apiKey}` }
+        const response = await fetch(FREESOUND_PROXY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: tags,
+                customApiKey: customApiKey || FREESOUND_API_KEY,
+            }),
         });
+
         if (!response.ok) {
-            log({ type: 'error', message: `Freesound API error: ${response.statusText}`, data: await response.text() });
+            const errorText = await response.text();
+            log({ type: 'error', message: `Freesound Proxy error: ${response.statusText}`, data: errorText });
             return [];
         }
+
         const data = await response.json();
         if (!data || !data.results || data.results.length === 0) return [];
         return data.results;
     } catch (error) {
-        log({ type: 'error', message: 'Сетевая ошибка при запросе к Freesound.', data: error });
+        log({ type: 'error', message: 'Ошибка при запросе к Freesound прокси.', data: error });
         return [];
     }
 };
