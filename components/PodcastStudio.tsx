@@ -1,6 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
+import { usePodcastActions } from '../hooks/usePodcastActions';
 import Spinner from './Spinner';
 import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon, VideoCameraIcon } from './Icons';
 
@@ -44,20 +45,22 @@ const CopyableField: React.FC<{ label: string; value: string; isTextarea?: boole
 
 const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const {
-        podcast,
-        audioUrls, isGenerationPaused, setIsGenerationPaused,
-        isRegeneratingText, isRegeneratingAudio,
-        regeneratingImage, generatingMoreImages,
-        isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
-        handleGenerateChapter, combineAndDownload, generateVideo, generatePartialVideo,
-        regenerateProject, regenerateText,
+        podcast, audioUrls, isGenerationPaused, setIsGenerationPaused,
+        isRegeneratingText, isRegeneratingAudio, regeneratingImage, generatingMoreImages,
+        handleGenerateChapter, regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
-        manualTtsScript, subtitleText, generateSrt, setChapterMusic,
-        findMusicForChapter, findMusicManuallyForChapter,
-        findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
-        setThumbnailBaseImage, setPodcast, setVideoPacingMode, setImageDuration,
+        manualTtsScript, subtitleText, setChapterMusic, findMusicForChapter,
+        findMusicManuallyForChapter, findSfxForLine, findSfxManuallyForLine,
+        setSfxForLine, setSfxVolume, setThumbnailBaseImage, setPodcast,
+        setVideoPacingMode, setImageDuration, log, setError
     } = usePodcastContext();
+
+    const {
+        isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
+        isPackaging, combineAndDownload, generateSrt, generateVideo,
+        generatePartialVideo, handlePackageForLocalAssembly
+    } = usePodcastActions(podcast, log, setError);
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
@@ -796,6 +799,15 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 >
                     <SubtitleIcon />
                     {isGeneratingSrt ? `Генерация SRT...` : "Скачать субтитры (.SRT)"}
+                </button>
+                 <button 
+                    onClick={handlePackageForLocalAssembly}
+                    disabled={isPackaging}
+                    className="w-full flex-grow flex items-center justify-center gap-3 px-8 py-4 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-500 disabled:bg-slate-700 disabled:cursor-not-allowed transition-all"
+                    title="Скачать все материалы и скрипт для локальной сборки видео"
+                >
+                    <WrenchIcon />
+                    {isPackaging ? 'Упаковка...' : 'Пакет для сборки'}
                 </button>
             </div>
             <div className="text-center mt-4">

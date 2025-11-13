@@ -901,22 +901,22 @@ export const findSfxManually = async (keywords: string, log: LogFunction, apiKey
     return performFreesoundSearch(keywords, log, apiKey);
 };
 
-// FIX: Add missing findSfxWithAi function.
 export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<SoundEffect[]> => {
-    log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
-
+    log({ type: 'info', message: `Запрос к ИИ для подбора ключевых слов для SFX: "${description}"` });
+    
     try {
-        const keywordsPrompt = `You are an expert sound designer. Analyze the following sound effect description. Generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org. Focus on the core sound, avoiding generic terms like "sound of".
-
-        Example for "Sound of a heavy wooden door creaking open":
-        heavy door creak
-
-        Example for "A wolf howls at the full moon in a forest":
-        wolf howl forest
+        const keywordsPrompt = `Analyze the following sound effect description: "${description}".
+        Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
+        Focus on the core sound, avoiding generic terms like "sound of".
+        
+        Examples:
+        - "Sound of a heavy wooden door creaking open": heavy door creak
+        - "A wolf howls at the full moon in a forest": wolf howl forest
+        - "Footsteps on wet pavement": footsteps wet pavement
         
         Description: "${description}"
         Keywords:`;
-
+        
         const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKeys?.gemini);
         const keywords = keywordsResponse.text.replace(/(\*\*Keywords:\*\*|\*|Keywords:)/gi, '').trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
@@ -931,7 +931,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
                 return sfxResults;
             }
             log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
-            searchTerms.pop(); // Remove the last keyword and retry
+            searchTerms.pop();
         }
 
         log({ type: 'info', message: 'Не удалось найти SFX даже после сокращения запроса.' });
@@ -942,6 +942,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         throw new Error('Не удалось подобрать SFX.');
     }
 };
+
 
 export const findSfxBatchWithAi = async (descriptions: string[], log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<(SoundEffect | null)[]> => {
     if (descriptions.length === 0) return [];

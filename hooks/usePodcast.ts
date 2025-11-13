@@ -1,12 +1,9 @@
 import { safeLower } from '../utils/safeLower-util';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually, findSfxBatchWithAi } from '../services/ttsService';
-import { generateSrtFile } from '../services/srtService';
+import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, regenerateTextAssets, generateThumbnailDesignConcepts, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually, findSfxBatchWithAi } from '../services/ttsService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
-import { generateVideo as generateVideoService } from '../services/videoService';
-import { createAssemblyPackage } from '../services/packageService';
 import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect } from '../types';
 import { TEST_PODCAST_BLUEPRINT } from '../services/testData';
 
@@ -39,13 +36,6 @@ export const usePodcast = (
     
     const [isRegeneratingAudio, setIsRegeneratingAudio] = useState(false);
     const [editingThumbnail, setEditingThumbnail] = useState<YoutubeThumbnail | null>(null);
-
-    const [isConvertingToMp3, setIsConvertingToMp3] = useState(false);
-    const [isGeneratingSrt, setIsGeneratingSrt] = useState(false);
-    const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
-    const [isPackaging, setIsPackaging] = useState(false);
-    const [videoGenerationProgress, setVideoGenerationProgress] = useState<{ progress: number, message: string }>({ progress: 0, message: '' });
-
 
     const podcastRef = React.useRef(podcast);
     useEffect(() => {
@@ -331,135 +321,6 @@ export const usePodcast = (
             setIsLoading(false);
         }
     }, [log, setPodcast, apiKeys.gemini]);
-
-    const combineAndDownload = async (format: 'wav' | 'mp3' = 'wav') => {
-        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
-        
-        const setLoading = format === 'mp3' ? setIsConvertingToMp3 : setIsLoading;
-        setLoading(true);
-        setLoadingStatus([{ label: 'Сборка и микширование аудио...', status: 'in_progress' }]);
-
-        try {
-            let finalBlob = await combineAndMixAudio(podcast);
-            let extension = 'wav';
-
-            if (format === 'mp3') {
-                setLoadingStatus([{ label: 'Конвертация в MP3...', status: 'in_progress' }]);
-                finalBlob = await convertWavToMp3(finalBlob, log);
-                extension = 'mp3';
-            }
-
-            const url = URL.createObjectURL(finalBlob);
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            const a = (window as any).document.createElement('a');
-            a.href = url;
-            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.${extension}`;
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.appendChild(a);
-            a.click();
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err: any) {
-            setError('Ошибка при сборке аудиофайла.');
-            log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: err});
-        } finally {
-            setLoading(false);
-            setLoadingStatus([]);
-        }
-    };
-
-    const generateSrt = async () => {
-        if (!podcast) return;
-        setIsGeneratingSrt(true);
-        try {
-            const srtBlob = await generateSrtFile(podcast, log);
-            const url = URL.createObjectURL(srtBlob);
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            const a = (window as any).document.createElement('a');
-            a.href = url;
-            a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.srt`;
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.appendChild(a);
-            a.click();
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err: any) {
-            setError('Ошибка при создании SRT файла.');
-            log({type: 'error', message: 'Ошибка при генерации SRT', data: err});
-        } finally {
-            setIsGeneratingSrt(false);
-        }
-    };
-    
-    const generateVideo = async (podcastToRender: Podcast) => {
-        setIsGeneratingVideo(true);
-        setVideoGenerationProgress({ progress: 0, message: 'Подготовка...' });
-        try {
-            const finalAudioBlob = await combineAndMixAudio(podcastToRender);
-
-            const manualDurations = podcastToRender.videoPacingMode === 'manual'
-                ? podcastToRender.chapters.flatMap(c => c.imageDurations || Array(c.generatedImages?.length || 0).fill(60))
-                : undefined;
-            
-            const videoBlob = await generateVideoService(
-                podcastToRender,
-                finalAudioBlob,
-                (progress, message) => setVideoGenerationProgress({ progress, message }),
-                log,
-                manualDurations
-            );
-
-            const url = URL.createObjectURL(videoBlob);
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            const a = (window as any).document.createElement('a');
-            a.href = url;
-            a.download = `${safeLower(podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.mp4`;
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.appendChild(a);
-            a.click();
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err: any) {
-            setError('Ошибка при создании видеофайла.');
-            log({type: 'error', message: 'Ошибка при генерации видео', data: err});
-        } finally {
-            setIsGeneratingVideo(false);
-        }
-    };
-
-    const handleGenerateFullVideo = () => {
-        if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
-        generateVideo(podcast);
-    };
-
-    const handleGeneratePartialVideo = () => {
-        if (!podcast) return;
-        const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.audioBlob);
-        if (completedChapters.length === 0) {
-            setError('Нет ни одной завершенной главы для создания видео.');
-            return;
-        }
-        const partialPodcast = { ...podcast, chapters: completedChapters };
-        generateVideo(partialPodcast);
-    };
-
-    const handlePackageForLocalAssembly = async () => {
-        if (!podcast) return;
-        setIsPackaging(true);
-        setError(null);
-        try {
-            await createAssemblyPackage(podcast, log);
-        } catch (err: any) {
-             const errorMessage = `Ошибка при создании пакета для сборки: ${err.message || 'Неизвестная ошибка'}`;
-             setError(errorMessage);
-             log({ type: 'error', message: errorMessage, data: err });
-        } finally {
-            setIsPackaging(false);
-        }
-    };
 
     const saveThumbnail = (updatedThumbnail: YoutubeThumbnail) => {
         setPodcast(p => {
@@ -830,15 +691,11 @@ export const usePodcast = (
         editingThumbnail, setEditingThumbnail,
         isRegeneratingText, isRegeneratingAudio,
         regeneratingImage, generatingMoreImages,
-        isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
-        isPackaging,
-        startNewProject, handleGenerateChapter, combineAndDownload, 
-        generateVideo: handleGenerateFullVideo, generatePartialVideo: handleGeneratePartialVideo,
-        handlePackageForLocalAssembly,
+        startNewProject, handleGenerateChapter, 
         saveThumbnail, regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
-        manualTtsScript, subtitleText, generateSrt, setChapterMusic,
+        manualTtsScript, subtitleText, setChapterMusic,
         findMusicForChapter,
         findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
