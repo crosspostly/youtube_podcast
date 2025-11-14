@@ -10,14 +10,7 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
     const tags = searchTags.trim().replace(/,\s*/g, ' ');
     if (!tags) return [];
 
-    const params = new URLSearchParams({ query: tags });
-    if (customApiKey) {
-        params.append('customApiKey', customApiKey);
-    }
-    const searchUrl = `${FREESOUND_PROXY_URL}?${params.toString()}`;
-
-    log({ type: 'request', message: 'Отправка GET-запроса на прокси Freesound...', data: { url: searchUrl } });
-
+    log({ type: 'request', message: 'Отправка POST-запроса на прокси Freesound...', data: { query: tags } });
 
     const doFetch = async () => {
         const controller = new AbortController();
@@ -25,10 +18,15 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
         
         let response: Response;
         try {
-            log({ type: 'info', message: 'Выполнение fetch-запроса...', data: { url: searchUrl } });
-            response = await fetch(searchUrl, {
-                method: 'GET',
+            log({ type: 'info', message: 'Выполнение fetch-запроса...', data: { query: tags } });
+            response = await fetch(FREESOUND_PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
+                body: JSON.stringify({
+                    query: tags,
+                    customApiKey: customApiKey,
+                }),
             });
             log({ type: 'info', message: 'Fetch-запрос завершен, получен ответ.' });
         } catch (fetchError: any) {
@@ -121,7 +119,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
                 log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
                 const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys.freesound);
                 if (sfxResults.length > 0) {
-                    log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}"` });
+                    log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
                     return sfxResults;
                 }
                 log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
