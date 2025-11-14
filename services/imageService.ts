@@ -1,16 +1,29 @@
-
-
-
-
-
-
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
-import { withQueueAndRetries } from './geminiService';
+import { withRetries, ApiRequestQueue, LogFunction } from './geminiService';
 
-type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini: string; openRouter: string; };
+
+// --- START: Image-specific Request Queue ---
+// This queue ensures a 10-second delay between image generation requests
+// to avoid hitting rate limits, without slowing down text generation.
+
+let imageQueue: ApiRequestQueue | null = null;
+
+const getImageQueue = (log: LogFunction): ApiRequestQueue => {
+    if (!imageQueue) {
+        imageQueue = new ApiRequestQueue(log, 10000); // 10,000ms = 10 seconds
+        log({ type: 'info', message: 'Image generation API request queue initialized (10s delay)' });
+    }
+    return imageQueue;
+};
+
+const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
+    const queue = getImageQueue(log);
+    return await queue.add(() => withRetries(fn, log, retries, initialDelay));
+};
+// --- END: Image-specific Request Queue ---
 
 const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
   const finalApiKey = apiKey || process.env.API_KEY;
@@ -71,7 +84,7 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction, ap
             },
         });
 
-        const response: GenerateContentResponse = await withQueueAndRetries(generateCall, log);
+        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log);
 
         // Safely access response data
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);

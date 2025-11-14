@@ -1,4 +1,4 @@
-import { safeLower } from '../utils/safeLower-util';
+import { safeLower, parseErrorMessage } from '../utils/safeLower-util';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
@@ -87,8 +87,9 @@ export const usePodcast = (
             return newImages;
         } catch (err: any) {
             const chapterTitle = podcastRef.current?.chapters.find(c => c.id === chapterId)?.title || `ID: ${chapterId}`;
-            log({type: 'error', message: `Ошибка при генерации изображений для главы ${chapterTitle}`, data: err});
-            updateChapterState(chapterId, 'error', { error: "Ошибка генерации изображений" });
+            const friendlyError = parseErrorMessage(err);
+            log({type: 'error', message: `Ошибка при генерации изображений для главы ${chapterTitle}`, data: { friendlyMessage: friendlyError, originalError: err }});
+            updateChapterState(chapterId, 'error', { error: friendlyError });
             return [];
         }
     }, [updateChapterState, log, apiKeys]);
@@ -125,9 +126,9 @@ export const usePodcast = (
             updateChapterState(chapterId, 'completed', { audioBlob });
 
         } catch (err: any) {
-            const errorMessage = err.message || 'Неизвестная ошибка при генерации главы.';
-            log({type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1}`, data: err});
-            updateChapterState(chapterId, 'error', { error: errorMessage });
+            const friendlyError = parseErrorMessage(err);
+            log({type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1}`, data: { friendlyMessage: friendlyError, originalError: err }});
+            updateChapterState(chapterId, 'error', { error: friendlyError });
         }
     }, [podcast, log, updateChapterState, generateImagesForChapter, apiKeys]);
 
@@ -241,6 +242,7 @@ export const usePodcast = (
             
             setPodcast(newPodcast);
         } catch (err: any) {
+            const friendlyError = parseErrorMessage(err);
             setLoadingStatus(prev => {
                 const currentStepIndex = prev.findIndex(s => s.status === 'in_progress');
                 if (currentStepIndex !== -1) {
@@ -250,8 +252,8 @@ export const usePodcast = (
                 }
                 return prev;
             });
-            setError(err.message || 'Произошла неизвестная ошибка.');
-            log({ type: 'error', message: 'Критическая ошибка при инициализации проекта', data: err });
+            setError(friendlyError);
+            log({ type: 'error', message: 'Критическая ошибка при инициализации проекта', data: { friendlyMessage: friendlyError, originalError: err } });
         } finally {
             setIsLoading(false);
         }
@@ -330,8 +332,9 @@ export const usePodcast = (
             updateStatus('Сборка проекта', 'completed');
 
         } catch (err: any) {
-            setError(err.message || 'Ошибка во время подготовки тестового проекта.');
-            log({ type: 'error', message: 'Тест видео-движка провален', data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Тест видео-движка провален', data: { friendlyMessage: friendlyError, originalError: err } });
         } finally {
             setIsLoading(false);
         }
@@ -366,8 +369,9 @@ export const usePodcast = (
             (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err: any) {
-            setError('Ошибка при сборке аудиофайла.');
-            log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: err});
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: { friendlyMessage: friendlyError, originalError: err }});
         } finally {
             setLoading(false);
             setLoadingStatus([]);
@@ -391,8 +395,9 @@ export const usePodcast = (
             (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err: any) {
-            setError('Ошибка при создании SRT файла.');
-            log({type: 'error', message: 'Ошибка при генерации SRT', data: err});
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({type: 'error', message: 'Ошибка при генерации SRT', data: { friendlyMessage: friendlyError, originalError: err }});
         } finally {
             setIsGeneratingSrt(false);
         }
@@ -428,8 +433,9 @@ export const usePodcast = (
             (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err: any) {
-            setError('Ошибка при создании видеофайла.');
-            log({type: 'error', message: 'Ошибка при генерации видео', data: err});
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({type: 'error', message: 'Ошибка при генерации видео', data: { friendlyMessage: friendlyError, originalError: err }});
         } finally {
             setIsGeneratingVideo(false);
         }
@@ -548,8 +554,9 @@ export const usePodcast = (
             const newThumbnails = await generateYoutubeThumbnails(podcast.thumbnailBaseImage, newTitle, podcast.designConcepts, log, defaultFont);
             setPodcast(p => p ? { ...p, selectedTitle: newTitle, youtubeThumbnails: newThumbnails } : null);
         } catch (err: any) {
-            setError("Ошибка при обновлении обложек.");
-            log({ type: 'error', message: 'Не удалось обновить обложки после смены заголовка', data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Не удалось обновить обложки после смены заголовка', data: { friendlyMessage: friendlyError, originalError: err } });
         }
     }, [podcast, log, setPodcast, defaultFont]);
     
@@ -565,8 +572,9 @@ export const usePodcast = (
              const newThumbnails = await generateYoutubeThumbnails(imageUrl, podcast.selectedTitle, podcast.designConcepts, log, defaultFont);
              setPodcast(p => p ? { ...p, thumbnailBaseImage: imageUrl, youtubeThumbnails: newThumbnails } : null);
         } catch(err: any) {
-            setError("Ошибка при смене фонового изображения для обложек.");
-            log({ type: 'error', message: 'Не удалось перерисовать обложки с новым фоном', data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Не удалось перерисовать обложки с новым фоном', data: { friendlyMessage: friendlyError, originalError: err } });
         }
     }, [podcast, log, setPodcast, defaultFont]);
 
@@ -579,8 +587,9 @@ export const usePodcast = (
             setPodcast(p => p ? { ...p, ...newTextAssets } : null); // Update text first
             await handleTitleSelection(newSelectedTitle, true); // Then update thumbnails
         } catch (err: any) {
-            setError(err.message || 'Ошибка при обновлении текста.');
-            log({ type: 'error', message: 'Ошибка при регенерации текста', data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Ошибка при регенерации текста', data: { friendlyMessage: friendlyError, originalError: err } });
         } finally {
             setIsRegeneratingText(false);
         }
@@ -597,8 +606,9 @@ export const usePodcast = (
             const newDurations = podcastRef.current?.videoPacingMode === 'manual' ? Array(newImages.length).fill(60) : undefined;
             updateChapterState(chapterId, 'completed', { generatedImages: newImages, imageDurations: newDurations }); // Assuming it goes back to completed
         } catch (err: any) {
-            log({type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: err});
-            updateChapterState(chapterId, 'error', { error: "Ошибка регенерации изображений" });
+            const friendlyError = parseErrorMessage(err);
+            log({type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: { friendlyMessage: friendlyError, originalError: err }});
+            updateChapterState(chapterId, 'error', { error: friendlyError });
         }
     };
     
@@ -665,8 +675,9 @@ export const usePodcast = (
             });
             
         } catch (err: any) {
-            setError(err.message || `Ошибка при регенерации изображения ${index + 1}.`);
-            log({ type: 'error', message: `Ошибка при регенерации изображения ${index + 1}.`, data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: `Ошибка при регенерации изображения ${index + 1}.`, data: { friendlyMessage: friendlyError, originalError: err } });
         } finally {
             setRegeneratingImage(null);
         }
@@ -698,8 +709,9 @@ export const usePodcast = (
                 return { ...p, chapters: newChapters };
             });
         } catch (err: any) {
-            setError(err.message || 'Ошибка при генерации доп. изображений.');
-            log({ type: 'error', message: 'Ошибка при генерации доп. изображений', data: err });
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Ошибка при генерации доп. изображений', data: { friendlyMessage: friendlyError, originalError: err } });
         } finally {
             setGeneratingMoreImages(null);
         }
@@ -731,8 +743,9 @@ export const usePodcast = (
             }
             return tracks;
         } catch (err: any) {
-            setError(err.message || "Ошибка при поиске музыки.");
-            log({type: 'error', message: 'Ошибка при поиске музыки.', data: err});
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({type: 'error', message: 'Ошибка при поиске музыки.', data: { friendlyMessage: friendlyError, originalError: err }});
             return [];
         }
     }, [podcast, log, apiKeys.gemini, setError]);
@@ -746,8 +759,9 @@ export const usePodcast = (
             }
             return tracks;
         } catch (err: any) {
-            setError(err.message || "Ошибка при поиске музыки.");
-            log({type: 'error', message: 'Ошибка при ручном поиске музыки.', data: err});
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({type: 'error', message: 'Ошибка при ручном поиске музыки.', data: { friendlyMessage: friendlyError, originalError: err }});
             return [];
         }
     }, [podcast, log, setError]);

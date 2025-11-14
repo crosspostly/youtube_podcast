@@ -9,7 +9,7 @@ type ProgressCallback = (progress: number, message: string) => void;
 // Все компоненты FFmpeg должны быть из пакета @ffmpeg/core для совместимости
 const FFMPEG_CORE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
 const FFMPEG_WASM_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
+const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/ffmpeg-core.worker.js';
 
 
 let ffmpeg: FFmpeg | null = null;

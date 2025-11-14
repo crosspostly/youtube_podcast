@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
-import { withQueueAndRetries, generateContentWithFallback } from './geminiService';
+import { withQueueAndRetries, generateContentWithFallback, withRetries } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -837,7 +837,7 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
 
     log({ type: 'request', message: 'Запрос SFX с Freesound через прокси', data: { query: tags } });
 
-    try {
+    const doFetch = async () => {
         const response = await fetch(FREESOUND_PROXY_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -849,15 +849,24 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
 
         if (!response.ok) {
             const errorText = await response.text();
-            log({ type: 'error', message: `Freesound Proxy error: ${response.statusText}`, data: errorText });
-            return [];
+            // Create an error object that our retry logic can understand
+            const error: any = new Error(`Freesound Proxy error: ${response.statusText}`);
+            error.status = response.status;
+            error.data = errorText;
+            log({ type: 'error', message: `Freesound Proxy request failed with status ${response.status}`, data: errorText });
+            throw error;
         }
 
-        const data = await response.json();
+        return response.json();
+    };
+
+    try {
+        // Wrap the fetch logic with retries. Use more retries and a shorter initial delay for this external API.
+        const data = await withRetries(doFetch, log, 5, 500);
         if (!data || !data.results || data.results.length === 0) return [];
         return data.results;
     } catch (error) {
-        log({ type: 'error', message: 'Ошибка при запросе к Freesound прокси.', data: error });
+        log({ type: 'error', message: 'Ошибка при запросе к Freesound прокси после всех попыток.', data: error });
         return [];
     }
 };

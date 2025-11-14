@@ -3,9 +3,9 @@ import { safeLower } from '../utils/safeLower-util';
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
-type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response'; message: string; data?: any; }) => void;
+export type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response'; message: string; data?: any; }) => void;
 
-// Queue implementation for Gemini API requests
+// Queue implementation for API requests
 interface QueueItem {
     id: string;
     execute: () => Promise<any>;
@@ -14,17 +14,18 @@ interface QueueItem {
     timestamp: number;
 }
 
-class GeminiRequestQueue {
+export class ApiRequestQueue {
     private queue: QueueItem[] = [];
     private isProcessing = false;
     private lastRequestTime = 0;
-    private readonly minDelayBetweenRequests = 150; // 150ms between requests
+    private readonly minDelayBetweenRequests: number;
     private readonly maxConcurrentRequests = 1; // Only 1 request at a time
     private currentRequests = 0;
     private log: LogFunction;
 
-    constructor(log: LogFunction) {
+    constructor(log: LogFunction, minDelayBetweenRequests = 150) {
         this.log = log;
+        this.minDelayBetweenRequests = minDelayBetweenRequests;
     }
 
     async add<T>(executeFn: () => Promise<T>): Promise<T> {
@@ -125,12 +126,12 @@ class GeminiRequestQueue {
     }
 }
 
-// Global queue instance
-let globalQueue: GeminiRequestQueue | null = null;
+// Global queue instance for general text-based requests
+let globalQueue: ApiRequestQueue | null = null;
 
-const getQueue = (log: LogFunction): GeminiRequestQueue => {
+const getQueue = (log: LogFunction): ApiRequestQueue => {
     if (!globalQueue) {
-        globalQueue = new GeminiRequestQueue(log);
+        globalQueue = new ApiRequestQueue(log); // Uses default 150ms delay
         log({ type: 'info', message: 'Gemini API request queue initialized' });
     }
     return globalQueue;
@@ -160,16 +161,19 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
         } catch (error: any) {
             // Check for common retryable error patterns in message, status, or code.
             const errorMessage = safeLower(error?.message || '');
-            const errorStatus = safeLower(error?.status || '');
-            const isRetryable = 
-                error?.code === 503 || 
-                error?.code === 429 || 
-                errorMessage.includes('overloaded') || 
+            const status = error?.status || error?.response?.status;
+
+            const isRetryable =
+                status === 429 || // Too Many Requests
+                status === 503 || // Service Unavailable
+                status === 504 || // Gateway Timeout
+                errorMessage.includes('overloaded') ||
                 errorMessage.includes('rate limit') ||
-                errorStatus === 'unavailable';
+                errorMessage.includes('timed out') ||
+                errorMessage.includes('unavailable');
 
             if (isRetryable && attempt < retries) {
-                log({ type: 'info', message: `API call failed (Attempt ${attempt}/${retries}). Retrying in ${currentDelay}ms...`, data: { message: error.message } });
+                log({ type: 'info', message: `API call failed (Attempt ${attempt}/${retries}). Retrying in ${currentDelay}ms...`, data: { message: error.message, status } });
                 await delay(currentDelay);
                 attempt++;
                 currentDelay *= 2; // Exponential backoff
