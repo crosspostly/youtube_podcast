@@ -6,8 +6,8 @@ export type { ApiRetryConfig, AppConfig };
 // Default configuration for API retry behavior
 const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
     retries: 3,
-    initialDelay: 2000, // 2 seconds
-    maxDelay: 30000,    // 30 seconds
+    initialDelay: 5000, // 5 seconds (increased from 2s)
+    maxDelay: 60000,    // 60 seconds (increased from 30s)
     exponentialBase: 2,
     jitterFactor: 0.4    // 40% jitter
 };
