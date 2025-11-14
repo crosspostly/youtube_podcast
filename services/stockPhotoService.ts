@@ -273,77 +273,101 @@ export const downloadStockPhoto = async (photo: StockPhoto, log: LogFunction): P
  */
 export const searchStockPhotos = async (
     rawPrompt: string,
-    apiKeys: StockPhotoApiKeys,
+    userApiKeys: StockPhotoApiKeys,  // Пользовательские ключи
     geminiApiKey: string,
     preferredService: 'unsplash' | 'pexels' | 'auto',
     log: LogFunction
 ): Promise<StockPhoto[]> => {
     try {
+        // ШАГ 0: Получить финальные ключи (пользовательские ИЛИ дефолтные)
+        const { getStockPhotoKeys } = await import('../config/appConfig');
+        const finalKeys = getStockPhotoKeys(userApiKeys);
+        
+        log({ 
+          type: 'info', 
+          message: `Используются ключи: Unsplash=${finalKeys.unsplash ? '✅' : '❌'}, Pexels=${finalKeys.pexels ? '✅' : '❌'}` 
+        });
+        
         // Шаг 1: Упростить промпт для стоков
         const simplifiedPrompt = await simplifyPromptForStock(rawPrompt, geminiApiKey, log);
         
         // Шаг 2: Перевести на английский (если нужно)
         const finalQuery = await translateToEnglish(simplifiedPrompt, geminiApiKey, log);
         
-        // Шаг 3: Поиск на выбранном сервисе
-        if (preferredService === 'unsplash' && apiKeys.unsplash) {
+        // Шаг 3: Поиск на выбранном сервисе с fallback
+        
+        // ПРИОРИТЕТ 1: UNSPLASH
+        if (preferredService === 'unsplash' && finalKeys.unsplash) {
             try {
-                const photos = await searchUnsplash(finalQuery, apiKeys.unsplash, log);
+                log({ type: 'info', message: '🔍 Поиск на Unsplash (приоритетный сервис)' });
+                const photos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
                 if (photos.length > 0) return photos;
                 
                 // Fallback на Pexels
-                log({ type: 'warning', message: 'Unsplash не нашёл, пробуем Pexels...' });
-                if (apiKeys.pexels) {
-                    const pexelsPhotos = await searchPexels(finalQuery, apiKeys.pexels, log);
+                if (finalKeys.pexels) {
+                    log({ type: 'warning', message: '⚠️ Unsplash не нашёл результатов, fallback на Pexels...' });
+                    const pexelsPhotos = await searchPexels(finalQuery, finalKeys.pexels, log);
                     if (pexelsPhotos.length > 0) return pexelsPhotos;
                 }
             } catch (error) {
-                log({ type: 'warning', message: 'Unsplash error, trying Pexels...', data: error });
-                if (apiKeys.pexels) {
-                    const pexelsPhotos = await searchPexels(finalQuery, apiKeys.pexels, log);
+                log({ type: 'warning', message: '❌ Unsplash error, trying Pexels...', data: error });
+                if (finalKeys.pexels) {
+                    const pexelsPhotos = await searchPexels(finalQuery, finalKeys.pexels, log);
                     if (pexelsPhotos.length > 0) return pexelsPhotos;
                 }
             }
-        } else if (preferredService === 'pexels' && apiKeys.pexels) {
+        } 
+        
+        // ПРИОРИТЕТ 2: PEXELS
+        else if (preferredService === 'pexels' && finalKeys.pexels) {
             try {
-                const photos = await searchPexels(finalQuery, apiKeys.pexels, log);
+                log({ type: 'info', message: '🔍 Поиск на Pexels (приоритетный сервис)' });
+                const photos = await searchPexels(finalQuery, finalKeys.pexels, log);
                 if (photos.length > 0) return photos;
                 
                 // Fallback на Unsplash
-                log({ type: 'warning', message: 'Pexels не нашёл, пробуем Unsplash...' });
-                if (apiKeys.unsplash) {
-                    const unsplashPhotos = await searchUnsplash(finalQuery, apiKeys.unsplash, log);
+                if (finalKeys.unsplash) {
+                    log({ type: 'warning', message: '⚠️ Pexels не нашёл результатов, fallback на Unsplash...' });
+                    const unsplashPhotos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
                     if (unsplashPhotos.length > 0) return unsplashPhotos;
                 }
             } catch (error) {
-                log({ type: 'warning', message: 'Pexels error, trying Unsplash...', data: error });
-                if (apiKeys.unsplash) {
-                    const unsplashPhotos = await searchUnsplash(finalQuery, apiKeys.unsplash, log);
+                log({ type: 'warning', message: '❌ Pexels error, trying Unsplash...', data: error });
+                if (finalKeys.unsplash) {
+                    const unsplashPhotos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
                     if (unsplashPhotos.length > 0) return unsplashPhotos;
                 }
             }
-        } else {
-            // Auto mode: пробуем оба
-            if (apiKeys.unsplash) {
+        } 
+        
+        // РЕЖИМ AUTO: Пробуем оба (по умолчанию Unsplash первым)
+        else {
+            log({ type: 'info', message: '🔍 Режим AUTO: пробуем оба сервиса' });
+            
+            // Сначала Unsplash (по умолчанию)
+            if (finalKeys.unsplash) {
                 try {
-                    const photos = await searchUnsplash(finalQuery, apiKeys.unsplash, log);
+                    log({ type: 'info', message: '🔍 Попытка 1: Unsplash' });
+                    const photos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
                     if (photos.length > 0) return photos;
                 } catch (error) {
-                    log({ type: 'warning', message: 'Unsplash failed', data: error });
+                    log({ type: 'warning', message: '❌ Unsplash failed in AUTO mode', data: error });
                 }
             }
             
-            if (apiKeys.pexels) {
+            // Затем Pexels
+            if (finalKeys.pexels) {
                 try {
-                    const photos = await searchPexels(finalQuery, apiKeys.pexels, log);
+                    log({ type: 'info', message: '🔍 Попытка 2: Pexels' });
+                    const photos = await searchPexels(finalQuery, finalKeys.pexels, log);
                     if (photos.length > 0) return photos;
                 } catch (error) {
-                    log({ type: 'warning', message: 'Pexels failed', data: error });
+                    log({ type: 'warning', message: '❌ Pexels failed in AUTO mode', data: error });
                 }
             }
         }
         
-        throw new Error('Не удалось найти изображения ни на одном стоковом сервисе');
+        throw new Error('❌ Не удалось найти изображения ни на одном стоковом сервисе');
         
     } catch (error) {
         log({ type: 'error', message: 'Ошибка поиска стоковых фото', data: error });

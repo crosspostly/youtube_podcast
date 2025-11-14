@@ -98,14 +98,22 @@ export const regenerateSingleImage = async (
     prompt: string, 
     log: LogFunction, 
     apiKeys: ApiKeys, 
-    imageMode: ImageMode = 'generate'
+    imageMode: ImageMode = 'generate',
+    stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
     
     // РЕЖИМ 1: Подбор стоковых фото
-    if (imageMode === 'unsplash' || imageMode === 'pexels') {
+    if (imageMode === 'unsplash' || imageMode === 'pexels' || imageMode === 'auto') {
         try {
-            const preferredService = imageMode === 'unsplash' ? 'unsplash' : 'pexels';
+            let preferredService: 'unsplash' | 'pexels' | 'auto';
+            
+            if (imageMode === 'auto') {
+                preferredService = stockPhotoPreference;
+            } else {
+                preferredService = imageMode === 'unsplash' ? 'unsplash' : 'pexels';
+            }
+            
             const photos = await searchStockPhotos(
                 prompt,
                 { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
@@ -211,7 +219,8 @@ export const generateStyleImages = async (
     imageCount: number, 
     log: LogFunction, 
     apiKeys: ApiKeys, 
-    imageMode: ImageMode = 'generate'
+    imageMode: ImageMode = 'generate',
+    stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage[]> => {
     const targetImageCount = imageCount > 0 ? imageCount : 3;
     let finalPrompts = [...prompts];
@@ -227,7 +236,7 @@ export const generateStyleImages = async (
     const generatedImages: GeneratedImage[] = [];
     for (const [i, prompt] of finalPrompts.entries()) {
         try {
-            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
+            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference);
             log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
             generatedImages.push(imageData);
         } catch (error) {
@@ -243,7 +252,8 @@ export const generateMoreImages = async (
     prompts: string[], 
     log: LogFunction, 
     apiKeys: ApiKeys, 
-    imageMode: ImageMode = 'generate'
+    imageMode: ImageMode = 'generate',
+    stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage[]> => {
     const targetImageCount = 5;
     if (prompts.length === 0) {
@@ -259,7 +269,7 @@ export const generateMoreImages = async (
     const generatedImages: GeneratedImage[] = [];
     for (const [i, prompt] of selectedPrompts.entries()) {
         try {
-            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
+            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference);
             log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
             generatedImages.push(imageData);
         } catch (error) {

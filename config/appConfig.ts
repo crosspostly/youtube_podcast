@@ -1,4 +1,4 @@
-import type { AppConfig, ApiRetryConfig } from '../types';
+import type { AppConfig, ApiRetryConfig, StockPhotoApiKeys } from '../types';
 
 // Export the type for use in other components
 export type { ApiRetryConfig, AppConfig };
@@ -30,4 +30,21 @@ export const getApiRetryConfig = (): ApiRetryConfig => {
 // Function to update only API retry configuration
 export const updateApiRetryConfig = (updates: Partial<ApiRetryConfig>) => {
     Object.assign(appConfig.apiRetry, updates);
+};
+
+// ============================================================================
+// ДЕФОЛТНЫЕ API КЛЮЧИ ДЛЯ СТОКОВЫХ ФОТО (разработчика)
+// ============================================================================
+
+export const DEFAULT_STOCK_PHOTO_KEYS = {
+  unsplash: 'YOUR_UNSPLASH_ACCESS_KEY_HERE',  // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
+  pexels: 'YOUR_PEXELS_API_KEY_HERE'          // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
+};
+
+// Функция получения ключей с приоритетом пользовательских
+export const getStockPhotoKeys = (userKeys?: StockPhotoApiKeys) => {
+  return {
+    unsplash: userKeys?.unsplash || DEFAULT_STOCK_PHOTO_KEYS.unsplash,
+    pexels: userKeys?.pexels || DEFAULT_STOCK_PHOTO_KEYS.pexels
+  };
 };

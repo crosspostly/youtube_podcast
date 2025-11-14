@@ -7,7 +7,7 @@ import { generateSrtFile } from '../services/srtService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
 import { generateVideo as generateVideoService } from '../services/videoService';
-import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect, ImageMode, GeneratedImage } from '../types';
+import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect, ImageMode, GeneratedImage, StockPhotoPreference } from '../types';
 import { TEST_PODCAST_BLUEPRINT } from '../services/testData';
 
 
@@ -20,7 +20,8 @@ export const usePodcast = (
     updateHistory: (podcast: Podcast) => void,
     apiKeys: { gemini: string; openRouter: string, freesound: string, unsplash?: string, pexels?: string },
     defaultFont: string,
-    imageMode: ImageMode = 'generate'
+    imageMode: ImageMode = 'generate',
+    stockPhotoPreference: StockPhotoPreference = 'unsplash'
 ) => {
     const [podcast, setPodcastState] = useState<Podcast | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -96,7 +97,7 @@ export const usePodcast = (
         if (!imagePrompts || imagePrompts.length === 0) return [];
 
         try {
-            const newImages = await generateStyleImages(imagePrompts, 3, log, apiKeys, imageMode);
+            const newImages = await generateStyleImages(imagePrompts, 3, log, apiKeys, imageMode, stockPhotoPreference);
             return newImages;
         } catch (err: any) {
             const chapterTitle = podcastRef.current?.chapters.find(c => c.id === chapterId)?.title || `ID: ${chapterId}`;
@@ -206,7 +207,7 @@ export const usePodcast = (
             }
 
             updateStatus('Генерация изображений для первой главы', 'in_progress');
-            const generatedImages = await generateStyleImages(blueprint.chapters[0].imagePrompts, initialImageCount, log, apiKeys);
+            const generatedImages = await generateStyleImages(blueprint.chapters[0].imagePrompts, initialImageCount, log, apiKeys, imageMode, stockPhotoPreference);
             blueprint.chapters[0].generatedImages = generatedImages;
             updateStatus('Генерация изображений для первой главы', 'completed');
             setGenerationProgress(p => p + 25);
@@ -616,7 +617,7 @@ export const usePodcast = (
         
         updateChapterState(chapterId, 'images_generating');
         try {
-            const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys, imageMode);
+            const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys, imageMode, stockPhotoPreference);
             // Reset durations when all images are regenerated in manual mode
             const newDurations = podcastRef.current?.videoPacingMode === 'manual' ? Array(newImages.length).fill(60) : undefined;
             updateChapterState(chapterId, 'completed', { generatedImages: newImages, imageDurations: newDurations }); // Assuming it goes back to completed
@@ -682,7 +683,7 @@ export const usePodcast = (
 
         const regenerationPromises = podcast.chapters.map(async (chapter): Promise<ChapterResult> => {
             try {
-                const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys);
+                const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys, imageMode, stockPhotoPreference);
                 const newDurations = podcast.videoPacingMode === 'manual' ? Array(newImages.length).fill(60) : undefined;
                 return { chapterId: chapter.id, status: 'completed', generatedImages: newImages };
             } catch (err: any) {
@@ -728,7 +729,7 @@ export const usePodcast = (
         setRegeneratingImage({ chapterId, index });
         try {
             const requestKey = `regenerate-${chapterId}-${index}`;
-            const newImage = await regenerateSingleImageApi(chapter.imagePrompts[index], log, apiKeys, imageMode);
+            const newImage = await regenerateSingleImageApi(chapter.imagePrompts[index], log, apiKeys, imageMode, stockPhotoPreference);
             
             setPodcast(p => {
                 if (!p) return null;
@@ -764,7 +765,7 @@ export const usePodcast = (
 
         setGeneratingMoreImages(chapterId);
         try {
-            const newImages = await generateMoreImagesApi(chapter.imagePrompts, log, apiKeys, imageMode);
+            const newImages = await generateMoreImagesApi(chapter.imagePrompts, log, apiKeys, imageMode, stockPhotoPreference);
             setPodcast(p => {
                 if (!p) return null;
                 const newChapters = p.chapters.map(c => {

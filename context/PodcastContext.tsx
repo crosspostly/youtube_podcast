@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from 'react';
 import { useHistory } from '../hooks/useHistory';
 import { usePodcast } from '../hooks/usePodcast';
-import type { Podcast, ImageMode } from '../types';
+import type { Podcast, ImageMode, StockPhotoPreference } from '../types';
 
 type UseHistoryReturn = ReturnType<typeof useHistory>;
 type UsePodcastReturn = ReturnType<typeof usePodcast>;
@@ -18,14 +18,27 @@ const PodcastContext = createContext<PodcastContextType | undefined>(undefined);
 
 interface PodcastProviderProps {
     children: React.ReactNode;
-    apiKeys: { gemini: string; openRouter: string; freesound: string; unsplash?: string; pexels?: string; };
+    apiKeys: { 
+        gemini: string; 
+        openRouter: string; 
+        freesound: string;
+        unsplash?: string;
+        pexels?: string;
+    };
     defaultFont: string;
     imageMode: ImageMode;
+    stockPhotoPreference?: StockPhotoPreference;
 }
 
-export const PodcastProvider: React.FC<PodcastProviderProps> = ({ children, apiKeys, defaultFont, imageMode }) => {
+export const PodcastProvider: React.FC<PodcastProviderProps> = ({ 
+    children, 
+    apiKeys, 
+    defaultFont, 
+    imageMode, 
+    stockPhotoPreference 
+}) => {
     const historyHook = useHistory();
-    const podcastHook = usePodcast(historyHook.updateHistoryWithPodcast, apiKeys, defaultFont, imageMode);
+    const podcastHook = usePodcast(historyHook.updateHistoryWithPodcast, apiKeys, defaultFont, imageMode, stockPhotoPreference);
 
     const value = {
         ...historyHook,
