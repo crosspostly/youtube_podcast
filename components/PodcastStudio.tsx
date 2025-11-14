@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine, GeneratedImage } from '../types';
+import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine, GeneratedImage, ImageMode } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
 import Spinner from './Spinner';
 import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon, VideoCameraIcon } from './Icons';
@@ -61,6 +61,11 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
+    const [imageMode, setImageMode] = useState<ImageMode>('generate');
+    const [stockPhotoModalOpen, setStockPhotoModalOpen] = useState(false);
+    const [stockPhotoQuery, setStockPhotoQuery] = useState('');
+    const [stockPhotoChapterId, setStockPhotoChapterId] = useState<string | null>(null);
+    const [regenerationProgress, setRegenerationProgress] = useState({ current: 0, total: 0 });
     const audioPlayerRef = useRef<HTMLAudioElement>(null);
     const [musicModalChapter, setMusicModalChapter] = useState<Chapter | null>(null);
     const [sfxModalLine, setSfxModalLine] = useState<{chapterId: string, line: ScriptLine, lineIndex: number} | null>(null);
