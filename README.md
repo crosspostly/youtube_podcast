@@ -157,3 +157,4 @@ MIT © [crosspostly](https://github.com/crosspostly)
 - [Issue templates and contribution workflow in CONTRIBUTING.md]
 
 ---
+# Test CI after PR #61 - All critical issues should be fixed now
