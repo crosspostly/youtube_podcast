@@ -49,7 +49,7 @@ export interface Chapter {
   backgroundMusicVolume?: number;
   // Per-chapter image generation
   imagePrompts: string[];
-  generatedImages?: string[];
+  generatedImages?: GeneratedImage[];
   selectedBgIndex: number;
   // New field for manual video timing
   imageDurations?: number[];
@@ -116,6 +116,8 @@ export interface ApiKeys {
   gemini?: string;
   openRouter?: string;
   freesound?: string;
+  unsplash?: string;
+  pexels?: string;
 }
 
 export interface Podcast {
@@ -154,6 +156,33 @@ export interface ApiRetryConfig {
   exponentialBase?: number;
   jitterFactor?: number;
 }
+
+export interface StockPhoto {
+    id: string;
+    url: string;           // URL для превью
+    downloadUrl: string;   // URL для скачивания в полном размере
+    photographer: string;
+    photographerUrl: string;
+    source: 'unsplash' | 'pexels';
+    width: number;
+    height: number;
+    license: string;
+}
+
+export interface GeneratedImage {
+    url: string;
+    photographer?: string;
+    photographerUrl?: string;
+    source?: 'generated' | 'unsplash' | 'pexels';
+    license?: string;
+}
+
+export type ImageMode = 'generate' | 'unsplash' | 'pexels';
+
+export type StockPhotoApiKeys = {
+    unsplash?: string;
+    pexels?: string;
+};
 
 // Global application configuration
 export interface AppConfig {

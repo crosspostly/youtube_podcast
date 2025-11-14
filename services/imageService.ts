@@ -1,9 +1,15 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
-import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
+import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage } from '../types';
 import { drawCanvas } from './canvasUtils';
 import { withRetries, ApiRequestQueue, LogFunction, RetryConfig } from './geminiService';
+import { searchStockPhotos, downloadStockPhoto } from './stockPhotoService';
 
-type ApiKeys = { gemini: string; openRouter: string; };
+type ApiKeys = { 
+  gemini: string; 
+  openRouter: string; 
+  unsplash?: string; 
+  pexels?: string; 
+};
 
 // --- START: Image-specific Request Queue ---
 // This queue ensures a delay between image generation requests
@@ -68,8 +74,44 @@ const generateWithOpenRouter = async (prompt: string, log: LogFunction, openRout
 };
 
 
-export const regenerateSingleImage = async (prompt: string, log: LogFunction, apiKeys: ApiKeys): Promise<string> => {
+export const regenerateSingleImage = async (
+    prompt: string, 
+    log: LogFunction, 
+    apiKeys: ApiKeys, 
+    imageMode: ImageMode = 'generate'
+): Promise<GeneratedImage> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
+    
+    // РЕЖИМ 1: Подбор стоковых фото
+    if (imageMode === 'unsplash' || imageMode === 'pexels') {
+        try {
+            const preferredService = imageMode === 'unsplash' ? 'unsplash' : 'pexels';
+            const photos = await searchStockPhotos(
+                prompt,
+                { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
+                apiKeys.gemini,
+                preferredService,
+                log
+            );
+            
+            if (photos.length > 0) {
+                log({ type: 'response', message: `✅ Изображение найдено на ${photos[0].source}` });
+                const base64 = await downloadStockPhoto(photos[0], log);
+                return {
+                    url: base64,
+                    photographer: photos[0].photographer,
+                    photographerUrl: photos[0].photographerUrl,
+                    source: photos[0].source,
+                    license: photos[0].license
+                };
+            }
+        } catch (error) {
+            log({ type: 'warning', message: 'Стоковые фото не найдены, переключаемся на генерацию...', data: error });
+            // Продолжаем к AI генерации (fallback)
+        }
+    }
+    
+    // РЕЖИМ 2: AI Генерация
     try {
         log({ type: 'request', message: `Запрос одного изображения от gemini-2.5-flash-image`, data: { prompt: fullPrompt } });
         const ai = getAiClient(apiKeys.gemini, log);
@@ -90,28 +132,68 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction, ap
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         if (part?.inlineData) {
             const base64Image: string = part.inlineData.data;
-            return `data:image/png;base64,${base64Image}`;
+            return {
+                url: `data:image/png;base64,${base64Image}`,
+                source: 'generated'
+            };
         }
         throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
 
     } catch (error: any) {
         log({ type: 'error', message: `Ошибка при генерации одного изображения через Gemini, попытка fallback...`, data: error });
+        
+        // FALLBACK 1: OpenRouter
         if (apiKeys.openRouter) {
             try {
                 log({ type: 'info', message: 'Fallback: Вызов OpenRouter для генерации изображения.' });
                 const result = await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
                 log({ type: 'response', message: 'Fallback: Изображение успешно сгенерировано через OpenRouter.' });
-                return result;
-            } catch (fallbackError) {
-                log({ type: 'error', message: `Ошибка fallback-генерации через OpenRouter`, data: fallbackError });
-                throw fallbackError; // Re-throw the fallback error
+                return {
+                    url: result,
+                    source: 'generated'
+                };
+            } catch (openRouterError: any) {
+                log({ type: 'warning', message: `OpenRouter failed, trying stock photos...`, data: openRouterError });
+                
+                // FALLBACK 2: Стоковые фото (финальный fallback)
+                try {
+                    const photos = await searchStockPhotos(
+                        prompt,
+                        { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
+                        apiKeys.gemini,
+                        'auto',
+                        log
+                    );
+                    
+                    if (photos.length > 0) {
+                        log({ type: 'response', message: '✅ Изображение найдено на стоковом сервисе (fallback)' });
+                        const base64 = await downloadStockPhoto(photos[0], log);
+                        return {
+                            url: base64,
+                            photographer: photos[0].photographer,
+                            photographerUrl: photos[0].photographerUrl,
+                            source: photos[0].source,
+                            license: photos[0].license
+                        };
+                    }
+                } catch (stockError) {
+                    log({ type: 'error', message: 'Все методы получения изображения провалились' });
+                    throw new Error('❌ Не удалось получить изображение ни одним способом');
+                }
             }
         }
+        
         throw error; // Re-throw original error if no fallback key
     }
 };
 
-export const generateStyleImages = async (prompts: string[], imageCount: number, log: LogFunction, apiKeys: ApiKeys): Promise<string[]> => {
+export const generateStyleImages = async (
+    prompts: string[], 
+    imageCount: number, 
+    log: LogFunction, 
+    apiKeys: ApiKeys, 
+    imageMode: ImageMode = 'generate'
+): Promise<GeneratedImage[]> => {
     const targetImageCount = imageCount > 0 ? imageCount : 3;
     let finalPrompts = [...prompts];
     if (finalPrompts.length === 0) {
@@ -126,7 +208,7 @@ export const generateStyleImages = async (prompts: string[], imageCount: number,
     const generatedImages: string[] = [];
     for (const [i, prompt] of finalPrompts.entries()) {
         try {
-            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys);
+            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
             log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
             generatedImages.push(imageSrc);
         } catch (error) {
@@ -138,7 +220,12 @@ export const generateStyleImages = async (prompts: string[], imageCount: number,
     return generatedImages;
 };
 
-export const generateMoreImages = async (prompts: string[], log: LogFunction, apiKeys: ApiKeys): Promise<string[]> => {
+export const generateMoreImages = async (
+    prompts: string[], 
+    log: LogFunction, 
+    apiKeys: ApiKeys, 
+    imageMode: ImageMode = 'generate'
+): Promise<GeneratedImage[]> => {
     const targetImageCount = 5;
     if (prompts.length === 0) {
         log({ type: 'info', message: 'Нет промптов для генерации дополнительных изображений.' });
@@ -153,7 +240,7 @@ export const generateMoreImages = async (prompts: string[], log: LogFunction, ap
     const generatedImages: string[] = [];
     for (const [i, prompt] of selectedPrompts.entries()) {
         try {
-            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys);
+            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
             log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
             generatedImages.push(imageSrc);
         } catch (error) {
