@@ -118,7 +118,7 @@ const VideoTestPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         try {
             const mockPodcast = JSON.parse(JSON.stringify({ ...TEST_PODCAST_BLUEPRINT, id: 'test-3' })) as Podcast;
             if (mockPodcast.chapters[0]?.generatedImages) {
-                mockPodcast.chapters[0].generatedImages[1] = "https://example.com/non-existent-image.jpg";
+                mockPodcast.chapters[0].generatedImages[1] = { url: "https://example.com/non-existent-image.jpg", source: 'generated' };
             }
             const mockAudio = createSilentWavBlob(5);
             await generateVideo(mockPodcast, mockAudio, () => {}, testLogger2);
