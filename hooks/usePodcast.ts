@@ -107,7 +107,7 @@ export const usePodcast = (
             
             // Step 2: Find Music
             const scriptText = chapterData.script.map(line => line.text).join(' ');
-            const musicTracks = await findMusicWithAi(scriptText, log, apiKeys.gemini);
+            const musicTracks = await findMusicWithAi(scriptText, log, { gemini: apiKeys.gemini });
             const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
             
             updateChapterState(chapterId, 'images_generating', { 
@@ -122,7 +122,7 @@ export const usePodcast = (
             updateChapterState(chapterId, 'audio_generating', { generatedImages: newImages });
 
             // Step 4: Generate Audio (using the script from Step 1)
-            const audioBlob = await generateChapterAudio(chapterData.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys.gemini);
+            const audioBlob = await generateChapterAudio(chapterData.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, { gemini: apiKeys.gemini });
             updateChapterState(chapterId, 'completed', { audioBlob });
 
         } catch (err: any) {
@@ -176,7 +176,7 @@ export const usePodcast = (
             
             updateStatus('Подбор музыки и SFX для первой главы', 'in_progress');
             const firstChapterScriptText = blueprint.chapters[0].script.map(line => line.text).join(' ');
-            const musicTracks = await findMusicWithAi(firstChapterScriptText, log, apiKeys.gemini);
+            const musicTracks = await findMusicWithAi(firstChapterScriptText, log, { gemini: apiKeys.gemini });
             if (musicTracks.length > 0) {
                 blueprint.chapters[0].backgroundMusic = musicTracks[0];
             }
@@ -198,12 +198,12 @@ export const usePodcast = (
             setGenerationProgress(p => p + 25);
 
             updateStatus('Озвучивание первой главы', 'in_progress');
-            const firstChapterAudio = await generateChapterAudio(blueprint.chapters[0].script, narrationMode, finalCharacterVoices, monologueVoice, log, apiKeys.gemini);
+            const firstChapterAudio = await generateChapterAudio(blueprint.chapters[0].script, narrationMode, finalCharacterVoices, monologueVoice, log, { gemini: apiKeys.gemini });
             updateStatus('Озвучивание первой главы', 'completed');
             setGenerationProgress(p => p + 20);
             
             updateStatus('Разработка дизайн-концепций обложек', 'in_progress');
-            const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys.gemini);
+            const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, { gemini: apiKeys.gemini });
             updateStatus('Разработка дизайн-концепций обложек', 'completed');
             setGenerationProgress(p => p + 5);
             
@@ -582,7 +582,7 @@ export const usePodcast = (
         if (!podcast) return;
         setIsRegeneratingText(true);
         try {
-            const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys.gemini);
+            const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, { gemini: apiKeys.gemini });
             const newSelectedTitle = newTextAssets.youtubeTitleOptions[0] || podcast.selectedTitle;
             setPodcast(p => p ? { ...p, ...newTextAssets } : null); // Update text first
             await handleTitleSelection(newSelectedTitle, true); // Then update thumbnails
@@ -628,7 +628,7 @@ export const usePodcast = (
         const regenerationPromises = podcast.chapters.map(async (chapter): Promise<ChapterResult> => {
             if (chapter.script && chapter.script.length > 0) {
                 try {
-                    const audioBlob = await generateChapterAudio( chapter.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys.gemini);
+                    const audioBlob = await generateChapterAudio( chapter.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, { gemini: apiKeys.gemini });
                     return { chapterId: chapter.id, status: 'completed', audioBlob };
                 } catch (err: any) {
                     log({ type: 'error', message: `Ошибка при переозвучке главы ${chapter.title}`, data: err });
@@ -737,7 +737,7 @@ export const usePodcast = (
         try {
             const scriptText = chapter.script.map(l => l.text).join(' ');
             const query = scriptText.trim() ? scriptText : podcast.topic;
-            const tracks = await findMusicWithAi(query, log, apiKeys.gemini);
+            const tracks = await findMusicWithAi(query, log, { gemini: apiKeys.gemini });
             if (tracks.length === 0) {
                 log({ type: 'info', message: `Подходящая музыка для главы "${chapter.title}" не найдена.` });
             }
