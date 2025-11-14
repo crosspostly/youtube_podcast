@@ -165,8 +165,8 @@ let globalQueue: ApiRequestQueue | null = null;
 
 const getQueue = (log: LogFunction): ApiRequestQueue => {
     if (!globalQueue) {
-        globalQueue = new ApiRequestQueue(log, 2000); // Increased to 2000ms for better rate limit handling
-        log({ type: 'info', message: 'Gemini API request queue initialized (2s delay)' });
+        globalQueue = new ApiRequestQueue(log, 10000); // Increased to 10000ms (10 seconds) for strict free tier limits
+        log({ type: 'info', message: 'Gemini API request queue initialized (10s delay)' });
     }
     return globalQueue;
 };

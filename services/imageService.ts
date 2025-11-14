@@ -13,8 +13,8 @@ let imageQueue: ApiRequestQueue | null = null;
 
 const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     if (!imageQueue) {
-        imageQueue = new ApiRequestQueue(log, 35000); // 35,000ms = 35 seconds to be safe with 2 RPM limits (60/2 = 30s + buffer)
-        log({ type: 'info', message: 'Image generation API request queue initialized (35s delay)' });
+        imageQueue = new ApiRequestQueue(log, 65000); // 65,000ms = 65 seconds to be very safe with 2 RPM limits (60/2 = 30s + large buffer)
+        log({ type: 'info', message: 'Image generation API request queue initialized (65s delay)' });
     }
     return imageQueue;
 };
