@@ -79,67 +79,6 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
     }
 };
 
-export const findSfxManually = async (keywords: string, log: LogFunction, apiKey?: string): Promise<SoundEffect[]> => {
-    log({ type: 'info', message: `Ручной поиск SFX по ключевым словам: ${keywords}` });
-    return performFreesoundSearch(keywords, log, apiKey);
-};
-
-export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<SoundEffect[]> => {
-    log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
-    
-    let attempts = 0;
-    const maxAttempts = 2;
-
-    while (attempts < maxAttempts) {
-        attempts++;
-        try {
-            const prompt = `Analyze the following sound effect description: "${description}".
-            Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
-            Focus on the core sound, avoiding generic terms like "sound of".
-            
-            Examples:
-            - "Sound of a heavy wooden door creaking open": heavy door creak
-            - "A wolf howls at the full moon in a forest": wolf howl forest
-            - "Footsteps on wet pavement": footsteps wet pavement
-            
-            Description: "${description}"
-            Keywords:`;
-
-            const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-            const keywords = keywordsResponse.text.trim();
-            log({ type: 'info', message: `ИИ предложил ключевые слова для SFX (Попытка ${attempts}): ${keywords}` });
-
-            if (!keywords) {
-                log({ type: 'info', message: `ИИ не вернул ключевых слов. Попытка ${attempts}.` });
-                continue;
-            }
-
-            let searchTerms = keywords.split(/[\s,]+/).filter(Boolean);
-            while (searchTerms.length > 0) {
-                const currentQuery = searchTerms.join(' ');
-                log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
-                const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys.freesound);
-                if (sfxResults.length > 0) {
-                    log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
-                    return sfxResults;
-                }
-                log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
-                searchTerms.pop();
-            }
-            log({ type: 'info', message: `По ключевым словам "${keywords}" ничего не найдено даже после упрощения.` });
-        } catch (error) {
-            log({ type: 'error', message: `Ошибка в процессе поиска SFX с ИИ (Попытка ${attempts}).`, data: error });
-            if (attempts >= maxAttempts) {
-                throw new Error('Не удалось подобрать SFX.');
-            }
-        }
-    }
-
-    log({ type: 'info', message: `Не удалось найти SFX после ${maxAttempts} попыток.` });
-    return [];
-};
-
-
 export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, apiKeys: ApiKeys): Promise<ScriptLine[]> => {
     const sfxLines = script.map((line, index) => ({ line, index }))
                           .filter(({ line }) => line.speaker.toUpperCase() === 'SFX' && line.text);
@@ -153,21 +92,7 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, a
 
     const sfxDescriptions = sfxLines.map(({ line }) => line.text);
     
-    const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
-
-    Descriptions:
-    ${sfxDescriptions.map((d, i) => `${i + 1}. "${d}"`).join('\n')}
-
-    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
-
-    **JSON Structure:**
-    {
-      "keywords": [
-        "keywords for description 1",
-        "keywords for description 2",
-        ...
-      ]
-    }`;
+    const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.\n\nDescriptions:\n${sfxDescriptions.map((d, i) => `${i + 1}. \"${d}\"`).join('\n')}\n\nReturn the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.\n\n**JSON Structure:**\n{\n  \"keywords\": [\n    \"keywords for description 1\",\n    \"keywords for description 2\",\n    ...\n  ]\n}`;
 
     try {
         const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
