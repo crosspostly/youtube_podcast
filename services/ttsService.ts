@@ -4,6 +4,7 @@ import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, Thumbna
 import { withQueueAndRetries, generateContentWithFallback, withRetries } from './geminiService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
+type ApiKeys = { gemini?: string; openRouter?: string; freesound?: string; };
 
 // This client is now only for the TTS-specific model which doesn't use the text fallback logic.
 const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {
@@ -267,7 +268,7 @@ const getScriptLengthInstruction = (totalDurationMinutes: number): string => {
 };
 
 
-const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey?: string): Promise<any> => {
+const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKeys: ApiKeys): Promise<any> => {
     log({ type: 'response', message: 'Сырой ответ от Gemini', data: rawText });
     const jsonMatch = rawText.match(/```json\s*([\s\S]*?)\s*```/);
     const jsonText = jsonMatch ? jsonMatch[1] : rawText;
@@ -283,7 +284,7 @@ const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey
         ${jsonText}`;
 
         try {
-            const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKey);
+            const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKeys);
             const correctedRawText = correctionResponse.text;
             log({ type: 'info', message: 'Получен исправленный JSON от ИИ.', data: correctedRawText });
             
@@ -298,7 +299,7 @@ const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKey
     }
 };
 
-export const googleSearchForKnowledge = async (question: string, log: LogFunction, apiKey?: string): Promise<string> => {
+export const googleSearchForKnowledge = async (question: string, log: LogFunction, apiKeys: ApiKeys): Promise<string> => {
     log({ type: 'info', message: 'Начало поиска информации в Google для базы знаний.' });
 
     const prompt = `Using Google Search, find and provide a detailed, structured answer to the following question. The answer should be comprehensive, well-formatted, and contain key facts. Write the answer in Russian.
@@ -309,7 +310,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
         const response = await generateContentWithFallback({ 
             contents: prompt,
             config: { tools: [{ googleSearch: {} }] } 
-        }, log, apiKey);
+        }, log, apiKeys);
         
         const answer = response.text;
         if (!answer.trim()) {
@@ -325,7 +326,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, log: LogFunction, apiKeys?: { gemini?: string, freesound?: string }): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, log: LogFunction, apiKeys: ApiKeys): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
 
     const sourceInstruction = knowledgeBaseText
@@ -388,8 +389,8 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     
     try {
         const config = knowledgeBaseText ? {} : { tools: [{ googleSearch: {} }] };
-        const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKeys?.gemini);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
+        const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
 
         // Auto-find SFX for the generated script
         const populatedScript = await Promise.all(data.chapter.script.map(async (line: ScriptLine) => {
@@ -432,7 +433,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     }
 };
 
-export const regenerateTextAssets = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKey?: string): Promise<{ youtubeTitleOptions: string[]; description: string; seoKeywords: string[] }> => {
+export const regenerateTextAssets = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<{ youtubeTitleOptions: string[]; description: string; seoKeywords: string[] }> => {
     log({ type: 'info', message: 'Начало регенерации текстовых материалов для YouTube.' });
 
     const styleInstruction = creativeFreedom 
@@ -460,8 +461,8 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }`;
 
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
         log({ type: 'info', message: 'Текстовые материалы успешно обновлены.' });
         return data;
     } catch (error) {
@@ -470,7 +471,7 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }
 };
 
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDurationMinutes: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<{title: string, script: ScriptLine[], imagePrompts: string[]}> => {
+export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDurationMinutes: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<{title: string, script: ScriptLine[], imagePrompts: string[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
@@ -516,8 +517,8 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     }${knowledgeBaseBlock}`;
     
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKeys?.gemini);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
 
         // Auto-find SFX for the generated script
         const populatedScript = await Promise.all(data.script.map(async (line: ScriptLine) => {
@@ -611,7 +612,7 @@ export const generateChapterAudio = async (
     characterVoices: { [key: string]: string },
     monologueVoice: string,
     log: LogFunction,
-    apiKey?: string
+    apiKeys: ApiKeys
 ): Promise<Blob> => {
     log({ type: 'info', message: `Начало синтеза аудио в режиме '${narrationMode}'.` });
     // IMPORTANT: Filter out SFX lines before sending to TTS
@@ -658,7 +659,7 @@ export const generateChapterAudio = async (
     };
     
     try {
-        const response = await generateAudioWithRetries(params, log, apiKey);
+        const response = await generateAudioWithRetries(params, log, apiKeys.gemini);
         const wavBlob = processTtsResponse(response);
         log({ type: 'info', message: 'WAV файл успешно создан.' });
         return wavBlob;
@@ -668,7 +669,7 @@ export const generateChapterAudio = async (
     }
 };
 
-export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKey?: string): Promise<ThumbnailDesignConcept[]> => {
+export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<ThumbnailDesignConcept[]> => {
     log({ type: 'info', message: 'Начало генерации дизайн-концепций для обложек.' });
 
     const prompt = `You are an expert in creating viral, high-CTR YouTube thumbnails, specializing in the style of top creators like MrBeast. Your design MUST use principles of visual psychology: high contrast, emotional impact, and extremely readable, bold typography.
@@ -702,8 +703,8 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
     }`;
 
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log, apiKey);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKey);
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
         if (!data.concepts || data.concepts.length === 0) {
             throw new Error("AI не смог сгенерировать дизайн-концепции.");
         }
@@ -776,7 +777,7 @@ export const findMusicManually = async (keywords: string, log: LogFunction): Pro
     }
 };
 
-export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: string): Promise<MusicTrack[]> => {
+export const findMusicWithAi = async (topic: string, log: LogFunction, apiKeys: ApiKeys): Promise<MusicTrack[]> => {
     log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для музыки.' });
     
     try {
@@ -801,7 +802,7 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKey?: 
         Provided text: "${topic}"
         Keywords:`;
         
-        const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKey);
+        const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKeys);
         const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
 
@@ -876,7 +877,7 @@ export const findSfxManually = async (keywords: string, log: LogFunction, apiKey
     return performFreesoundSearch(keywords, log, apiKey);
 };
 
-export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys?: { gemini?: string; freesound?: string }): Promise<SoundEffect[]> => {
+export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<SoundEffect[]> => {
     log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
     try {
         const prompt = `Analyze the following sound effect description: "${description}".
@@ -891,7 +892,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         Description: "${description}"
         Keywords:`;
 
-        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys?.gemini);
+        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
         const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
 
@@ -899,7 +900,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         while (searchTerms.length > 0) {
             const currentQuery = searchTerms.join(' ');
             log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
-            const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys?.freesound);
+            const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys.freesound);
             if (sfxResults.length > 0) {
                 log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
                 return sfxResults;

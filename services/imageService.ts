@@ -98,7 +98,10 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction, ap
         log({ type: 'error', message: `Ошибка при генерации одного изображения через Gemini, попытка fallback...`, data: error });
         if (apiKeys.openRouter) {
             try {
-                return await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
+                log({ type: 'info', message: 'Fallback: Вызов OpenRouter для генерации изображения.' });
+                const result = await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
+                log({ type: 'response', message: 'Fallback: Изображение успешно сгенерировано через OpenRouter.' });
+                return result;
             } catch (fallbackError) {
                 log({ type: 'error', message: `Ошибка fallback-генерации через OpenRouter`, data: fallbackError });
                 throw fallbackError; // Re-throw the fallback error

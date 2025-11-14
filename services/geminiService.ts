@@ -23,7 +23,7 @@ export class ApiRequestQueue {
     private currentRequests = 0;
     private log: LogFunction;
 
-    constructor(log: LogFunction, minDelayBetweenRequests = 150) {
+    constructor(log: LogFunction, minDelayBetweenRequests = 1500) {
         this.log = log;
         this.minDelayBetweenRequests = minDelayBetweenRequests;
     }
@@ -170,7 +170,9 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
                 errorMessage.includes('overloaded') ||
                 errorMessage.includes('rate limit') ||
                 errorMessage.includes('timed out') ||
-                errorMessage.includes('unavailable');
+                errorMessage.includes('unavailable') ||
+                errorMessage.includes('failed to fetch') ||
+                errorMessage.includes('connection reset');
 
             if (isRetryable && attempt < retries) {
                 log({ type: 'info', message: `API call failed (Attempt ${attempt}/${retries}). Retrying in ${currentDelay}ms...`, data: { message: error.message, status } });
@@ -195,23 +197,53 @@ export const withQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunct
     return await queue.add(() => withRetries(fn, log, retries, initialDelay));
 };
 
-// Define primary and fallback models for text generation
-// FIX: Use the more capable model as primary and the faster model as fallback.
-const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
-const FALLBACK_TEXT_MODEL = 'gemini-flash-lite-latest';
+export const generateTextWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
+    log({ type: 'request', message: `Fallback: Запрос текста от OpenRouter`, data: { prompt } });
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${openRouterApiKey}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            "model": "deepseek/deepseek-r1:free",
+            "messages": [
+                { "role": "user", "content": prompt }
+            ]
+        })
+    });
+    
+    if (!response.ok) {
+        const errorBody = await response.text();
+        log({ type: 'error', message: `Ошибка при генерации текста через OpenRouter`, data: { status: response.status, body: errorBody } });
+        throw new Error(`OpenRouter API error: ${response.statusText}`);
+    }
+
+    const { choices } = await response.json();
+    if (!choices || choices.length === 0 || !choices[0].message?.content) {
+        throw new Error("Не удалось получить текст в ответе от OpenRouter.");
+    }
+    
+    log({ type: 'response', message: 'Fallback: Текст успешно сгенерирован через OpenRouter.' });
+    return choices[0].message.content;
+};
+
+
+// Define primary model for text generation
+const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash-lite';
 
 // Wrapper for generateContent that includes both retries and model fallback.
 export const generateContentWithFallback = async (
     params: { contents: any; config?: any; }, 
     log: LogFunction,
-    customApiKey?: string
+    apiKeys: { gemini?: string; openRouter?: string; }
 ): Promise<GenerateContentResponse> => {
     
     const queue = getQueue(log);
     
     const attemptGeneration = (model: string) => {
         log({ type: 'request', message: `Attempting generation with model: ${model}`, data: { contents: params.contents } });
-        const ai = getAiClient(customApiKey, log);
+        const ai = getAiClient(apiKeys.gemini, log);
         return ai.models.generateContent({ model, ...params });
     };
 
@@ -220,15 +252,33 @@ export const generateContentWithFallback = async (
         return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log));
     } catch (primaryError) {
         log({ type: 'error', message: `Primary model (${PRIMARY_TEXT_MODEL}) failed after all retries.`, data: primaryError });
-        log({ type: 'info', message: `Switching to fallback model: ${FALLBACK_TEXT_MODEL}` });
         
-        try {
-            // If the primary fails, try the fallback model, also with retries and queue.
-            return await queue.add(() => withRetries(() => attemptGeneration(FALLBACK_TEXT_MODEL), log));
-        } catch (fallbackError) {
-            log({ type: 'error', message: `Fallback model (${FALLBACK_TEXT_MODEL}) also failed after all retries.`, data: fallbackError });
-            // If both fail, throw a comprehensive error.
-            throw new Error(`Both primary (${PRIMARY_TEXT_MODEL}) and fallback (${FALLBACK_TEXT_MODEL}) models failed. See logs for details.`);
+        if (apiKeys.openRouter) {
+            log({ type: 'info', message: `Switching to fallback model on OpenRouter.` });
+            try {
+                const promptString = typeof params.contents === 'string' ? params.contents : JSON.stringify(params.contents);
+                const openRouterText = await generateTextWithOpenRouter(promptString, log, apiKeys.openRouter);
+                
+                // Return a mock response object that behaves like GenerateContentResponse for the .text getter
+                const response = {
+                    get text() { return openRouterText; },
+                    candidates: [{
+                        content: { parts: [{ text: openRouterText }], role: 'model' },
+                        finishReason: 'STOP',
+                        index: 0,
+                        safetyRatings: [],
+                    }]
+                };
+                return response as GenerateContentResponse;
+
+            } catch (fallbackError) {
+                log({ type: 'error', message: `Fallback model on OpenRouter also failed.`, data: fallbackError });
+                // If fallback fails, throw the original, more informative error.
+                throw primaryError;
+            }
         }
+        
+        // If no OpenRouter key, just throw the original error with a more specific message
+        throw new Error(`Primary model (${PRIMARY_TEXT_MODEL}) failed and no OpenRouter fallback key was provided.`);
     }
 };
