@@ -390,7 +390,7 @@ export const generateTextWithOpenRouter = async (prompt: string, log: LogFunctio
 
 
 // Define primary model for text generation
-const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
+const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash-lite';
 
 // Wrapper for generateContent that includes both retries and model fallback.
 export const generateContentWithFallback = async (
