@@ -72,7 +72,7 @@ const AppUI: React.FC<{
                     </div>
                 </div>
             )}
-            {isEditorOpen && editingThumbnail && podcast?.thumbnailBaseImage && (
+            {isEditorOpen && editingThumbnail && podcast?.thumbnailBaseImage?.url && (
                 <ThumbnailEditor
                     thumbnail={editingThumbnail}
                     baseImageSrc={podcast.thumbnailBaseImage.url}
