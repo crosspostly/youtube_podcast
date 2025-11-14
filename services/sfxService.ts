@@ -1,5 +1,6 @@
 import { generateContentWithFallback, withRetries } from './geminiService';
-import type { SoundEffect, LogEntry } from '../types';
+import { parseGeminiJsonResponse } from './aiUtils';
+import type { SoundEffect, LogEntry, ScriptLine } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; openRouter?: string; freesound?: string; };
@@ -136,4 +137,74 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
 
     log({ type: 'info', message: `Не удалось найти SFX после ${maxAttempts} попыток.` });
     return [];
+};
+
+
+export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, apiKeys: ApiKeys): Promise<ScriptLine[]> => {
+    const sfxLines = script.map((line, index) => ({ line, index }))
+                          .filter(({ line }) => line.speaker.toUpperCase() === 'SFX' && line.text);
+
+    if (sfxLines.length === 0) {
+        log({ type: 'info', message: 'SFX не найдены в сценарии, пропуск поиска.' });
+        return script;
+    }
+
+    log({ type: 'request', message: `Запрос ключевых слов для ${sfxLines.length} SFX одним пакетом.` });
+
+    const sfxDescriptions = sfxLines.map(({ line }) => line.text);
+    
+    const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
+
+    Descriptions:
+    ${sfxDescriptions.map((d, i) => `${i + 1}. "${d}"`).join('\n')}
+
+    Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
+
+    **JSON Structure:**
+    {
+      "keywords": [
+        "keywords for description 1",
+        "keywords for description 2",
+        ...
+      ]
+    }`;
+
+    try {
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
+        const keywordsList = data.keywords as string[];
+
+        if (!keywordsList || keywordsList.length !== sfxLines.length) {
+            throw new Error(`Gemini returned an incorrect number of keyword sets. Expected ${sfxLines.length}, got ${keywordsList?.length || 0}.`);
+        }
+        
+        const populatedScript = [...script];
+        
+        for (let i = 0; i < sfxLines.length; i++) {
+            const { line, index } = sfxLines[i];
+            const keywords = keywordsList[i];
+            log({ type: 'info', message: `Поиск SFX для "${line.text}" по ключевым словам: "${keywords}"` });
+
+            if (keywords) {
+                try {
+                    // Search Freesound sequentially to avoid overwhelming their API
+                    const sfxTracks = await performFreesoundSearch(keywords, log, apiKeys.freesound);
+                    if (sfxTracks.length > 0) {
+                        populatedScript[index] = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                        log({ type: 'response', message: `Найден SFX: ${sfxTracks[0].name}` });
+                    } else {
+                        log({ type: 'info', message: `SFX по ключевым словам "${keywords}" не найдены.` });
+                    }
+                } catch (e) {
+                     log({ type: 'error', message: `Ошибка поиска SFX на Freesound для "${keywords}"`, data: e });
+                }
+            }
+        }
+        return populatedScript;
+        
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка при пакетной генерации ключевых слов для SFX. SFX не будут добавлены.', data: error });
+        // Return original script if batch processing fails
+        return script;
+    }
 };

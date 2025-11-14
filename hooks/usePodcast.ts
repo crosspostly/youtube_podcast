@@ -1,7 +1,8 @@
 import { safeLower, parseErrorMessage } from '../utils/safeLower-util';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually, findSfxWithAi, findSfxManually } from '../services/ttsService';
+import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually } from '../services/ttsService';
+import { findSfxWithAi, findSfxManually } from '../services/sfxService';
 import { generateSrtFile } from '../services/srtService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
@@ -170,7 +171,7 @@ export const usePodcast = (
         
         try {
             updateStatus('Анализ темы и создание концепции', 'in_progress');
-            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, log, apiKeys);
+            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, log, apiKeys, initialImageCount);
             updateStatus('Анализ темы и создание концепции', 'completed');
             setGenerationProgress(15);
             

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { findSfxWithAi } from '../services/ttsService';
+import { findSfxWithAi } from '../services/sfxService';
 import { LogEntry, SoundEffect } from '../types';
 import Spinner from './Spinner';
 import { CloseIcon, PlayIcon, PauseIcon, SearchIcon } from './Icons';
@@ -36,7 +36,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
         setError(null);
 
         try {
-            const sfx = await findSfxWithAi(description, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+            const sfx = await findSfxWithAi(description, log, apiKeys);
             setResults(sfx);
             log({ type: 'info', message: `Test finished: Found ${sfx.length} sound effects.` });
         } catch (err: any) {

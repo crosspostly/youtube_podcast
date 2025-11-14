@@ -111,6 +111,12 @@ export interface Voice {
     gender: 'female' | 'male';
 }
 
+export interface ApiKeys {
+  gemini?: string;
+  openRouter?: string;
+  freesound?: string;
+}
+
 export interface Podcast {
   id: string;
   topic: string;
