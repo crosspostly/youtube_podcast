@@ -114,7 +114,6 @@ export interface Voice {
 
 export interface ApiKeys {
   gemini?: string;
-  openRouter?: string;
   freesound?: string;
   unsplash?: string;
   pexels?: string;

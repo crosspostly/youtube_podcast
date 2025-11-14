@@ -119,7 +119,6 @@ const App: React.FC = () => {
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState({ 
         gemini: '', 
-        openRouter: '', 
         freesound: '', 
         unsplash: '',
         pexels: ''
@@ -134,7 +133,13 @@ const App: React.FC = () => {
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             const storedKeys = (window as any).localStorage.getItem('apiKeys');
             if (storedKeys) {
-                setApiKeys(JSON.parse(storedKeys));
+                const parsedKeys = JSON.parse(storedKeys);
+                // Migration: Remove openRouter key if it exists
+                if (parsedKeys.openRouter !== undefined) {
+                    delete parsedKeys.openRouter;
+                    (window as any).localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
+                }
+                setApiKeys(parsedKeys);
             }
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
@@ -165,7 +170,6 @@ const App: React.FC = () => {
     const handleSaveApiKeys = (data: { 
         keys: { 
             gemini: string; 
-            openRouter: string; 
             freesound: string; 
             unsplash?: string; 
             pexels?: string;

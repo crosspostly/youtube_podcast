@@ -6,7 +6,7 @@ import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
-type ApiKeys = { gemini?: string; openRouter?: string; freesound?: string; };
+type ApiKeys = { gemini?: string; freesound?: string; };
 
 // This client is now only for the TTS-specific model which doesn't use the text fallback logic.
 const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {

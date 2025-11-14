@@ -3,7 +3,7 @@ import { parseGeminiJsonResponse } from './aiUtils';
 import type { SoundEffect, LogEntry, ScriptLine } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
-type ApiKeys = { gemini?: string; openRouter?: string; freesound?: string; };
+type ApiKeys = { gemini?: string; freesound?: string; };
 
 const FREESOUND_PROXY_URL = '/api/freesound';
 

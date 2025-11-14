@@ -10,7 +10,7 @@
 ### My Gemini API calls return an error or freeze
 - Make sure your API key is active and has sufficient quota.
 - See live status and error in the Settings/Debug panel.
-- If persistent: fallback to OpenRouter or alternate models (configurable in app settings).
+- If persistent: the app will automatically fall back to Unsplash & Pexels stock photos for image generation.
 
 ### Media/Sound/Image not downloading or being replaced
 - Check browser compatibility (recent Chrome/Edge/Firefox recommended)

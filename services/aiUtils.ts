@@ -2,7 +2,7 @@ import { generateContentWithFallback } from './geminiService';
 import type { LogEntry } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
-type ApiKeys = { gemini?: string; openRouter?: string; };
+type ApiKeys = { gemini?: string; };
 
 
 export const parseGeminiJsonResponse = async (rawText: string, log: LogFunction, apiKeys: ApiKeys): Promise<any> => {
