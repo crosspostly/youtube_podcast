@@ -10,6 +10,7 @@ interface PodcastContextType extends UseHistoryReturn, UsePodcastReturn {
     setPodcast: (podcast: Podcast | null) => void;
     apiKeys: { gemini: string; openRouter: string; freesound: string; };
     defaultFont: string; // Expose defaultFont in the context
+    warning: string | null;
 }
 
 const PodcastContext = createContext<PodcastContextType | undefined>(undefined);

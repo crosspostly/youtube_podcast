@@ -5,7 +5,7 @@ export interface Source {
 
 export interface LogEntry {
   timestamp: string;
-  type: 'info' | 'error' | 'request' | 'response';
+  type: 'info' | 'error' | 'request' | 'response' | 'warning';
   message: string;
   data?: any;
 }

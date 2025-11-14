@@ -168,6 +168,7 @@ const VideoTestPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         let colorClass = 'text-slate-400';
         switch (entry.type) {
             case 'error': colorClass = 'text-red-400'; break;
+            case 'warning': colorClass = 'text-orange-300'; break;
             case 'info': colorClass = 'text-blue-300'; break;
             case 'request': colorClass = 'text-yellow-300'; break;
             case 'response': colorClass = 'text-green-300'; break;

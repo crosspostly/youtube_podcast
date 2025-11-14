@@ -20,7 +20,7 @@ const AppUI: React.FC<{
 }> = ({ isLogVisible, onCloseLog }) => {
     const {
         podcast, isLoading, loadingStatus, generationProgress, error, setError,
-        logs, editingThumbnail, setEditingThumbnail,
+        warning, logs, editingThumbnail, setEditingThumbnail,
         startNewProject, saveThumbnail,
     } = usePodcastContext();
     
@@ -61,7 +61,7 @@ const AppUI: React.FC<{
                         <div className="flex-grow p-4 overflow-y-auto text-sm font-mono">
                             {logs.map((entry, index) => (
                                 <div key={index} className="border-b border-slate-700/50 py-2">
-                                    <p className={`${entry.type === 'error' && 'text-red-400'} ${entry.type === 'info' && 'text-blue-300'} ${entry.type === 'request' && 'text-yellow-300'} ${entry.type === 'response' && 'text-green-300'}`}>
+                                    <p className={`${entry.type === 'error' && 'text-red-400'} ${entry.type === 'warning' && 'text-orange-300'} ${entry.type === 'info' && 'text-blue-300'} ${entry.type === 'request' && 'text-yellow-300'} ${entry.type === 'response' && 'text-green-300'}`}>
                                         <span className="font-bold">{entry.type.toUpperCase()}:</span> {new Date(entry.timestamp).toLocaleTimeString()} - {entry.message}
                                     </p>
                                     {entry.data && <pre className="text-slate-400 text-xs whitespace-pre-wrap bg-slate-900 p-2 rounded mt-1 overflow-x-auto"><code>{typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2)}</code></pre>}
@@ -87,7 +87,7 @@ const AppUI: React.FC<{
                 </header>
                 <main className="flex justify-center items-start">
                     {isLoading ? (
-                        <LoadingScreen loadingStatus={loadingStatus} generationProgress={generationProgress} />
+                        <LoadingScreen loadingStatus={loadingStatus} generationProgress={generationProgress} warning={warning} />
                     ) : error ? (
                         <div className="text-center p-8 bg-red-900/50 border border-red-700 rounded-lg">
                             <h3 className="text-2xl font-bold text-red-300">Произошла ошибка</h3>

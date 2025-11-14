@@ -114,7 +114,7 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
                         {error && <p className="text-red-400 font-bold mb-2">Ошибка: {error}</p>}
                         {logs.map((entry, index) => (
                              <div key={index} className="border-b border-slate-700/50 py-1">
-                                <p className={`${entry.type === 'error' && 'text-red-400'} ${entry.type === 'info' && 'text-blue-300'} ${entry.type === 'request' && 'text-yellow-300'} ${entry.type === 'response' && 'text-green-300'}`}>
+                                <p className={`${entry.type === 'error' && 'text-red-400'} ${entry.type === 'warning' && 'text-orange-300'} ${entry.type === 'info' && 'text-blue-300'} ${entry.type === 'request' && 'text-yellow-300'} ${entry.type === 'response' && 'text-green-300'}`}>
                                     <span className="font-bold">{entry.type.toUpperCase()}:</span> {new Date(entry.timestamp).toLocaleTimeString()} - {entry.message}
                                 </p>
                                 {entry.data && <pre className="text-slate-400 text-xs whitespace-pre-wrap bg-slate-950 p-1 rounded mt-1 overflow-x-auto"><code>{typeof entry.data === 'string' ? entry.data : JSON.stringify(entry.data, null, 2)}</code></pre>}

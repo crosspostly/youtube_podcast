@@ -24,7 +24,8 @@ export const usePodcast = (
     const [podcast, setPodcastState] = useState<Podcast | null>(null);
     const [isLoading, setIsLoading] = useState<boolean>(false);
     const [loadingStatus, setLoadingStatus] = useState<LoadingStatus[]>([]);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setErrorState] = useState<string | null>(null);
+    const [warning, setWarning] = useState<string | null>(null);
     const [logs, setLogs] = useState<LogEntry[]>([]);
 
     const [generationProgress, setGenerationProgress] = useState(0);
@@ -56,9 +57,19 @@ export const usePodcast = (
         });
     }, [updateHistory]);
     
-    const log = useCallback((entry: Omit<LogEntry, 'timestamp'>) => {
-        setLogs(prev => [{ ...entry, timestamp: new Date().toISOString() }, ...prev]);
+    const setError = useCallback((message: string | null) => {
+        setWarning(null); // Clear any warnings when a final error is set
+        setErrorState(message);
     }, []);
+
+    const log = useCallback((entry: Omit<LogEntry, 'timestamp'> & { showToUser?: boolean }) => {
+        const { showToUser, ...logEntry } = entry;
+        setLogs(prev => [{ ...logEntry, timestamp: new Date().toISOString() } as LogEntry, ...prev]);
+        if (showToUser) {
+            setErrorState(null); // Clear final error to avoid replacing the loading screen
+            setWarning(entry.message);
+        }
+    }, [setWarning]);
 
     useEffect(() => {
         const newUrls: Record<string, string> = {};
@@ -150,6 +161,7 @@ export const usePodcast = (
         if (!topic.trim()) { setError('Введите название проекта.'); return; }
         setIsLoading(true);
         setError(null);
+        setWarning(null);
         setPodcastState(null); // Set directly to avoid saving empty state to history
         setLogs([]);
         setGenerationProgress(0);
@@ -258,11 +270,12 @@ export const usePodcast = (
         } finally {
             setIsLoading(false);
         }
-    }, [log, setPodcast, apiKeys, defaultFont]);
+    }, [log, setPodcast, apiKeys, defaultFont, setError]);
 
     const startVideoTest = useCallback(async () => {
         setIsLoading(true);
         setError(null);
+        setWarning(null);
         setPodcastState(null);
         setLogs([]);
         log({ type: 'info', message: 'Запуск теста видео-движка с эталонными данными.' });
@@ -339,7 +352,7 @@ export const usePodcast = (
         } finally {
             setIsLoading(false);
         }
-    }, [log, setPodcast, apiKeys]);
+    }, [log, setPodcast, apiKeys, setError]);
 
     const combineAndDownload = async (format: 'wav' | 'mp3' = 'wav') => {
         if (!podcast || podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) return;
@@ -559,7 +572,7 @@ export const usePodcast = (
             setError(friendlyError);
             log({ type: 'error', message: 'Не удалось обновить обложки после смены заголовка', data: { friendlyMessage: friendlyError, originalError: err } });
         }
-    }, [podcast, log, setPodcast, defaultFont]);
+    }, [podcast, log, setPodcast, defaultFont, setError]);
     
      const setThumbnailBaseImage = useCallback(async (imageUrl: string) => {
         if (!podcast || podcast.thumbnailBaseImage === imageUrl) return;
@@ -577,7 +590,7 @@ export const usePodcast = (
             setError(friendlyError);
             log({ type: 'error', message: 'Не удалось перерисовать обложки с новым фоном', data: { friendlyMessage: friendlyError, originalError: err } });
         }
-    }, [podcast, log, setPodcast, defaultFont]);
+    }, [podcast, log, setPodcast, defaultFont, setError]);
 
     const regenerateText = async () => {
         if (!podcast) return;
@@ -829,6 +842,7 @@ export const usePodcast = (
     return {
         podcast, setPodcastState, 
         isLoading, loadingStatus, generationProgress, error, setError,
+        warning,
         logs, log,
         audioUrls,
         isGenerationPaused, setIsGenerationPaused,

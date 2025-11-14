@@ -3,7 +3,7 @@ import { safeLower } from '../utils/safeLower-util';
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
-export type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response'; message: string; data?: any; }) => void;
+export type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response' | 'warning'; message: string; data?: any; showToUser?: boolean; }) => void;
 
 // Queue implementation for API requests
 interface QueueItem {
@@ -154,7 +154,9 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // It specifically checks for temporary, retryable errors like overload or rate limits.
 export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
     let attempt = 1;
-    let currentDelay = initialDelay;
+    let currentDelay = Math.max(initialDelay, 2000); // Use a more robust initial delay
+    const maxDelay = 30000; // Cap delay at 30 seconds
+
     while (attempt <= retries) {
         try {
             return await fn();
@@ -175,14 +177,35 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
                 errorMessage.includes('connection reset');
 
             if (isRetryable && attempt < retries) {
-                log({ type: 'info', message: `API call failed (Attempt ${attempt}/${retries}). Retrying in ${currentDelay}ms...`, data: { message: error.message, status } });
-                await delay(currentDelay);
+                // Add jitter to the backoff to prevent thundering herd
+                const jitter = currentDelay * 0.4 * (Math.random() - 0.5); // +/-20% jitter
+                const delayWithJitter = Math.min(currentDelay + jitter, maxDelay);
+
+                const retryMessage = `API call failed (Attempt ${attempt}/${retries}). Retrying in ${Math.round(delayWithJitter / 1000)}s...`;
+                const logEntry: Parameters<LogFunction>[0] = { type: 'warning', message: retryMessage, data: { message: error.message, status } };
+                
+                // If it's a rate limit error, create a user-facing warning.
+                if (status === 429) {
+                    const userMessage = `Превышен лимит запросов. Повторная попытка через ${Math.round(delayWithJitter / 1000)} сек...`;
+                    log({ ...logEntry, message: userMessage, showToUser: true });
+                } else {
+                    log(logEntry);
+                }
+
+                await delay(delayWithJitter);
                 attempt++;
-                currentDelay *= 2; // Exponential backoff
+                currentDelay = Math.min(currentDelay * 2, maxDelay); // Exponential backoff with cap
             } else {
                 // If the error is not retryable or retries are exhausted, throw it.
-                log({ type: 'error', message: `API call failed permanently after ${attempt} attempts.`, data: error });
-                throw error;
+                const finalError = new Error(`API call failed permanently after ${attempt} attempts.`);
+                if (error instanceof Error) {
+                    (finalError as any).stack = error.stack;
+                    (finalError as any).cause = error;
+                }
+                (finalError as any).originalError = error;
+
+                log({ type: 'error', message: finalError.message, data: error });
+                throw finalError;
             }
         }
     }

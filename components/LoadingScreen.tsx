@@ -10,12 +10,20 @@ interface LoadingStatus {
 interface LoadingScreenProps {
     loadingStatus: LoadingStatus[];
     generationProgress: number;
+    warning?: string | null;
 }
 
-const LoadingScreen: React.FC<LoadingScreenProps> = ({ loadingStatus, generationProgress }) => (
+const LoadingScreen: React.FC<LoadingScreenProps> = ({ loadingStatus, generationProgress, warning }) => (
     <div className="text-center p-8 w-full max-w-lg">
         <Spinner className="w-16 h-16 mb-6 mx-auto" />
         <h2 className="text-2xl font-bold text-white mb-4">Генерация проекта...</h2>
+        
+        {warning && (
+            <div className="p-4 mb-4 bg-yellow-900/50 border border-yellow-700 rounded-lg text-yellow-200 transition-opacity duration-300">
+                {warning}
+            </div>
+        )}
+
         <div className="text-left space-y-2 mb-6">
             {loadingStatus.map(step => (
                 <div key={step.label} className="flex items-center gap-3 transition-opacity duration-300" style={{ opacity: step.status === 'pending' ? 0.5 : 1 }}>

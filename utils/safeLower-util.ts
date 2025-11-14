@@ -63,6 +63,14 @@ export const parseErrorMessage = (error: any): string => {
     const message = safeLower(error.message || '');
     const status = error.status || error.response?.status;
 
+    if (message.includes('api call failed permanently')) {
+        const originalError = error.originalError || error;
+        const originalStatus = originalError.status || originalError.response?.status;
+        if (originalStatus === 429 || safeLower(originalError.message).includes('rate limit')) {
+             return 'Превышен лимит запросов к API. Пожалуйста, подождите несколько минут и попробуйте снова. Сервер не смог подключиться даже после нескольких попыток.';
+        }
+        return 'Не удалось выполнить запрос к API после нескольких попыток. Проверьте ваше интернет-соединение или попробуйте позже.';
+    }
     if (message.includes('api key not valid')) {
         return 'Ключ API недействителен. Проверьте правильность ключа в настройках.';
     }
