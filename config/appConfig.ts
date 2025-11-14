@@ -1,5 +1,8 @@
 import type { AppConfig, ApiRetryConfig } from '../types';
 
+// Export the type for use in other components
+export type { ApiRetryConfig, AppConfig };
+
 // Default configuration for API retry behavior
 const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
     retries: 3,

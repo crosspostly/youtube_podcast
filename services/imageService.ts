@@ -13,15 +13,15 @@ let imageQueue: ApiRequestQueue | null = null;
 
 const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     if (!imageQueue) {
-        imageQueue = new ApiRequestQueue(log, 31000); // 31,000ms = 31 seconds to be safe with 2 RPM limits
-        log({ type: 'info', message: 'Image generation API request queue initialized (31s delay)' });
+        imageQueue = new ApiRequestQueue(log, 35000); // 35,000ms = 35 seconds to be safe with 2 RPM limits (60/2 = 30s + buffer)
+        log({ type: 'info', message: 'Image generation API request queue initialized (35s delay)' });
     }
     return imageQueue;
 };
 
-const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, config: RetryConfig = {}): Promise<T> => {
+const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, config: RetryConfig = {}, requestKey?: string): Promise<T> => {
     const queue = getImageQueue(log);
-    return await queue.add(() => withRetries(fn, log, config));
+    return await queue.add(() => withRetries(fn, log, config), requestKey);
 };
 // --- END: Image-specific Request Queue ---
 
@@ -84,7 +84,7 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction, ap
             },
         });
 
-        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log);
+        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log, {}, `image-${prompt.substring(0, 50)}`);
 
         // Safely access response data
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
