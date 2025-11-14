@@ -225,7 +225,7 @@ export const usePodcast = (
             const thumbnailBaseImage = generatedImages.length > 0 ? generatedImages[0] : undefined;
 
             updateStatus('Создание вариантов обложек для YouTube', 'in_progress');
-            const youtubeThumbnails = thumbnailBaseImage.url ? await generateYoutubeThumbnails(thumbnailBaseImage.url, selectedTitle, designConcepts, log, defaultFont) : [];
+            const youtubeThumbnails = thumbnailBaseImage?.url ? await generateYoutubeThumbnails(thumbnailBaseImage.url, selectedTitle, designConcepts, log, defaultFont) : [];
             updateStatus('Создание вариантов обложек для YouTube', 'completed');
             setGenerationProgress(100);
 
@@ -566,7 +566,7 @@ export const usePodcast = (
         }
 
         try {
-            const newThumbnails = await generateYoutubeThumbnails(podcast.thumbnailBaseImage, newTitle, podcast.designConcepts, log, defaultFont);
+            const newThumbnails = await generateYoutubeThumbnails(podcast.thumbnailBaseImage?.url || '', newTitle, podcast.designConcepts, log, defaultFont);
             setPodcast(p => p ? { ...p, selectedTitle: newTitle, youtubeThumbnails: newThumbnails } : null);
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
@@ -575,17 +575,18 @@ export const usePodcast = (
         }
     }, [podcast, log, setPodcast, defaultFont, setError]);
     
-     const setThumbnailBaseImage = useCallback(async (imageUrl: string) => {
-        if (!podcast || podcast.thumbnailBaseImage === imageUrl) return;
+     const setThumbnailBaseImage = useCallback(async (image: GeneratedImage | string) => {
+        const imageUrl = typeof image === 'string' ? image : image.url;
+        if (!podcast || podcast.thumbnailBaseImage?.url === imageUrl) return;
 
         if (!podcast.designConcepts) {
-            setPodcast(p => p ? { ...p, thumbnailBaseImage: imageUrl } : null);
+            setPodcast(p => p ? { ...p, thumbnailBaseImage: typeof image === 'string' ? { url: image } : image } : null);
             return;
         };
 
         try {
              const newThumbnails = await generateYoutubeThumbnails(imageUrl, podcast.selectedTitle, podcast.designConcepts, log, defaultFont);
-             setPodcast(p => p ? { ...p, thumbnailBaseImage: imageUrl, youtubeThumbnails: newThumbnails } : null);
+             setPodcast(p => p ? { ...p, thumbnailBaseImage: typeof image === 'string' ? { url: image } : image, youtubeThumbnails: newThumbnails } : null);
         } catch(err: any) {
             const friendlyError = parseErrorMessage(err);
             setError(friendlyError);
