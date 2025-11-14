@@ -145,7 +145,7 @@ export const regenerateSingleImage = async (
         const ai = getAiClient(apiKeys.gemini, log);
         
         const generateCall = () => ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
+            model: 'imagen-4.0-fast-generate-001',
             contents: { parts: [{ text: fullPrompt }] },
             config: { responseModalities: [Modality.IMAGE] },
         });
