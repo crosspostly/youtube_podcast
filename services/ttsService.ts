@@ -392,18 +392,22 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         const response = await generateContentWithFallback({ contents: prompt, config }, log, apiKeys);
         const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
 
-        // Auto-find SFX for the generated script
-        const populatedScript = await Promise.all(data.chapter.script.map(async (line: ScriptLine) => {
+        // Auto-find SFX for the generated script sequentially to avoid flooding the queue.
+        const populatedScript = [];
+        for (const line of data.chapter.script) {
+            let processedLine = line;
             if (line.speaker.toUpperCase() === 'SFX') {
                 try {
                     const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
                     if (sfxTracks.length > 0) {
-                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                        processedLine = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
                     }
-                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
+                } catch (e: any) {
+                    log({ type: 'error', message: `Could not auto-find SFX for "${line.text}"`, data: { name: e.name, message: e.message, stack: e.stack, data: e.data } });
+                }
             }
-            return line;
-        }));
+            populatedScript.push(processedLine);
+        }
         data.chapter.script = populatedScript;
 
         const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
@@ -520,18 +524,22 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
         const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
         const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
 
-        // Auto-find SFX for the generated script
-        const populatedScript = await Promise.all(data.script.map(async (line: ScriptLine) => {
+        // Auto-find SFX for the generated script sequentially to avoid flooding the queue.
+        const populatedScript = [];
+        for (const line of data.script) {
+            let processedLine = line;
             if (line.speaker.toUpperCase() === 'SFX') {
                 try {
                     const sfxTracks = await findSfxWithAi(line.text, log, apiKeys);
                     if (sfxTracks.length > 0) {
-                        return { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                        processedLine = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
                     }
-                } catch (e) { console.error(`Could not auto-find SFX for "${line.text}"`, e); }
+                } catch (e: any) {
+                    log({ type: 'error', message: `Could not auto-find SFX for "${line.text}"`, data: { name: e.name, message: e.message, stack: e.stack, data: e.data } });
+                }
             }
-            return line;
-        }));
+            populatedScript.push(processedLine);
+        }
         data.script = populatedScript;
 
         log({ type: 'info', message: `Сценарий для главы ${chapterIndex + 1} успешно создан.` });
@@ -735,30 +743,47 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
 const JAMENDO_CLIENT_ID = '76b53e2b';
 const JAMENDO_API_URL = 'https://api.jamendo.com/v3.0/tracks/';
 
-const performJamendoSearch = async (searchTags: string, log: LogFunction): Promise<MusicTrack[]> => {
+export const performJamendoSearch = async (searchTags: string, log: LogFunction): Promise<MusicTrack[]> => {
     const tags = searchTags.trim().replace(/,\s*/g, ' ');
     if (!tags) return [];
 
     const searchUrl = `${JAMENDO_API_URL}?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=10&tags=${tags}&order=popularity_total`;
     log({ type: 'request', message: 'Запрос музыки с Jamendo', data: { url: searchUrl } });
 
-    const jamendoResponse = await fetch(searchUrl);
-    if (!jamendoResponse.ok) {
-        log({ type: 'error', message: `Jamendo API error: ${jamendoResponse.statusText}` });
-        return [];
-    }
-    const jamendoData = await jamendoResponse.json();
+    const doFetch = async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+        try {
+            const response = await fetch(searchUrl, { signal: controller.signal });
+            if (!response.ok) {
+                const errorText = await response.text();
+                const error: any = new Error(`Jamendo API error: ${response.statusText}`);
+                error.status = response.status;
+                error.data = errorText;
+                log({ type: 'error', message: `Jamendo request failed with status ${response.status}`, data: errorText });
+                throw error;
+            }
+            return response.json();
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    };
 
-    if (!jamendoData || !jamendoData.results || jamendoData.results.length === 0) {
-        return [];
+    try {
+        const data = await withRetries(doFetch, log, 3, 500);
+        if (!data || !data.results) {
+            throw new Error('No results found from Jamendo API');
+        }
+        return data.results.map((track: any) => ({
+            id: track.id,
+            name: track.name,
+            artist_name: track.artist_name,
+            audio: track.audio
+        }));
+    } catch (error) {
+        log({ type: 'error', message: 'Ошибка при запросе к Jamendo API после всех попыток.', data: error });
+        return []; // Return empty array on failure instead of throwing
     }
-    
-    return jamendoData.results.map((track: any) => ({
-        id: track.id,
-        name: track.name,
-        artist_name: track.artist_name,
-        audio: track.audio
-    }));
 };
 
 export const findMusicManually = async (keywords: string, log: LogFunction): Promise<MusicTrack[]> => {
@@ -779,9 +804,13 @@ export const findMusicManually = async (keywords: string, log: LogFunction): Pro
 
 export const findMusicWithAi = async (topic: string, log: LogFunction, apiKeys: ApiKeys): Promise<MusicTrack[]> => {
     log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для музыки.' });
-    
-    try {
-        const keywordsPrompt = `Analyze the mood of the provided text: "${topic}". Your task is to generate a search query for a royalty-free music library like Jamendo. 
+    let attempts = 0;
+    const maxAttempts = 2;
+
+    while (attempts < maxAttempts) {
+        attempts++;
+        try {
+            const keywordsPrompt = `Analyze the mood of the provided text: "${topic}". Your task is to generate a search query for a royalty-free music library like Jamendo. 
     
         Instructions:
         1.  Identify the primary mood and a suitable genre.
@@ -802,30 +831,39 @@ export const findMusicWithAi = async (topic: string, log: LogFunction, apiKeys: 
         Provided text: "${topic}"
         Keywords:`;
         
-        const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKeys);
-        const keywords = keywordsResponse.text.trim();
-        log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
+            const keywordsResponse = await generateContentWithFallback({ contents: keywordsPrompt }, log, apiKeys);
+            const keywords = keywordsResponse.text.trim();
+            log({ type: 'info', message: `ИИ предложил ключевые слова для музыки (Попытка ${attempts}): ${keywords}` });
 
-        let searchTerms = keywords.split(/[\s,]+/);
-        while (searchTerms.length > 0) {
-            const currentQuery = searchTerms.join(' ');
-            log({ type: 'info', message: `Поиск музыки по запросу: "${currentQuery}"` });
-            const musicResults = await performJamendoSearch(currentQuery, log);
-            if (musicResults.length > 0) {
-                log({ type: 'info', message: `Найдено ${musicResults.length} треков по запросу "${currentQuery}".` });
-                return musicResults;
+            if (!keywords) {
+                log({ type: 'info', message: `ИИ не вернул ключевых слов. Попытка ${attempts}.` });
+                continue;
             }
-            log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
-            searchTerms.pop(); // Remove the last keyword and retry
+
+            let searchTerms = keywords.split(/[\s,]+/).filter(Boolean);
+            while (searchTerms.length > 0) {
+                const currentQuery = searchTerms.join(' ');
+                log({ type: 'info', message: `Поиск музыки по запросу: "${currentQuery}"` });
+                const musicResults = await performJamendoSearch(currentQuery, log);
+                if (musicResults.length > 0) {
+                    log({ type: 'info', message: `Найдено ${musicResults.length} треков по запросу "${currentQuery}".` });
+                    return musicResults;
+                }
+                log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
+                searchTerms.pop(); // Remove the last keyword and retry
+            }
+
+            log({ type: 'info', message: `По ключевым словам "${keywords}" ничего не найдено даже после упрощения.` });
+        } catch (error) {
+            log({ type: 'error', message: `Ошибка в процессе поиска музыки с ИИ (Попытка ${attempts}).`, data: error });
+            if (attempts >= maxAttempts) {
+                throw new Error('Не удалось подобрать музыку.');
+            }
         }
-
-        log({ type: 'info', message: 'Не удалось найти музыку даже после сокращения запроса.' });
-        return []; // Return empty if all attempts fail
-
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка в процессе поиска музыки с ИИ.', data: error });
-        throw new Error('Не удалось подобрать музыку.');
     }
+
+    log({ type: 'info', message: `Не удалось найти музыку после ${maxAttempts} попыток.` });
+    return [];
 };
 
 // --- AI SFX FINDER ---
@@ -836,39 +874,71 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
     const tags = searchTags.trim().replace(/,\s*/g, ' ');
     if (!tags) return [];
 
-    log({ type: 'request', message: 'Запрос SFX с Freesound через прокси', data: { query: tags } });
+    log({ type: 'request', message: 'Отправка POST-запроса на прокси Freesound...', data: { query: tags } });
 
     const doFetch = async () => {
-        const response = await fetch(FREESOUND_PROXY_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                query: tags,
-                customApiKey: customApiKey || FREESOUND_API_KEY,
-            }),
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+        let response;
+        
+        try {
+            log({ type: 'info', message: 'Выполнение fetch-запроса...', data: { query: tags } });
+            response = await fetch(FREESOUND_PROXY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
+                body: JSON.stringify({
+                    query: tags,
+                    customApiKey: customApiKey || FREESOUND_API_KEY,
+                }),
+            });
+            log({ type: 'info', message: 'Fetch-запрос завершен, получен ответ.' });
+        } catch (fetchError: any) {
+            log({ type: 'error', message: 'Ошибка сети при запросе к прокси Freesound (fetch failed)', data: { name: fetchError.name, message: fetchError.message, stack: fetchError.stack } });
+            throw fetchError;
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
+        const proxyInvokedHeader = response.headers.get('X-Vercel-Proxy-Invoked') || response.headers.get('X-Dev-Proxy-Invoked');
+        log({ type: 'info', message: `Получен ответ от прокси Freesound. Статус: ${response.status}. Хедер прокси: ${proxyInvokedHeader ? 'Да' : 'Нет'}.` });
+        
+        const rawText = await response.text();
+        log({ type: 'info', message: 'Сырой текстовый ответ от прокси (до 500 символов):', data: rawText.substring(0, 500) });
+        
         if (!response.ok) {
-            const errorText = await response.text();
-            // Create an error object that our retry logic can understand
             const error: any = new Error(`Freesound Proxy error: ${response.statusText}`);
             error.status = response.status;
-            error.data = errorText;
-            log({ type: 'error', message: `Freesound Proxy request failed with status ${response.status}`, data: errorText });
+            error.data = rawText;
             throw error;
         }
 
-        return response.json();
+        if (!rawText.trim()) {
+            log({ type: 'info', message: 'Прокси Freesound вернул пустой ответ, результатов не найдено.' });
+            return { results: [] };
+        }
+        
+        try {
+            const data = JSON.parse(rawText);
+            log({ type: 'response', message: 'Ответ от прокси успешно распарсен.' });
+            return data;
+        } catch (parseError: any) {
+            const err: any = new Error('Не удалось распарсить JSON-ответ от прокси Freesound.');
+            err.data = { message: parseError.message, responseText: rawText };
+            throw err;
+        }
     };
 
     try {
-        // Wrap the fetch logic with retries. Use more retries and a shorter initial delay for this external API.
-        const data = await withRetries(doFetch, log, 5, 500);
-        if (!data || !data.results || data.results.length === 0) return [];
+        const data = await withRetries(doFetch, log, 3, 500);
+        if (!data || !data.results) {
+            log({ type: 'info', message: 'Ответ от Freesound не содержит поля "results".', data });
+            return [];
+        }
         return data.results;
     } catch (error) {
         log({ type: 'error', message: 'Ошибка при запросе к Freesound прокси после всех попыток.', data: error });
-        return [];
+        throw error;
     }
 };
 
@@ -879,40 +949,55 @@ export const findSfxManually = async (keywords: string, log: LogFunction, apiKey
 
 export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<SoundEffect[]> => {
     log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
-    try {
-        const prompt = `Analyze the following sound effect description: "${description}".
-        Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
-        Focus on the core sound, avoiding generic terms like "sound of".
-        
-        Examples:
-        - "Sound of a heavy wooden door creaking open": heavy door creak
-        - "A wolf howls at the full moon in a forest": wolf howl forest
-        - "Footsteps on wet pavement": footsteps wet pavement
-        
-        Description: "${description}"
-        Keywords:`;
+    let attempts = 0;
+    const maxAttempts = 2;
 
-        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-        const keywords = keywordsResponse.text.trim();
-        log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
+    while (attempts < maxAttempts) {
+        attempts++;
+        try {
+            const prompt = `Analyze the following sound effect description: "${description}".
+            Your task is to generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
+            Focus on the core sound, avoiding generic terms like "sound of".
+            
+            Examples:
+            - "Sound of a heavy wooden door creaking open": heavy door creak
+            - "A wolf howls at the full moon in a forest": wolf howl forest
+            - "Footsteps on wet pavement": footsteps wet pavement
+            
+            Description: "${description}"
+            Keywords:`;
 
-        let searchTerms = keywords.split(/[\s,]+/);
-        while (searchTerms.length > 0) {
-            const currentQuery = searchTerms.join(' ');
-            log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
-            const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys.freesound);
-            if (sfxResults.length > 0) {
-                log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
-                return sfxResults;
+            const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+            const keywords = keywordsResponse.text.trim();
+            log({ type: 'info', message: `ИИ предложил ключевые слова для SFX (Попытка ${attempts}): ${keywords}` });
+
+            if (!keywords) {
+                log({ type: 'info', message: `ИИ не вернул ключевых слов. Попытка ${attempts}.` });
+                continue;
             }
-            log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
-            searchTerms.pop(); // Remove the last keyword and retry
-        }
 
-        log({ type: 'info', message: 'Не удалось найти SFX даже после сокращения запроса.' });
-        return []; // Return empty if all attempts fail
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error });
-        throw new Error('Не удалось подобрать SFX.');
+            let searchTerms = keywords.split(/[\s,]+/).filter(Boolean);
+            while (searchTerms.length > 0) {
+                const currentQuery = searchTerms.join(' ');
+                log({ type: 'info', message: `Поиск SFX по запросу: "${currentQuery}"` });
+                const sfxResults = await performFreesoundSearch(currentQuery, log, apiKeys.freesound);
+                if (sfxResults.length > 0) {
+                    log({ type: 'info', message: `Найдено ${sfxResults.length} SFX по запросу "${currentQuery}".` });
+                    return sfxResults;
+                }
+                log({ type: 'info', message: `По запросу "${currentQuery}" ничего не найдено, сокращаем запрос...` });
+                searchTerms.pop(); // Remove the last keyword and retry
+            }
+
+            log({ type: 'info', message: `По ключевым словам "${keywords}" ничего не найдено даже после упрощения.` });
+        } catch (error) {
+            log({ type: 'error', message: `Ошибка в процессе поиска SFX с ИИ (Попытка ${attempts}).`, data: error });
+            if (attempts >= maxAttempts) {
+                throw new Error('Не удалось подобрать SFX.');
+            }
+        }
     }
+
+    log({ type: 'info', message: `Не удалось найти SFX после ${maxAttempts} попыток.` });
+    return [];
 };
