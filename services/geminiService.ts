@@ -357,46 +357,14 @@ export const withQueueAndRetries = async <T>(
     return await queue.add(() => withRetries(fn, log, config), requestKey);
 };
 
-export const generateTextWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
-    log({ type: 'request', message: `Fallback: Запрос текста от OpenRouter`, data: { prompt } });
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            "model": "deepseek/deepseek-r1:free",
-            "messages": [
-                { "role": "user", "content": prompt }
-            ]
-        })
-    });
-    
-    if (!response.ok) {
-        const errorBody = await response.text();
-        log({ type: 'error', message: `Ошибка при генерации текста через OpenRouter`, data: { status: response.status, body: errorBody } });
-        throw new Error(`OpenRouter API error: ${response.statusText}`);
-    }
-
-    const { choices } = await response.json();
-    if (!choices || choices.length === 0 || !choices[0].message?.content) {
-        throw new Error("Не удалось получить текст в ответе от OpenRouter.");
-    }
-    
-    log({ type: 'response', message: 'Fallback: Текст успешно сгенерирован через OpenRouter.' });
-    return choices[0].message.content;
-};
-
-
 // Define primary model for text generation
 const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash-lite';
 
-// Wrapper for generateContent that includes both retries and model fallback.
+// Wrapper for generateContent that includes retries but no OpenRouter fallback.
 export const generateContentWithFallback = async (
     params: { contents: any; config?: any; }, 
     log: LogFunction,
-    apiKeys: { gemini?: string; openRouter?: string; }
+    apiKeys: { gemini?: string; }
 ): Promise<GenerateContentResponse> => {
     
     const queue = getQueue(log);
@@ -408,37 +376,12 @@ export const generateContentWithFallback = async (
     };
 
     try {
-        // First, try the primary model, wrapped in our retry logic and queue.
+        // Try the primary model, wrapped in our retry logic and queue.
         return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log), `text-${PRIMARY_TEXT_MODEL}`);
     } catch (primaryError) {
         log({ type: 'error', message: `Primary model (${PRIMARY_TEXT_MODEL}) failed after all retries.`, data: primaryError });
         
-        if (apiKeys.openRouter) {
-            log({ type: 'info', message: `Switching to fallback model on OpenRouter.` });
-            try {
-                const promptString = typeof params.contents === 'string' ? params.contents : JSON.stringify(params.contents);
-                const openRouterText = await generateTextWithOpenRouter(promptString, log, apiKeys.openRouter);
-                
-                // Return a mock response object that behaves like GenerateContentResponse for the .text getter
-                const response = {
-                    get text() { return openRouterText; },
-                    candidates: [{
-                        content: { parts: [{ text: openRouterText }], role: 'model' },
-                        finishReason: 'STOP',
-                        index: 0,
-                        safetyRatings: [],
-                    }]
-                };
-                return response as GenerateContentResponse;
-
-            } catch (fallbackError) {
-                log({ type: 'error', message: `Fallback model on OpenRouter also failed.`, data: fallbackError });
-                // If fallback fails, throw the original, more informative error.
-                throw primaryError;
-            }
-        }
-        
-        // If no OpenRouter key, just throw the original error with a more specific message
-        throw new Error(`Primary model (${PRIMARY_TEXT_MODEL}) failed and no OpenRouter fallback key was provided.`);
+        // No fallback - just throw the original error with a more specific message
+        throw new Error(`Primary model (${PRIMARY_TEXT_MODEL}) failed. Please check your API key and try again.`);
     }
 };

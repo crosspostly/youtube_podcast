@@ -8,7 +8,7 @@ type UsePodcastReturn = ReturnType<typeof usePodcast>;
 
 interface PodcastContextType extends UseHistoryReturn, UsePodcastReturn {
     setPodcast: (podcast: Podcast | null) => void;
-    apiKeys: { gemini: string; openRouter: string; freesound: string; unsplash?: string; pexels?: string; };
+    apiKeys: { gemini: string; freesound: string; unsplash?: string; pexels?: string; };
     defaultFont: string; // Expose defaultFont in the context
     imageMode: ImageMode;
     warning: string | null;
@@ -20,7 +20,6 @@ interface PodcastProviderProps {
     children: React.ReactNode;
     apiKeys: { 
         gemini: string; 
-        openRouter: string; 
         freesound: string;
         unsplash?: string;
         pexels?: string;

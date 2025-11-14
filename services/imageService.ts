@@ -8,7 +8,6 @@ import { searchStockPhotos, downloadStockPhoto } from './stockPhotoService';
 
 type ApiKeys = { 
   gemini: string; 
-  openRouter: string; 
   unsplash?: string; 
   pexels?: string; 
 };
@@ -41,54 +40,6 @@ const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
 };
 
 const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting, lovecraftian horror, ultra-detailed, wide angle shot, mysterious atmosphere";
-
-const generateWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
-    log({ type: 'request', message: `Fallback: Запрос изображения от OpenRouter (Flux)`, data: { prompt } });
-    
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${openRouterApiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/crosspostly/youtube_podcast",
-            "X-Title": "AI Podcast Studio"
-        },
-        body: JSON.stringify({
-            "model": "black-forest-labs/flux-1.1-pro",
-            "messages": [{
-                "role": "user",
-                "content": [{ "type": "text", "text": `Generate an image: ${prompt}` }]
-            }],
-            "max_tokens": 1024,
-            "temperature": 0.7
-        })
-    });
-
-    if (!response.ok) {
-        const errorBody = await response.text();
-        log({ type: 'error', message: `OpenRouter API error`, data: { status: response.status, body: errorBody } });
-        throw new Error(`OpenRouter error: ${response.status} - ${errorBody}`);
-    }
-
-    const data = await response.json();
-    const imageContent = data.choices?.[0]?.message?.content;
-    
-    if (!imageContent) {
-        throw new Error("No image data in OpenRouter response");
-    }
-    
-    if (imageContent.startsWith('http')) {
-        const imgResponse = await fetch(imageContent);
-        const blob = await imgResponse.blob();
-        return new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-        });
-    }
-    
-    return `data:image/png;base64,${imageContent}`;
-};
 
 // ============================================================================
 // ГЛАВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ/ПОИСКА ОДНОГО ИЗОБРАЖЕНИЯ
@@ -164,46 +115,32 @@ export const regenerateSingleImage = async (
         throw new Error("No image data in Gemini response");
 
     } catch (geminiError: any) {
-        log({ type: 'warning', message: `Gemini failed, trying OpenRouter...`, data: geminiError });
+        log({ type: 'warning', message: `Gemini failed, trying stock photos...`, data: geminiError });
         
-        // FALLBACK 1: OpenRouter
-        if (apiKeys.openRouter) {
-            try {
-                const result = await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
-                log({ type: 'response', message: 'Изображение создано через OpenRouter' });
+        // FALLBACK: Стоковые фото (финальный fallback)
+        try {
+            const photos = await searchStockPhotos(
+                prompt,
+                { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
+                apiKeys.gemini,
+                'auto',
+                log
+            );
+            
+            if (photos.length > 0) {
+                log({ type: 'response', message: '✅ Изображение найдено на стоковом сервисе (fallback)' });
+                const base64 = await downloadStockPhoto(photos[0], log);
                 return {
-                    url: result,
-                    source: 'generated'
+                    url: base64,
+                    photographer: photos[0].photographer,
+                    photographerUrl: photos[0].photographerUrl,
+                    source: photos[0].source,
+                    license: photos[0].license
                 };
-            } catch (openRouterError: any) {
-                log({ type: 'warning', message: `OpenRouter failed, trying stock photos...`, data: openRouterError });
-                
-                // FALLBACK 2: Стоковые фото (финальный fallback)
-                try {
-                    const photos = await searchStockPhotos(
-                        prompt,
-                        { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
-                        apiKeys.gemini,
-                        'auto',
-                        log
-                    );
-                    
-                    if (photos.length > 0) {
-                        log({ type: 'response', message: '✅ Изображение найдено на стоковом сервисе (fallback)' });
-                        const base64 = await downloadStockPhoto(photos[0], log);
-                        return {
-                            url: base64,
-                            photographer: photos[0].photographer,
-                            photographerUrl: photos[0].photographerUrl,
-                            source: photos[0].source,
-                            license: photos[0].license
-                        };
-                    }
-                } catch (stockError) {
-                    log({ type: 'error', message: 'Все методы получения изображения провалились' });
-                    throw new Error('❌ Не удалось получить изображение ни одним способом');
-                }
             }
+        } catch (stockError) {
+            log({ type: 'error', message: 'Все методы получения изображения провалились' });
+            throw new Error('❌ Не удалось получить изображение ни одним способом');
         }
         
         throw geminiError;

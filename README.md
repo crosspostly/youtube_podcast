@@ -44,7 +44,7 @@ AI Podcast Studio transforms how you create podcasts, audiobooks, and narrative 
 
 - **Frontend:** React, TypeScript, Tailwind CSS.
 - **Media:** All video/serverless assembly via FFmpeg.wasm, Web Audio API, browser APIs only.
-- **AI:** Google Gemini (multi-modal) & OpenRouter APIs (fallback). All AI runs via secure cloud endpoints.
+- **AI:** Google Gemini (multi-modal) with Unsplash & Pexels stock photo fallbacks. All AI runs via secure cloud endpoints.
 - **Music:** Jamendo API — global, legal, royalty-free tracks.
 - **SFX:** Freesound API — world’s largest open sound effect library. Batch + prompt-optimized querying.
 
@@ -78,7 +78,7 @@ See [`docs/ENHANCED_429_HANDLING.md`](docs/ENHANCED_429_HANDLING.md) for advance
     # Or: yarn install && yarn start
     ```
     *For pure browser usage, just open `index.html` in a compatible browser (may need API keys in settings panel).*
-3. **Set API Keys**: In-app key icon → enter Gemini/OpenRouter/Freesound keys as needed. Own keys = best UX.
+3. **Set API Keys**: In-app key icon → enter Gemini/Freesound keys as needed. Own keys = best UX.
 4. **Instant Project:** Enter your topic, configure language, style and press generate.
 
 ---
@@ -145,7 +145,7 @@ MIT © [crosspostly](https://github.com/crosspostly)
 ## FAQ
 - **How do I reset keys/settings?** Use Settings panel → 'clear all' or manually clear `localStorage`.
 - **Can I use my own soundtrack/SFX?** Yes, replace any asset in the chapter editor at any time.
-- **What if Gemini/OpenRouter is down?** Automatic fallback/randomized retries, UI shows current status.
+- **What if Gemini is down?** For text generation, the app will show an error and you can retry later. For image generation, automatic fallback to Unsplash & Pexels stock photos ensures you can continue working.
 - **Can I export projects/transfers?** Use the export (JSON/MP3/MP4) features; all assets saved client-side, portable.
 - **How to tune retries/backoff for custom API keys?** Edit `config/appConfig.ts` or tune via UI controls.
 

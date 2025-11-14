@@ -4,23 +4,22 @@ import FontAutocompleteInput from './FontAutocompleteInput';
 
 interface ApiKeyModalProps {
     onClose: () => void;
-    onSave: (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => void;
-    currentKeys: { gemini: string; openRouter: string; freesound: string };
+    onSave: (data: { keys: { gemini: string; freesound: string }, defaultFont: string }) => void;
+    currentKeys: { gemini: string; freesound: string };
     currentFont: string;
 }
 
-type Tab = 'gemini' | 'fallback' | 'sfx' | 'style' | 'retry';
+type Tab = 'gemini' | 'sfx' | 'style' | 'retry';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
-    const [openRouterApiKey, setOpenRouterApiKey] = useState(currentKeys.openRouter);
     const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound);
     const [defaultFont, setDefaultFont] = useState(currentFont);
     const [activeTab, setActiveTab] = useState<Tab>('gemini');
 
     const handleSave = () => {
         onSave({ 
-            keys: { gemini: geminiApiKey, openRouter: openRouterApiKey, freesound: freesoundApiKey },
+            keys: { gemini: geminiApiKey, freesound: freesoundApiKey },
             defaultFont
         });
         onClose();
@@ -49,7 +48,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                 <div className="px-6 pt-2">
                     <div className="flex items-center border-b border-slate-700">
                         <TabButton tabId="gemini" label="Google Gemini" />
-                        <TabButton tabId="fallback" label="Fallback" />
                         <TabButton tabId="sfx" label="SFX" />
                         <TabButton tabId="style" label="Стиль канала" />
                     </div>
@@ -60,6 +58,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                             <h4 className="text-lg font-semibold text-white mb-2">Google Gemini API</h4>
                             <p className="text-slate-300 text-sm mb-4">
                                 Основной сервис для генерации текста и изображений. Если поле пустое, будет использоваться ключ по умолчанию.
+                                Для изображений используется автоматический fallback на Unsplash & Pexels при исчерпании квоты.
                             </p>
                             <div>
                                 <label htmlFor="geminiApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Gemini API-ключ</label>
@@ -70,27 +69,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                     onChange={(e) => setGeminiApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ API..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
-                            </div>
-                        </div>
-                    )}
-                    {activeTab === 'fallback' && (
-                        <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">OpenRouter API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Запасной сервис для генерации изображений, если квота Google Imagen исчерпана.
-                                <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
-                            </p>
-                            <div>
-                                <label htmlFor="openRouterApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш OpenRouter API-ключ</label>
-                                <input
-                                    id="openRouterApiKeyInput"
-                                    type="password"
-                                    value={openRouterApiKey}
-                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
-                                    onChange={(e) => setOpenRouterApiKey((e.currentTarget as any).value)}
-                                    placeholder="Введите ваш ключ OpenRouter..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
                             </div>

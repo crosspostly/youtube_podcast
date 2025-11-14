@@ -18,7 +18,7 @@ interface LoadingStatus {
 
 export const usePodcast = (
     updateHistory: (podcast: Podcast) => void,
-    apiKeys: { gemini: string; openRouter: string, freesound: string, unsplash?: string, pexels?: string },
+    apiKeys: { gemini: string; freesound: string, unsplash?: string, pexels?: string },
     defaultFont: string,
     imageMode: ImageMode = 'generate',
     stockPhotoPreference: StockPhotoPreference = 'unsplash'
