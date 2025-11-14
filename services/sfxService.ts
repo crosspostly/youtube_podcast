@@ -88,50 +88,76 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, a
         return script;
     }
 
-    log({ type: 'request', message: `Запрос ключевых слов для ${sfxLines.length} SFX одним пакетом.` });
+    log({ type: 'request', message: `Поиск SFX для ${sfxLines.length} SFX с использованием встроенных тегов.` });
 
-    const sfxDescriptions = sfxLines.map(({ line }) => line.text);
+    const populatedScript = [...script];
     
-    const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.\n\nDescriptions:\n${sfxDescriptions.map((d, i) => `${i + 1}. \"${d}\"`).join('\n')}\n\nReturn the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.\n\n**JSON Structure:**\n{\n  \"keywords\": [\n    \"keywords for description 1\",\n    \"keywords for description 2\",\n    ...\n  ]\n}`;
-
-    try {
-        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
-        const keywordsList = data.keywords as string[];
-
-        if (!keywordsList || keywordsList.length !== sfxLines.length) {
-            throw new Error(`Gemini returned an incorrect number of keyword sets. Expected ${sfxLines.length}, got ${keywordsList?.length || 0}.`);
+    // First pass: process lines with embedded searchTags
+    const linesWithoutTags: Array<{ line: ScriptLine; index: number }> = [];
+    
+    for (const { line, index } of sfxLines) {
+        if (line.searchTags) {
+            log({ type: 'info', message: `Поиск SFX для "${line.text}" по встроенным тегам: "${line.searchTags}"` });
+            
+            try {
+                const sfxTracks = await performFreesoundSearch(line.searchTags, log, apiKeys.freesound);
+                if (sfxTracks.length > 0) {
+                    populatedScript[index] = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                    log({ type: 'response', message: `Найден SFX: ${sfxTracks[0].name}` });
+                } else {
+                    log({ type: 'info', message: `SFX по встроенным тегам "${line.searchTags}" не найдены.` });
+                }
+            } catch (e) {
+                 log({ type: 'error', message: `Ошибка поиска SFX на Freesound для "${line.searchTags}"`, data: e });
+            }
+        } else {
+            linesWithoutTags.push({ line, index });
         }
+    }
+    
+    // Second pass: batch process lines without embedded tags (fallback)
+    if (linesWithoutTags.length > 0) {
+        log({ type: 'warning', message: `${linesWithoutTags.length} SFX не имеют встроенных тегов, используем batch-генерацию как fallback...` });
         
-        const populatedScript = [...script];
+        const sfxDescriptions = linesWithoutTags.map(({ line }) => line.text);
         
-        for (let i = 0; i < sfxLines.length; i++) {
-            const { line, index } = sfxLines[i];
-            const keywords = keywordsList[i];
-            log({ type: 'info', message: `Поиск SFX для "${line.text}" по ключевым словам: "${keywords}"` });
+        const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.\n\nDescriptions:\n${sfxDescriptions.map((d, i) => `${i + 1}. "${d}"`).join('\n')}\n\nReturn the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.\n\n**JSON Structure:**\n{\n  "keywords": [\n    "keywords for description 1",\n    "keywords for description 2",\n    ...\n  ]\n}`;
 
-            if (keywords) {
-                try {
-                    // Search Freesound sequentially to avoid overwhelming their API
-                    const sfxTracks = await performFreesoundSearch(keywords, log, apiKeys.freesound);
-                    if (sfxTracks.length > 0) {
-                        populatedScript[index] = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
-                        log({ type: 'response', message: `Найден SFX: ${sfxTracks[0].name}` });
-                    } else {
-                        log({ type: 'info', message: `SFX по ключевым словам "${keywords}" не найдены.` });
+        try {
+            const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+            const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
+            const keywordsList = data.keywords as string[];
+
+            if (!keywordsList || keywordsList.length !== linesWithoutTags.length) {
+                throw new Error(`Gemini returned an incorrect number of keyword sets. Expected ${linesWithoutTags.length}, got ${keywordsList?.length || 0}.`);
+            }
+
+            for (let j = 0; j < linesWithoutTags.length; j++) {
+                const { line: fallbackLine, index: fallbackIndex } = linesWithoutTags[j];
+                const keywords = keywordsList[j];
+                
+                log({ type: 'info', message: `Поиск SFX для "${fallbackLine.text}" по сгенерированным ключевым словам: "${keywords}"` });
+
+                if (keywords) {
+                    try {
+                        const sfxTracks = await performFreesoundSearch(keywords, log, apiKeys.freesound);
+                        if (sfxTracks.length > 0) {
+                            populatedScript[fallbackIndex] = { ...fallbackLine, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
+                            log({ type: 'response', message: `Найден SFX: ${sfxTracks[0].name}` });
+                        } else {
+                            log({ type: 'info', message: `SFX по ключевым словам "${keywords}" не найдены.` });
+                        }
+                    } catch (e) {
+                         log({ type: 'error', message: `Ошибка поиска SFX на Freesound для "${keywords}"`, data: e });
                     }
-                } catch (e) {
-                     log({ type: 'error', message: `Ошибка поиска SFX на Freesound для "${keywords}"`, data: e });
                 }
             }
+        } catch (error) {
+            log({ type: 'error', message: 'Ошибка при пакетной генерации ключевых слов для SFX.', data: error });
         }
-        return populatedScript;
-        
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка при пакетной генерации ключевых слов для SFX. SFX не будут добавлены.', data: error });
-        // Return original script if batch processing fails
-        return script;
     }
+    
+    return populatedScript;
 };
 
 export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<SoundEffect[]> => {
