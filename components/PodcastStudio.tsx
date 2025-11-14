@@ -3,6 +3,7 @@ import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine
 import { usePodcastContext } from '../context/PodcastContext';
 import Spinner from './Spinner';
 import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon, VideoCameraIcon } from './Icons';
+import StockPhotoModal from './StockPhotoModal';
 
 interface PodcastStudioProps {
     onEditThumbnail: (thumbnail: YoutubeThumbnail) => void;
@@ -51,7 +52,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
         handleGenerateChapter, combineAndDownload, generateVideo, generatePartialVideo,
         regenerateProject, regenerateText,
-        regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
+        regenerateChapterImages, regenerateAllAudio, regenerateAllImages, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
         manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter, findMusicManuallyForChapter,

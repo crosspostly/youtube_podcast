@@ -1,5 +1,8 @@
 import { GoogleGenAI } from '@google/genai';
-import type { LogFunction, StockPhoto, StockPhotoApiKeys } from '../types';
+import type { StockPhoto, StockPhotoApiKeys, GeneratedImage } from '../types';
+import type { LogEntry } from '../types';
+
+type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 // ============================================================================
 // УПРОЩЕНИЕ AI-ПРОМПТОВ ДЛЯ СТОКОВЫХ ПОИСКОВ
@@ -35,7 +38,7 @@ const simplifyPromptForStock = async (
             }
         });
         
-        const simplified = response.text().trim();
+        const simplified = response.text.trim();
         log({ type: 'response', message: `Упрощённый промпт: "${simplified}"` });
         return simplified;
         
@@ -70,7 +73,7 @@ const translateToEnglish = async (
             contents: { parts: [{ text: `Translate to English (output only translation): "${query}"` }] }
         });
         
-        const translated = response.text().trim();
+        const translated = response.text.trim();
         log({ type: 'response', message: `Переведено: "${translated}"` });
         return translated;
         

@@ -62,7 +62,7 @@ export const generateVideo = async (
 
     const allGeneratedImages = podcast.chapters.flatMap(c => c.generatedImages || []);
     if (allGeneratedImages.length === 0) throw new Error("Для генерации видео нет доступных изображений.");
-    const loadedImages = await Promise.all(allGeneratedImages.map(loadImage));
+    const loadedImages = await Promise.all(allGeneratedImages.map(image => loadImage(image.url)));
 
     if (manualDurations && manualDurations.length === loadedImages.length) {
         // MANUAL PACING

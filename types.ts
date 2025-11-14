@@ -143,7 +143,7 @@ export interface Podcast {
   // New fields for background music
   backgroundMusicVolume: number;
   // New field for thumbnail background
-  thumbnailBaseImage?: string;
+  thumbnailBaseImage?: GeneratedImage;
   // New field for video pacing control
   videoPacingMode?: 'auto' | 'manual';
 }

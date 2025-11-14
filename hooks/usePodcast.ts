@@ -225,7 +225,7 @@ export const usePodcast = (
             const thumbnailBaseImage = generatedImages.length > 0 ? generatedImages[0] : undefined;
 
             updateStatus('Создание вариантов обложек для YouTube', 'in_progress');
-            const youtubeThumbnails = thumbnailBaseImage ? await generateYoutubeThumbnails(thumbnailBaseImage, selectedTitle, designConcepts, log, defaultFont) : [];
+            const youtubeThumbnails = thumbnailBaseImage.url ? await generateYoutubeThumbnails(thumbnailBaseImage.url, selectedTitle, designConcepts, log, defaultFont) : [];
             updateStatus('Создание вариантов обложек для YouTube', 'completed');
             setGenerationProgress(100);
 
@@ -678,7 +678,7 @@ export const usePodcast = (
             return { ...p, chapters: p.chapters.map(c => ({ ...c, status: 'images_generating' })) };
         });
 
-        type ChapterResult = { chapterId: string; status: Chapter['status']; generatedImages?: string[]; error?: string; };
+        type ChapterResult = { chapterId: string; status: Chapter['status']; generatedImages?: GeneratedImage[]; error?: string; };
 
         const regenerationPromises = podcast.chapters.map(async (chapter): Promise<ChapterResult> => {
             try {
