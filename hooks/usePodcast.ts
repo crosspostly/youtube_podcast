@@ -785,7 +785,21 @@ export const usePodcast = (
         if (!podcast) return [];
         const line = podcast.chapters.find(c => c.id === chapterId)?.script[lineIndex];
         if (!line || line.speaker.toUpperCase() !== 'SFX') return [];
+        
+        // First try to use embedded searchTags
+        if (line.searchTags) {
+            try {
+                log({ type: 'info', message: `Поиск SFX для "${line.text}" по встроенным тегам: "${line.searchTags}"` });
+                return await findSfxManually(line.searchTags, log, apiKeys.freesound);
+            } catch (e: any) {
+                log({ type: 'error', message: 'Ошибка поиска SFX по встроенным тегам', data: e });
+                return [];
+            }
+        }
+        
+        // Fallback: use AI-generated keywords (this should rarely happen now)
         try {
+            log({ type: 'warning', message: `SFX "${line.text}" не имеет встроенных тегов, используем AI-генерацию как fallback...` });
             return await findSfxWithAi(line.text, log, apiKeys);
         } catch (e: any) {
             log({ type: 'error', message: 'Ошибка поиска SFX с ИИ', data: e });

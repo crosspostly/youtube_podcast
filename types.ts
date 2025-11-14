@@ -26,6 +26,7 @@ export interface ScriptLine {
   // New fields for SFX
   soundEffect?: SoundEffect;
   soundEffectVolume?: number;
+  searchTags?: string; // Embedded search tags for SFX (to avoid additional Gemini requests)
 }
 
 export type ChapterStatus = 'pending' | 'script_generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';

@@ -328,7 +328,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
     2.  **YouTube Assets:** Create YouTube-optimized text assets (title options, description, tags).
     3.  **Script:** Write the script for the FIRST CHAPTER. ${scriptLengthInstruction}
-    4.  **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. Format all sound effect cues as a separate element with the speaker "SFX". **Example: { "speaker": "SFX", "text": "Sound of a creaking door opening..." }**
+    4.  **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. Format all sound effect cues as a separate element with the speaker "SFX". **IMPORTANT: For each SFX, include simple search keywords (2-3 English words) that would work well on Freesound.org.** Example: { "speaker": "SFX", "text": "Sound of a creaking door opening", "searchTags": "door creak wood" }
     5.  **Image Prompts:** Based on the script content, create ${initialImageCount} detailed, cinematic image prompts in English.
 
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
@@ -345,7 +345,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
       "chapter": {
         "title": "Title of the first chapter",
         "script": [
-          { "speaker": "SFX", "text": "Sound of a creaking door opening..." },
+          { "speaker": "SFX", "text": "Sound of a creaking door opening", "searchTags": "door creak wood" },
           { "speaker": "Character Name 1", "text": "Intriguing introduction text..." },
           { "speaker": "Character Name 2", "text": "Mysterious response..." }
         ],
@@ -460,7 +460,7 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
 
     Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter.
     - **Script Length:** ${scriptLengthInstruction}
-    - **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere.
+    - **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. **IMPORTANT: For each SFX, include simple search keywords (2-3 English words) that would work well on Freesound.org.**
     - **Image Prompts:** Based on the new script content, create 3 detailed, cinematic image prompts in English.
     - **Formatting:** Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}. Format all cues and sound effects as a separate element with the speaker "SFX".
     - ${styleInstruction}
@@ -469,7 +469,7 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     Structure: {
         "title": "Title of this new chapter",
-        "script": [{ "speaker": "SFX", "text": "..." }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }],
+        "script": [{ "speaker": "SFX", "text": "...", "searchTags": "keywords here" }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }],
         "imagePrompts": ["Prompt 1 in English", "Prompt 2 in English", "Prompt 3 in English"]
     }${knowledgeBaseBlock}`;
     
