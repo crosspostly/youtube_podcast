@@ -75,7 +75,7 @@ const AppUI: React.FC<{
             {isEditorOpen && editingThumbnail && podcast?.thumbnailBaseImage && (
                 <ThumbnailEditor
                     thumbnail={editingThumbnail}
-                    baseImageSrc={podcast.thumbnailBaseImage}
+                    baseImageSrc={podcast.thumbnailBaseImage.url}
                     onSave={handleSaveThumbnail}
                     onClose={() => setIsEditorOpen(false)}
                 />
