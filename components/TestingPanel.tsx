@@ -67,7 +67,7 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
         for (const test of testTopics) {
             try {
-                const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys.gemini);
+                const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys);
                 
                 // FIX: Use `window.document` to resolve missing DOM type error.
                 const canvas = (window as any).document.createElement('canvas');

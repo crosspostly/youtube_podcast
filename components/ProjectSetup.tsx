@@ -85,7 +85,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const {
         isLoading, log, setError,
         history, setPodcast: setPodcastInHistory, clearHistory,
-        saveMediaInHistory, setSaveMediaInHistory, startVideoTest,
+        saveMediaInHistory, setSaveMediaInHistory, startVideoTest, apiKeys,
     } = usePodcastContext();
     
     const [projectTitleInput, setProjectTitleInput] = useState<string>('');
@@ -142,7 +142,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         setIsGoogling(true);
         setError(null);
         try {
-            const answer = await googleSearchForKnowledge(googleSearchQuestion, log);
+            const answer = await googleSearchForKnowledge(googleSearchQuestion, log, apiKeys);
             const addition = `\n\n---\nИсточник по вопросу: "${googleSearchQuestion}"\n${answer}\n---\n`;
             setKnowledgeBaseText(prev => prev.trim() + addition);
             setGoogleSearchQuestion('');

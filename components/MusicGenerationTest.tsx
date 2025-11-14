@@ -37,7 +37,7 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
         setError(null);
 
         try {
-            const tracks = await findMusicWithAi(topic, log, apiKeys.gemini);
+            const tracks = await findMusicWithAi(topic, log, apiKeys);
             setResults(tracks);
             if (tracks.length === 0) {
                  log({ type: 'info', message: 'Test finished: No music tracks were found for the generated keywords.' });

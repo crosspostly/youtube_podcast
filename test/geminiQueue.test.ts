@@ -19,15 +19,18 @@ export const testGeminiQueue = async () => {
         const requests = [
             generateContentWithFallback(
                 { contents: 'What is 2+2? Answer with just the number.' }, 
-                mockLog
+                mockLog,
+                {}
             ),
             generateContentWithFallback(
                 { contents: 'What is 3+3? Answer with just the number.' }, 
-                mockLog
+                mockLog,
+                {}
             ),
             generateContentWithFallback(
                 { contents: 'What is 4+4? Answer with just the number.' }, 
-                mockLog
+                mockLog,
+                {}
             )
         ];
 
@@ -38,7 +41,7 @@ export const testGeminiQueue = async () => {
         console.log(`\nAll requests completed in ${endTime - startTime}ms`);
         console.log('Results:', results.map(r => r.text?.trim()));
 
-        // Test 2: Queue with image generation (if needed)
+        // Test 2: Queue with custom API call
         console.log('\nTest 2: Queue with custom API call...');
         
         const customResult = await withQueueAndRetries(async () => {

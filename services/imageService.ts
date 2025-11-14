@@ -6,15 +6,15 @@ import { withRetries, ApiRequestQueue, LogFunction } from './geminiService';
 type ApiKeys = { gemini: string; openRouter: string; };
 
 // --- START: Image-specific Request Queue ---
-// This queue ensures a 10-second delay between image generation requests
+// This queue ensures a delay between image generation requests
 // to avoid hitting rate limits, without slowing down text generation.
 
 let imageQueue: ApiRequestQueue | null = null;
 
 const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     if (!imageQueue) {
-        imageQueue = new ApiRequestQueue(log, 15000); // 15,000ms = 15 seconds
-        log({ type: 'info', message: 'Image generation API request queue initialized (15s delay)' });
+        imageQueue = new ApiRequestQueue(log, 31000); // 31,000ms = 31 seconds to be safe with 2 RPM limits
+        log({ type: 'info', message: 'Image generation API request queue initialized (31s delay)' });
     }
     return imageQueue;
 };
@@ -123,20 +123,19 @@ export const generateStyleImages = async (prompts: string[], imageCount: number,
     }
     finalPrompts = finalPrompts.slice(0, targetImageCount);
 
-    const imagePromises = finalPrompts.map((prompt, i) =>
-        regenerateSingleImage(prompt, log, apiKeys)
-            .then(imageSrc => {
-                log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
-                return imageSrc;
-            })
-            .catch(error => {
-                log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
-                return null; // Return null for failed images
-            })
-    );
+    const generatedImages: string[] = [];
+    for (const [i, prompt] of finalPrompts.entries()) {
+        try {
+            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys);
+            log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
+            generatedImages.push(imageSrc);
+        } catch (error) {
+            log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
+            // Continue to the next image
+        }
+    }
 
-    const results = await Promise.all(imagePromises);
-    return results.filter((src): src is string => src !== null); // Filter out failed ones
+    return generatedImages;
 };
 
 export const generateMoreImages = async (prompts: string[], log: LogFunction, apiKeys: ApiKeys): Promise<string[]> => {
@@ -151,20 +150,19 @@ export const generateMoreImages = async (prompts: string[], log: LogFunction, ap
         selectedPrompts.push(prompts[Math.floor(Math.random() * prompts.length)]);
     }
 
-    const imagePromises = selectedPrompts.map((prompt, i) =>
-        regenerateSingleImage(prompt, log, apiKeys)
-            .then(imageSrc => {
-                log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
-                return imageSrc;
-            })
-            .catch(error => {
-                log({ type: 'error', message: `Не удалось сгенерировать дополнительное изображение ${i + 1}. Пропуск.`, data: error });
-                return null;
-            })
-    );
+    const generatedImages: string[] = [];
+    for (const [i, prompt] of selectedPrompts.entries()) {
+        try {
+            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys);
+            log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
+            generatedImages.push(imageSrc);
+        } catch (error) {
+            log({ type: 'error', message: `Не удалось сгенерировать дополнительное изображение ${i + 1}. Пропуск.`, data: error });
+            // Continue to the next image
+        }
+    }
     
-    const results = await Promise.all(imagePromises);
-    return results.filter((src): src is string => src !== null);
+    return generatedImages;
 };
 
 
