@@ -37,8 +37,8 @@ export const updateApiRetryConfig = (updates: Partial<ApiRetryConfig>) => {
 // ============================================================================
 
 export const DEFAULT_STOCK_PHOTO_KEYS = {
-  unsplash: 'YOUR_UNSPLASH_ACCESS_KEY_HERE',  // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
-  pexels: 'YOUR_PEXELS_API_KEY_HERE'          // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
+  unsplash: 'C04GfIdNUSfivrygInhzaCQ6233tvsT5QhJ76Th6RD4',  // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
+  pexels: 'MSK8N1uYAzU1yTNpicrZeWvKnQ1t99vTpy4YDKPHjSlHwaKbKqlFrokZ'          // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ
 };
 
 // Функция получения ключей с приоритетом пользовательских
