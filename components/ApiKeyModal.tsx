@@ -9,7 +9,7 @@ interface ApiKeyModalProps {
     currentFont: string;
 }
 
-type Tab = 'gemini' | 'fallback' | 'sfx' | 'style';
+type Tab = 'gemini' | 'fallback' | 'sfx' | 'style' | 'retry';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);

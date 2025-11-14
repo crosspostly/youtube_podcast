@@ -145,3 +145,17 @@ export interface Podcast {
   // New field for video pacing control
   videoPacingMode?: 'auto' | 'manual';
 }
+
+// Configuration interface for API retry behavior
+export interface ApiRetryConfig {
+  retries?: number;
+  initialDelay?: number;
+  maxDelay?: number;
+  exponentialBase?: number;
+  jitterFactor?: number;
+}
+
+// Global application configuration
+export interface AppConfig {
+  apiRetry: ApiRetryConfig;
+}
