@@ -9,6 +9,7 @@ interface StockPhotoModalProps {
     onSelect: (image: GeneratedImage) => void;
     query: string;
     imageMode: 'unsplash' | 'pexels';
+    apiKeys?: { unsplash?: string; pexels?: string; gemini?: string };
 }
 
 const StockPhotoModal: React.FC<StockPhotoModalProps> = ({ 
@@ -16,7 +17,8 @@ const StockPhotoModal: React.FC<StockPhotoModalProps> = ({
     onClose, 
     onSelect, 
     query, 
-    imageMode 
+    imageMode,
+    apiKeys
 }) => {
     const [photos, setPhotos] = useState<GeneratedImage[]>([]);
     const [loading, setLoading] = useState(false);
@@ -36,9 +38,18 @@ const StockPhotoModal: React.FC<StockPhotoModalProps> = ({
         try {
             // Import dynamically to avoid circular dependencies
             const { searchStockPhotos } = await import('../services/stockPhotoService');
-            // For demo purposes, we'll use a mock implementation
-            // In production, this should call the actual searchStockPhotos with proper API keys
-            const results: GeneratedImage[] = [];
+            
+            if (!apiKeys?.unsplash && !apiKeys?.pexels) {
+                throw new Error('API ключи для Unsplash/Pexels не настроены');
+            }
+            
+            const results = await searchStockPhotos(
+                searchQuery, 
+                apiKeys || {}, 
+                apiKeys?.gemini || '', 
+                imageMode, 
+                (entry) => console.log('Stock photo search:', entry)
+            );
             setPhotos(results);
         } catch (err: any) {
             setError(err.message || 'Ошибка поиска фотографий');
