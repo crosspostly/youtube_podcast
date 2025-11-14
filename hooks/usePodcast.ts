@@ -53,6 +53,13 @@ export const usePodcast = (
         setPodcastState(prev => {
             const newState = typeof updater === 'function' ? updater(prev) : updater;
             if (newState) {
+                // Migration: Convert old string thumbnailBaseImage to GeneratedImage object
+                if (newState.thumbnailBaseImage && typeof newState.thumbnailBaseImage === 'string') {
+                    newState.thumbnailBaseImage = {
+                        url: newState.thumbnailBaseImage,
+                        source: 'generated'
+                    };
+                }
                 updateHistory(newState);
             }
             return newState;
@@ -567,7 +574,7 @@ export const usePodcast = (
         }
 
         try {
-            const newThumbnails = await generateYoutubeThumbnails(podcast.thumbnailBaseImage, newTitle, podcast.designConcepts, log, defaultFont);
+            const newThumbnails = await generateYoutubeThumbnails(podcast.thumbnailBaseImage.url, newTitle, podcast.designConcepts, log, defaultFont);
             setPodcast(p => p ? { ...p, selectedTitle: newTitle, youtubeThumbnails: newThumbnails } : null);
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
