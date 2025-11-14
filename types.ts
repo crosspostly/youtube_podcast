@@ -177,7 +177,9 @@ export interface GeneratedImage {
     license?: string;
 }
 
-export type ImageMode = 'generate' | 'unsplash' | 'pexels';
+export type ImageMode = 'generate' | 'unsplash' | 'pexels' | 'auto';
+
+export type StockPhotoPreference = 'unsplash' | 'pexels' | 'auto';
 
 export type StockPhotoApiKeys = {
     unsplash?: string;

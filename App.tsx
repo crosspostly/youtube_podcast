@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Podcast, YoutubeThumbnail, LogEntry, ImageMode } from './types';
+import type { Podcast, YoutubeThumbnail, LogEntry, ImageMode, StockPhotoPreference } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import TestingPanel from './components/TestingPanel';
 import SfxTest from './components/SfxTest';
@@ -117,9 +117,16 @@ const AppUI: React.FC<{
 const App: React.FC = () => {
     const [isLogVisible, setIsLogVisible] = useState(false);
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '', freesound: '' });
+    const [apiKeys, setApiKeys] = useState({ 
+        gemini: '', 
+        openRouter: '', 
+        freesound: '', 
+        unsplash: '',
+        pexels: ''
+    });
     const [defaultFont, setDefaultFont] = useState('Impact');
     const [imageMode, setImageMode] = useState<ImageMode>('generate');
+    const [stockPhotoPreference, setStockPhotoPreference] = useState<StockPhotoPreference>('unsplash');
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(getApiRetryConfig());
 
     useEffect(() => {
@@ -146,14 +153,33 @@ const App: React.FC = () => {
                 setRetryConfig(parsedRetryConfig);
                 updateApiRetryConfig(parsedRetryConfig);
             }
+            
+            // Load stock photo preference from localStorage
+            const storedPreference = (window as any).localStorage.getItem('stockPhotoPreference');
+            if (storedPreference) {
+                setStockPhotoPreference(storedPreference as StockPhotoPreference);
+            }
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string; unsplash?: string; pexels?: string }, defaultFont: string, imageMode: ImageMode, retryConfig: ApiRetryConfig }) => {
+    const handleSaveApiKeys = (data: { 
+        keys: { 
+            gemini: string; 
+            openRouter: string; 
+            freesound: string; 
+            unsplash?: string; 
+            pexels?: string;
+        }; 
+        defaultFont: string; 
+        imageMode: ImageMode; 
+        retryConfig: ApiRetryConfig;
+        stockPhotoPreference: StockPhotoPreference;
+    }) => {
         setApiKeys(data.keys);
         setDefaultFont(data.defaultFont);
         setImageMode(data.imageMode);
         setRetryConfig(data.retryConfig);
+        setStockPhotoPreference(data.stockPhotoPreference);
         updateApiRetryConfig(data.retryConfig);
         
         try {
@@ -165,6 +191,8 @@ const App: React.FC = () => {
             (window as any).localStorage.setItem('imageMode', data.imageMode);
             // Save retry config to localStorage
             (window as any).localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
+            // Save stock photo preference to localStorage
+            (window as any).localStorage.setItem('stockPhotoPreference', data.stockPhotoPreference);
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
     };
     
@@ -182,6 +210,7 @@ const App: React.FC = () => {
                     currentFont={defaultFont}
                     currentImageMode={imageMode}
                     currentRetryConfig={retryConfig}
+                    currentStockPhotoPreference={stockPhotoPreference}
                 />
             )}
             <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont} imageMode={imageMode}>
