@@ -1,5 +1,6 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { safeLower } from '../utils/safeLower-util';
+import { getApiRetryConfig } from '../config/appConfig';
 
 // This service is self-contained and doesn't import from other local files
 // to be easily reusable.
@@ -150,15 +151,58 @@ const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Configuration interface for retry behavior
+export interface RetryConfig {
+    retries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    exponentialBase?: number;
+    jitterFactor?: number;
+}
+
+// Default retry configuration (now uses global config as base)
+const getRetryConfig = (userConfig: RetryConfig = {}): Required<RetryConfig> => {
+    const globalConfig = getApiRetryConfig();
+    return { 
+        retries: 3,
+        initialDelay: 2000,
+        maxDelay: 30000,
+        exponentialBase: 2,
+        jitterFactor: 0.4,
+        ...globalConfig,
+        ...userConfig 
+    };
+};
+
 // Generic retry wrapper for any async function.
 // It specifically checks for temporary, retryable errors like overload or rate limits.
-export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
+export const withRetries = async <T>(
+    fn: () => Promise<T>, 
+    log: LogFunction, 
+    config: RetryConfig = {}
+): Promise<T> => {
+    const {
+        retries,
+        initialDelay,
+        maxDelay,
+        exponentialBase,
+        jitterFactor
+    } = getRetryConfig(config);
+    
     let attempt = 1;
     let currentDelay = Math.max(initialDelay, 2000); // Use a more robust initial delay
-    const maxDelay = 30000; // Cap delay at 30 seconds
+    let consecutive429Count = 0;
 
     while (attempt <= retries) {
         try {
+            // Reset consecutive 429 count on successful attempt
+            if (attempt > 1) {
+                log({ 
+                    type: 'info', 
+                    message: `Retry attempt ${attempt - 1} successful` 
+                });
+            }
+            consecutive429Count = 0;
             return await fn();
         } catch (error: any) {
             // Check for common retryable error patterns in message, status, or code.
@@ -176,35 +220,90 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
                 errorMessage.includes('failed to fetch') ||
                 errorMessage.includes('connection reset');
 
+            // Track consecutive 429 errors for enhanced user messaging
+            if (status === 429) {
+                consecutive429Count++;
+            } else {
+                consecutive429Count = 0;
+            }
+
             if (isRetryable && attempt < retries) {
                 // Add jitter to the backoff to prevent thundering herd
-                const jitter = currentDelay * 0.4 * (Math.random() - 0.5); // +/-20% jitter
+                const jitter = currentDelay * jitterFactor * (Math.random() - 0.5);
                 const delayWithJitter = Math.min(currentDelay + jitter, maxDelay);
 
                 const retryMessage = `API call failed (Attempt ${attempt}/${retries}). Retrying in ${Math.round(delayWithJitter / 1000)}s...`;
-                const logEntry: Parameters<LogFunction>[0] = { type: 'warning', message: retryMessage, data: { message: error.message, status } };
+                const logEntry: Parameters<LogFunction>[0] = { 
+                    type: 'warning', 
+                    message: retryMessage, 
+                    data: { 
+                        message: error.message, 
+                        status,
+                        attempt,
+                        consecutive429Count,
+                        nextRetryIn: Math.round(delayWithJitter / 1000)
+                    } 
+                };
                 
-                // If it's a rate limit error, create a user-facing warning.
+                // Enhanced user-facing messages for rate limiting
                 if (status === 429) {
-                    const userMessage = `Превышен лимит запросов. Повторная попытка через ${Math.round(delayWithJitter / 1000)} сек...`;
-                    log({ ...logEntry, message: userMessage, showToUser: true });
+                    let userMessage: string;
+                    
+                    if (consecutive429Count === 1) {
+                        userMessage = `⚠️ Превышен лимит запросов. Повторная попытка через ${Math.round(delayWithJitter / 1000)} сек...`;
+                    } else if (consecutive429Count === 2) {
+                        userMessage = `🔄 Снова превышен лимит. Увеличиваем интервал до ${Math.round(delayWithJitter / 1000)} сек. Пожалуйста, подождите...`;
+                    } else if (consecutive429Count >= 3) {
+                        userMessage = `⏳ API перегружен. Следующая попытка через ${Math.round(delayWithJitter / 1000)} сек. Рекомендуем сделать паузу...`;
+                    } else {
+                        userMessage = `Превышен лимит запросов. Повторная попытка через ${Math.round(delayWithJitter / 1000)} сек...`;
+                    }
+                    
+                    log({ 
+                        ...logEntry, 
+                        message: userMessage, 
+                        showToUser: true 
+                    });
                 } else {
                     log(logEntry);
                 }
 
                 await delay(delayWithJitter);
                 attempt++;
-                currentDelay = Math.min(currentDelay * 2, maxDelay); // Exponential backoff with cap
+                currentDelay = Math.min(currentDelay * exponentialBase, maxDelay); // Exponential backoff with cap
             } else {
-                // If the error is not retryable or retries are exhausted, throw it.
-                const finalError = new Error(`API call failed permanently after ${attempt} attempts.`);
+                // Create enhanced error message based on what went wrong
+                let finalErrorMessage: string;
+                
+                if (status === 429 && consecutive429Count > 0) {
+                    finalErrorMessage = `❌ Сервис перегружен: исчерпаны все попытки (${attempt}) после ${consecutive429Count} превышений лимита. Пожалуйста, попробуйте позже.`;
+                } else if (status === 429) {
+                    finalErrorMessage = `❌ Превышен лимит запросов: исчерпаны все попытки (${attempt}). Пожалуйста, подождите несколько минут и попробуйте снова.`;
+                } else if (status >= 500) {
+                    finalErrorMessage = `❌ Ошибка сервера (${status}): исчерпаны все попытки (${attempt}). Сервис временно недоступен.`;
+                } else {
+                    finalErrorMessage = `❌ Ошибка API: исчерпаны все попытки (${attempt}).`;
+                }
+                
+                const finalError = new Error(finalErrorMessage);
                 if (error instanceof Error) {
                     (finalError as any).stack = error.stack;
                     (finalError as any).cause = error;
                 }
                 (finalError as any).originalError = error;
+                (finalError as any).status = status;
+                (finalError as any).consecutive429Count = consecutive429Count;
 
-                log({ type: 'error', message: finalError.message, data: error });
+                log({ 
+                    type: 'error', 
+                    message: finalErrorMessage, 
+                    data: { 
+                        originalError: error,
+                        status,
+                        attempts: attempt,
+                        consecutive429Count
+                    } 
+                });
                 throw finalError;
             }
         }
@@ -215,9 +314,13 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
 
 // Queue-aware retry wrapper for any async function.
 // Combines queue management with retry logic for better rate limit handling.
-export const withQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
+export const withQueueAndRetries = async <T>(
+    fn: () => Promise<T>, 
+    log: LogFunction, 
+    config: RetryConfig = {}
+): Promise<T> => {
     const queue = getQueue(log);
-    return await queue.add(() => withRetries(fn, log, retries, initialDelay));
+    return await queue.add(() => withRetries(fn, log, config));
 };
 
 export const generateTextWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {

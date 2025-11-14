@@ -12,6 +12,7 @@ import ProjectSetup from './components/ProjectSetup';
 import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
 import VideoTestPanel from './components/VideoTestPanel';
+import { getApiRetryConfig, updateApiRetryConfig, type ApiRetryConfig } from './config/appConfig';
 
 
 const AppUI: React.FC<{
@@ -118,6 +119,7 @@ const App: React.FC = () => {
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '', freesound: '' });
     const [defaultFont, setDefaultFont] = useState('Impact');
+    const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(getApiRetryConfig());
 
     useEffect(() => {
         try {
@@ -129,17 +131,30 @@ const App: React.FC = () => {
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
+            
+            // Load retry config from localStorage
+            const storedRetryConfig = (window as any).localStorage.getItem('apiRetryConfig');
+            if (storedRetryConfig) {
+                const parsedRetryConfig = JSON.parse(storedRetryConfig);
+                setRetryConfig(parsedRetryConfig);
+                updateApiRetryConfig(parsedRetryConfig);
+            }
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => {
+    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string, retryConfig: ApiRetryConfig }) => {
         setApiKeys(data.keys);
         setDefaultFont(data.defaultFont);
+        setRetryConfig(data.retryConfig);
+        updateApiRetryConfig(data.retryConfig);
+        
         try {
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             (window as any).localStorage.setItem('apiKeys', JSON.stringify(data.keys));
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             (window as any).localStorage.setItem('channelDefaultFont', data.defaultFont);
+            // Save retry config to localStorage
+            (window as any).localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
     };
     
@@ -155,6 +170,7 @@ const App: React.FC = () => {
                     onSave={handleSaveApiKeys}
                     currentKeys={apiKeys}
                     currentFont={defaultFont}
+                    currentRetryConfig={retryConfig}
                 />
             )}
             <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont}>

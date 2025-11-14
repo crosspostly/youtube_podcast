@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
 import { drawCanvas } from './canvasUtils';
-import { withRetries, ApiRequestQueue, LogFunction } from './geminiService';
+import { withRetries, ApiRequestQueue, LogFunction, RetryConfig } from './geminiService';
 
 type ApiKeys = { gemini: string; openRouter: string; };
 
@@ -19,9 +19,9 @@ const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     return imageQueue;
 };
 
-const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
+const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, config: RetryConfig = {}): Promise<T> => {
     const queue = getImageQueue(log);
-    return await queue.add(() => withRetries(fn, log, retries, initialDelay));
+    return await queue.add(() => withRetries(fn, log, config));
 };
 // --- END: Image-specific Request Queue ---
 

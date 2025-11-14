@@ -1,7 +1,7 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
 import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
-import { withQueueAndRetries, generateContentWithFallback, withRetries } from './geminiService';
+import { withQueueAndRetries, generateContentWithFallback, withRetries, RetryConfig } from './geminiService';
 import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
 

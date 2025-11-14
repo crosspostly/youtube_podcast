@@ -1,4 +1,4 @@
-import { generateContentWithFallback, withRetries } from './geminiService';
+import { generateContentWithFallback, withRetries, RetryConfig } from './geminiService';
 import { parseGeminiJsonResponse } from './aiUtils';
 import type { SoundEffect, LogEntry, ScriptLine } from '../types';
 
@@ -67,7 +67,7 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
     };
 
     try {
-        const data = await withRetries(doFetch, log, 3, 500);
+        const data = await withRetries(doFetch, log, { retries: 3, initialDelay: 500 });
         if (!data || !data.results) {
              log({ type: 'info', message: 'Ответ от Freesound не содержит поля "results".', data });
              return [];
