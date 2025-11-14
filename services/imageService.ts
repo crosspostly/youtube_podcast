@@ -1,3 +1,5 @@
+// services/imageService.ts (ПРАВИЛЬНАЯ ВЕРСИЯ БЕЗ КОНФЛИКТОВ)
+
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage } from '../types';
 import { drawCanvas } from './canvasUtils';
@@ -12,14 +14,11 @@ type ApiKeys = {
 };
 
 // --- START: Image-specific Request Queue ---
-// This queue ensures a delay between image generation requests
-// to avoid hitting rate limits, without slowing down text generation.
-
 let imageQueue: ApiRequestQueue | null = null;
 
 const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     if (!imageQueue) {
-        imageQueue = new ApiRequestQueue(log, 65000); // 65,000ms = 65 seconds to be very safe with 2 RPM limits (60/2 = 30s + large buffer)
+        imageQueue = new ApiRequestQueue(log, 65000);
         log({ type: 'info', message: 'Image generation API request queue initialized (65s delay)' });
     }
     return imageQueue;
@@ -44,35 +43,56 @@ const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
 const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting, lovecraftian horror, ultra-detailed, wide angle shot, mysterious atmosphere";
 
 const generateWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
-    log({ type: 'request', message: `Fallback: Запрос одного изображения от OpenRouter`, data: { prompt } });
-    const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
+    log({ type: 'request', message: `Fallback: Запрос изображения от OpenRouter (Flux)`, data: { prompt } });
+    
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/crosspostly/youtube_podcast",
+            "X-Title": "AI Podcast Studio"
         },
         body: JSON.stringify({
-            "prompt": prompt,
-            "model": "stabilityai/stable-diffusion-3-medium",
-            "n": 1,
-            "size": "1024x576" 
+            "model": "black-forest-labs/flux-1.1-pro",
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": `Generate an image: ${prompt}` }]
+            }],
+            "max_tokens": 1024,
+            "temperature": 0.7
         })
     });
 
     if (!response.ok) {
         const errorBody = await response.text();
-        log({ type: 'error', message: `Ошибка при генерации через OpenRouter`, data: { status: response.status, body: errorBody } });
-        throw new Error(`OpenRouter API error: ${response.statusText}`);
+        log({ type: 'error', message: `OpenRouter API error`, data: { status: response.status, body: errorBody } });
+        throw new Error(`OpenRouter error: ${response.status} - ${errorBody}`);
     }
 
-    const { data } = await response.json();
-    if (!data || data.length === 0 || !data[0].b64_json) {
-        throw new Error("Не удалось получить данные изображения в ответе от OpenRouter.");
+    const data = await response.json();
+    const imageContent = data.choices?.[0]?.message?.content;
+    
+    if (!imageContent) {
+        throw new Error("No image data in OpenRouter response");
     }
-
-    return `data:image/png;base64,${data[0].b64_json}`;
+    
+    if (imageContent.startsWith('http')) {
+        const imgResponse = await fetch(imageContent);
+        const blob = await imgResponse.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    }
+    
+    return `data:image/png;base64,${imageContent}`;
 };
 
+// ============================================================================
+// ГЛАВНАЯ ФУНКЦИЯ ГЕНЕРАЦИИ/ПОИСКА ОДНОГО ИЗОБРАЖЕНИЯ
+// ============================================================================
 
 export const regenerateSingleImage = async (
     prompt: string, 
@@ -111,43 +131,38 @@ export const regenerateSingleImage = async (
         }
     }
     
-    // РЕЖИМ 2: AI Генерация
+    // РЕЖИМ 2: AI Генерация (Попытка 1: Gemini)
     try {
-        log({ type: 'request', message: `Запрос одного изображения от gemini-2.5-flash-image`, data: { prompt: fullPrompt } });
+        log({ type: 'request', message: `Запрос изображения от Gemini` });
         const ai = getAiClient(apiKeys.gemini, log);
         
         const generateCall = () => ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [{ text: fullPrompt }],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
+            contents: { parts: [{ text: fullPrompt }] },
+            config: { responseModalities: [Modality.IMAGE] },
         });
 
-        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log, {}, `image-${prompt.substring(0, 50)}`);
-
-        // Safely access response data
+        const response = await withImageQueueAndRetries(generateCall, log, { retries: 2 });
+        
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         if (part?.inlineData) {
+            log({ type: 'response', message: 'Изображение создано через Gemini' });
             const base64Image: string = part.inlineData.data;
             return {
                 url: `data:image/png;base64,${base64Image}`,
                 source: 'generated'
             };
         }
-        throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
+        throw new Error("No image data in Gemini response");
 
-    } catch (error: any) {
-        log({ type: 'error', message: `Ошибка при генерации одного изображения через Gemini, попытка fallback...`, data: error });
+    } catch (geminiError: any) {
+        log({ type: 'warning', message: `Gemini failed, trying OpenRouter...`, data: geminiError });
         
         // FALLBACK 1: OpenRouter
         if (apiKeys.openRouter) {
             try {
-                log({ type: 'info', message: 'Fallback: Вызов OpenRouter для генерации изображения.' });
                 const result = await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
-                log({ type: 'response', message: 'Fallback: Изображение успешно сгенерировано через OpenRouter.' });
+                log({ type: 'response', message: 'Изображение создано через OpenRouter' });
                 return {
                     url: result,
                     source: 'generated'
@@ -183,9 +198,13 @@ export const regenerateSingleImage = async (
             }
         }
         
-        throw error; // Re-throw original error if no fallback key
+        throw geminiError;
     }
 };
+
+// ============================================================================
+// ГЕНЕРАЦИЯ НЕСКОЛЬКИХ ИЗОБРАЖЕНИЙ
+// ============================================================================
 
 export const generateStyleImages = async (
     prompts: string[], 
@@ -205,14 +224,14 @@ export const generateStyleImages = async (
     }
     finalPrompts = finalPrompts.slice(0, targetImageCount);
 
-    const generatedImages: string[] = [];
+    const generatedImages: GeneratedImage[] = [];
     for (const [i, prompt] of finalPrompts.entries()) {
         try {
-            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
-            log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
-            generatedImages.push(imageSrc);
+            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
+            log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
+            generatedImages.push(imageData);
         } catch (error) {
-            log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
+            log({ type: 'error', message: `Не удалось получить изображение ${i + 1}. Пропуск.`, data: error });
             // Continue to the next image
         }
     }
@@ -237,14 +256,14 @@ export const generateMoreImages = async (
         selectedPrompts.push(prompts[Math.floor(Math.random() * prompts.length)]);
     }
 
-    const generatedImages: string[] = [];
+    const generatedImages: GeneratedImage[] = [];
     for (const [i, prompt] of selectedPrompts.entries()) {
         try {
-            const imageSrc = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
-            log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
-            generatedImages.push(imageSrc);
+            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode);
+            log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
+            generatedImages.push(imageData);
         } catch (error) {
-            log({ type: 'error', message: `Не удалось сгенерировать дополнительное изображение ${i + 1}. Пропуск.`, data: error });
+            log({ type: 'error', message: `Не удалось получить дополнительное изображение ${i + 1}. Пропуск.`, data: error });
             // Continue to the next image
         }
     }
@@ -252,8 +271,9 @@ export const generateMoreImages = async (
     return generatedImages;
 };
 
-
-// --- CANVAS-BASED THUMBNAIL GENERATION ---
+// ============================================================================
+// CANVAS-BASED THUMBNAIL GENERATION
+// ============================================================================
 
 export const generateYoutubeThumbnails = async (
     baseImageSrc: string, 
@@ -268,11 +288,9 @@ export const generateYoutubeThumbnails = async (
     }
     log({ type: 'info', message: 'Создание обложек для YouTube по AI-концепциям...' });
 
-    // FIX: Use `window.Image` to resolve missing DOM type error.
     const img = new (window as any).Image();
     img.crossOrigin = "anonymous";
     
-    // Wrap image loading in a promise
     await new Promise((resolve, reject) => {
         img.onload = resolve;
         img.onerror = (e) => {
@@ -282,7 +300,6 @@ export const generateYoutubeThumbnails = async (
         img.src = baseImageSrc;
     });
 
-    // FIX: Use `window.document` to resolve missing DOM type error.
     const canvas = (window as any).document.createElement('canvas');
     canvas.width = 1280;
     canvas.height = 720;
@@ -293,7 +310,6 @@ export const generateYoutubeThumbnails = async (
     for (const concept of designConcepts) {
         const options: TextOptions = {
             text: title,
-            // Use default font if provided, otherwise use AI-suggested font
             fontFamily: defaultFont || concept.fontFamily || 'Impact',
             fontSize: concept.fontSize || 90,
             fillStyle: concept.textColor || '#FFFFFF',
@@ -312,7 +328,6 @@ export const generateYoutubeThumbnails = async (
             gradientColors: concept.gradientColors,
         };
         
-        // Drawing is now async because of font loading
         await drawCanvas(ctx, img as any, options);
         
         results.push({

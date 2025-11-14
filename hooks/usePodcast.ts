@@ -668,6 +668,53 @@ export const usePodcast = (
         setIsRegeneratingAudio(false);
     };
 
+    const regenerateAllImages = async () => {
+        if (!podcast) return;
+        log({ type: 'info', message: 'Начало регенерации всех изображений.' });
+        
+        // Set all chapters to images_generating status
+        setPodcast(p => {
+            if (!p) return null;
+            return { ...p, chapters: p.chapters.map(c => ({ ...c, status: 'images_generating' })) };
+        });
+
+        type ChapterResult = { chapterId: string; status: Chapter['status']; generatedImages?: string[]; error?: string; };
+
+        const regenerationPromises = podcast.chapters.map(async (chapter): Promise<ChapterResult> => {
+            try {
+                const newImages = await generateStyleImages(chapter.imagePrompts, 3, log, apiKeys);
+                const newDurations = podcast.videoPacingMode === 'manual' ? Array(newImages.length).fill(60) : undefined;
+                return { chapterId: chapter.id, status: 'completed', generatedImages: newImages };
+            } catch (err: any) {
+                log({ type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: err });
+                return { chapterId: chapter.id, status: 'error', error: err.message || 'Ошибка генерации изображений' };
+            }
+        });
+
+        const results = await Promise.all(regenerationPromises);
+
+        setPodcast(p => {
+            if (!p) return null;
+            const updatedChapters = p.chapters.map(chapter => {
+                const result = results.find(r => r.chapterId === chapter.id);
+                if (result) {
+                    const updatedChapter = { ...chapter, status: result.status, error: result.error };
+                    if (result.generatedImages) {
+                        updatedChapter.generatedImages = result.generatedImages;
+                        if (podcast.videoPacingMode === 'manual') {
+                            updatedChapter.imageDurations = Array(result.generatedImages.length).fill(60);
+                        }
+                    }
+                    return updatedChapter;
+                }
+                return chapter;
+            });
+            return { ...p, chapters: updatedChapters };
+        });
+
+        log({ type: 'info', message: 'Регенерация всех изображений завершена.' });
+    };
+
     const regenerateSingleImage = async (chapterId: string, index: number) => {
         const chapter = podcast?.chapters.find(c => c.id === chapterId);
         if (!podcast || !chapter || !chapter.imagePrompts[index]) return;
@@ -881,7 +928,7 @@ export const usePodcast = (
         startNewProject, handleGenerateChapter, combineAndDownload, 
         generateVideo: handleGenerateFullVideo, generatePartialVideo: handleGeneratePartialVideo,
         saveThumbnail, regenerateProject, regenerateText,
-        regenerateChapterImages, regenerateAllAudio, regenerateSingleImage,
+        regenerateChapterImages, regenerateAllAudio, regenerateAllImages, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
         manualTtsScript, subtitleText, generateSrt, setChapterMusic,
         findMusicForChapter,

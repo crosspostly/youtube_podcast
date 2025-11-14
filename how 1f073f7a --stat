@@ -1,0 +1,24 @@
+[33mcommit 1f073f7a660cd9b47fecd5d15e0ff9109d07b971[m
+Author: crosspostly <shekhovpavel@gmail.com>
+Date:   Wed Nov 12 00:09:18 2025 +0300
+
+    feat: Add support for sound effects in scripts
+    
+    Introduces the ability to specify sound effects and their volumes within script lines. This enhancement allows for richer audio productions by enabling the integration of specific sound elements directly into the narrative flow.
+    
+    Includes updates to the `types.ts` file to define the `SoundEffect` interface and add `soundEffect` and `soundEffectVolume` properties to `ScriptLine`.
+    
+    Also includes adjustments to the `ApiKeyModal` to accommodate a new `freesound` API key and adds a basic `SfxTest` component to the main application layout for future development.
+
+App.tsx
+README.md
+components/ApiKeyModal.tsx
+components/MusicGenerationTest.tsx
+components/PodcastGenerationTest.tsx
+components/PodcastStudio.tsx
+components/ProjectSetup.tsx
+components/SfxTest.tsx
+context/PodcastContext.tsx
+hooks/usePodcast.ts
+services/ttsService.ts
+types.ts
