@@ -38,76 +38,93 @@ const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
 const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting, lovecraftian horror, ultra-detailed, wide angle shot, mysterious atmosphere";
 
 const generateWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
-    log({ type: 'request', message: `Fallback: Запрос одного изображения от OpenRouter`, data: { prompt } });
-    const response = await fetch("https://openrouter.ai/api/v1/images/generations", {
+    log({ type: 'request', message: `Fallback: Запрос изображения от OpenRouter (Flux)`, data: { prompt } });
+    
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${openRouterApiKey}`,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/crosspostly/youtube_podcast",
+            "X-Title": "AI Podcast Studio"
         },
         body: JSON.stringify({
-            "prompt": prompt,
-            "model": "stabilityai/stable-diffusion-3-medium",
-            "n": 1,
-            "size": "1024x576" 
+            "model": "black-forest-labs/flux-1.1-pro",
+            "messages": [{
+                "role": "user",
+                "content": [{ "type": "text", "text": `Generate an image: ${prompt}` }]
+            }],
+            "max_tokens": 1024,
+            "temperature": 0.7
         })
     });
 
     if (!response.ok) {
         const errorBody = await response.text();
-        log({ type: 'error', message: `Ошибка при генерации через OpenRouter`, data: { status: response.status, body: errorBody } });
-        throw new Error(`OpenRouter API error: ${response.statusText}`);
+        log({ type: 'error', message: `OpenRouter API error`, data: { status: response.status, body: errorBody } });
+        throw new Error(`OpenRouter error: ${response.status} - ${errorBody}`);
     }
 
-    const { data } = await response.json();
-    if (!data || data.length === 0 || !data[0].b64_json) {
-        throw new Error("Не удалось получить данные изображения в ответе от OpenRouter.");
+    const data = await response.json();
+    const imageContent = data.choices?.[0]?.message?.content;
+    
+    if (!imageContent) {
+        throw new Error("No image data in OpenRouter response");
     }
-
-    return `data:image/png;base64,${data[0].b64_json}`;
+    
+    if (imageContent.startsWith('http')) {
+        const imgResponse = await fetch(imageContent);
+        const blob = await imgResponse.blob();
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+    }
+    
+    return `data:image/png;base64,${imageContent}`;
 };
 
 
 export const regenerateSingleImage = async (prompt: string, log: LogFunction, apiKeys: ApiKeys): Promise<string> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
+    
+    // Попытка 1: Gemini
     try {
-        log({ type: 'request', message: `Запрос одного изображения от gemini-2.5-flash-image`, data: { prompt: fullPrompt } });
+        log({ type: 'request', message: `Запрос изображения от Gemini` });
         const ai = getAiClient(apiKeys.gemini, log);
         
         const generateCall = () => ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: {
-                parts: [{ text: fullPrompt }],
-            },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
+            contents: { parts: [{ text: fullPrompt }] },
+            config: { responseModalities: [Modality.IMAGE] },
         });
 
-        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log, {}, `image-${prompt.substring(0, 50)}`);
-
-        // Safely access response data
+        const response = await withImageQueueAndRetries(generateCall, log, { retries: 2 });
+        
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         if (part?.inlineData) {
-            const base64Image: string = part.inlineData.data;
-            return `data:image/png;base64,${base64Image}`;
+            log({ type: 'response', message: 'Изображение создано через Gemini' });
+            return `data:image/png;base64,${part.inlineData.data}`;
         }
-        throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
+        throw new Error("No image data in Gemini response");
 
-    } catch (error: any) {
-        log({ type: 'error', message: `Ошибка при генерации одного изображения через Gemini, попытка fallback...`, data: error });
+    } catch (geminiError: any) {
+        log({ type: 'warning', message: `Gemini failed, trying OpenRouter...`, data: geminiError });
+        
+        // Попытка 2: OpenRouter
         if (apiKeys.openRouter) {
             try {
-                log({ type: 'info', message: 'Fallback: Вызов OpenRouter для генерации изображения.' });
                 const result = await generateWithOpenRouter(fullPrompt, log, apiKeys.openRouter);
-                log({ type: 'response', message: 'Fallback: Изображение успешно сгенерировано через OpenRouter.' });
+                log({ type: 'response', message: 'Изображение создано через OpenRouter' });
                 return result;
-            } catch (fallbackError) {
-                log({ type: 'error', message: `Ошибка fallback-генерации через OpenRouter`, data: fallbackError });
-                throw fallbackError; // Re-throw the fallback error
+            } catch (openRouterError: any) {
+                log({ type: 'error', message: `Оба провайдера недоступны` });
+                throw new Error(`❌ Не удалось сгенерировать изображение. Gemini и OpenRouter недоступны.`);
             }
         }
-        throw error; // Re-throw original error if no fallback key
+        
+        throw geminiError;
     }
 };
 
