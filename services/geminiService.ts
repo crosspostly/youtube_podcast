@@ -23,13 +23,23 @@ export class ApiRequestQueue {
     private readonly maxConcurrentRequests = 1; // Only 1 request at a time
     private currentRequests = 0;
     private log: LogFunction;
+    private pendingRequests = new Set<string>(); // Track pending requests to prevent duplicates
 
     constructor(log: LogFunction, minDelayBetweenRequests = 1500) {
         this.log = log;
         this.minDelayBetweenRequests = minDelayBetweenRequests;
     }
 
-    async add<T>(executeFn: () => Promise<T>): Promise<T> {
+    async add<T>(executeFn: () => Promise<T>, requestKey?: string): Promise<T> {
+        // Check for duplicate requests
+        if (requestKey && this.pendingRequests.has(requestKey)) {
+            this.log({ 
+                type: 'info', 
+                message: `Duplicate request detected for key: ${requestKey}. Skipping.` 
+            });
+            throw new Error(`Duplicate request: ${requestKey}`);
+        }
+
         return new Promise<T>((resolve, reject) => {
             const item: QueueItem = {
                 id: crypto.randomUUID(),
@@ -39,10 +49,29 @@ export class ApiRequestQueue {
                 timestamp: Date.now()
             };
 
+            // Track this request if it has a key
+            if (requestKey) {
+                this.pendingRequests.add(requestKey);
+                
+                // Clean up the request key when done
+                const originalResolve = item.resolve;
+                const originalReject = item.reject;
+                
+                item.resolve = (result) => {
+                    this.pendingRequests.delete(requestKey);
+                    originalResolve(result);
+                };
+                
+                item.reject = (error) => {
+                    this.pendingRequests.delete(requestKey);
+                    originalReject(error);
+                };
+            }
+
             this.queue.push(item);
             this.log({ 
                 type: 'info', 
-                message: `Request added to queue. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
+                message: `Request added to queue. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}, Pending: ${this.pendingRequests.size}` 
             });
 
             this.processQueue();
@@ -79,11 +108,16 @@ export class ApiRequestQueue {
                 await this.delay(delayNeeded);
             }
 
-            // Execute the request
-            this.executeRequest(item);
+            // Execute the request sequentially - wait for completion before processing next
+            await this.executeRequest(item);
         }
 
         this.isProcessing = false;
+        
+        // Process any remaining items that might have been added while processing
+        if (this.queue.length > 0) {
+            this.processQueue();
+        }
     }
 
     private async executeRequest(item: QueueItem): Promise<void> {
@@ -117,8 +151,7 @@ export class ApiRequestQueue {
                 message: `Request ${item.id} finished. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
             });
             
-            // Process next items in queue
-            this.processQueue();
+            // Note: processQueue() is not called here anymore since we're executing sequentially
         }
     }
 
@@ -132,8 +165,8 @@ let globalQueue: ApiRequestQueue | null = null;
 
 const getQueue = (log: LogFunction): ApiRequestQueue => {
     if (!globalQueue) {
-        globalQueue = new ApiRequestQueue(log); // Uses default 150ms delay
-        log({ type: 'info', message: 'Gemini API request queue initialized' });
+        globalQueue = new ApiRequestQueue(log, 2000); // Increased to 2000ms for better rate limit handling
+        log({ type: 'info', message: 'Gemini API request queue initialized (2s delay)' });
     }
     return globalQueue;
 };
@@ -317,10 +350,11 @@ export const withRetries = async <T>(
 export const withQueueAndRetries = async <T>(
     fn: () => Promise<T>, 
     log: LogFunction, 
-    config: RetryConfig = {}
+    config: RetryConfig = {},
+    requestKey?: string
 ): Promise<T> => {
     const queue = getQueue(log);
-    return await queue.add(() => withRetries(fn, log, config));
+    return await queue.add(() => withRetries(fn, log, config), requestKey);
 };
 
 export const generateTextWithOpenRouter = async (prompt: string, log: LogFunction, openRouterApiKey: string): Promise<string> => {
@@ -375,7 +409,7 @@ export const generateContentWithFallback = async (
 
     try {
         // First, try the primary model, wrapped in our retry logic and queue.
-        return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log));
+        return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log), `text-${PRIMARY_TEXT_MODEL}`);
     } catch (primaryError) {
         log({ type: 'error', message: `Primary model (${PRIMARY_TEXT_MODEL}) failed after all retries.`, data: primaryError });
         

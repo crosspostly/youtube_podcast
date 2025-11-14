@@ -710,7 +710,7 @@ export const performJamendoSearch = async (searchTags: string, log: LogFunction)
     };
 
     try {
-        const data = await withRetries(doFetch, log, 3, 500);
+        const data = await withRetries(doFetch, log, { retries: 3, initialDelay: 500 });
         if (!data || !data.results) {
             throw new Error('No results found from Jamendo API');
         }

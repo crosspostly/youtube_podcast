@@ -671,8 +671,15 @@ export const usePodcast = (
         const chapter = podcast?.chapters.find(c => c.id === chapterId);
         if (!podcast || !chapter || !chapter.imagePrompts[index]) return;
 
+        // Prevent multiple simultaneous regenerations
+        if (regeneratingImage !== null) {
+            log({ type: 'warning', message: 'Другое изображение уже регенерируется. Пожалуйста, подождите.' });
+            return;
+        }
+
         setRegeneratingImage({ chapterId, index });
         try {
+            const requestKey = `regenerate-${chapterId}-${index}`;
             const newImageSrc = await regenerateSingleImageApi(chapter.imagePrompts[index], log, apiKeys);
             
             setPodcast(p => {
@@ -700,6 +707,12 @@ export const usePodcast = (
     const generateMoreImages = async (chapterId: string) => {
         const chapter = podcast?.chapters.find(c => c.id === chapterId);
         if (!podcast || !chapter) return;
+
+        // Prevent multiple simultaneous generations
+        if (generatingMoreImages !== null) {
+            log({ type: 'warning', message: 'Уже идет генерация дополнительных изображений. Пожалуйста, подождите.' });
+            return;
+        }
 
         setGeneratingMoreImages(chapterId);
         try {
