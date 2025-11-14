@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Podcast, YoutubeThumbnail, LogEntry } from './types';
+import type { Podcast, YoutubeThumbnail, LogEntry, ImageMode } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import TestingPanel from './components/TestingPanel';
 import SfxTest from './components/SfxTest';
@@ -119,6 +119,7 @@ const App: React.FC = () => {
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '', freesound: '' });
     const [defaultFont, setDefaultFont] = useState('Impact');
+    const [imageMode, setImageMode] = useState<ImageMode>('generate');
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(getApiRetryConfig());
 
     useEffect(() => {
@@ -132,6 +133,12 @@ const App: React.FC = () => {
             const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
             
+            // Load image mode from localStorage
+            const storedImageMode = (window as any).localStorage.getItem('imageMode');
+            if (storedImageMode) {
+                setImageMode(storedImageMode as ImageMode);
+            }
+            
             // Load retry config from localStorage
             const storedRetryConfig = (window as any).localStorage.getItem('apiRetryConfig');
             if (storedRetryConfig) {
@@ -142,9 +149,10 @@ const App: React.FC = () => {
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string, retryConfig: ApiRetryConfig }) => {
+    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string; unsplash?: string; pexels?: string }, defaultFont: string, imageMode: ImageMode, retryConfig: ApiRetryConfig }) => {
         setApiKeys(data.keys);
         setDefaultFont(data.defaultFont);
+        setImageMode(data.imageMode);
         setRetryConfig(data.retryConfig);
         updateApiRetryConfig(data.retryConfig);
         
@@ -153,6 +161,8 @@ const App: React.FC = () => {
             (window as any).localStorage.setItem('apiKeys', JSON.stringify(data.keys));
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             (window as any).localStorage.setItem('channelDefaultFont', data.defaultFont);
+            // Save image mode to localStorage
+            (window as any).localStorage.setItem('imageMode', data.imageMode);
             // Save retry config to localStorage
             (window as any).localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
@@ -170,10 +180,11 @@ const App: React.FC = () => {
                     onSave={handleSaveApiKeys}
                     currentKeys={apiKeys}
                     currentFont={defaultFont}
+                    currentImageMode={imageMode}
                     currentRetryConfig={retryConfig}
                 />
             )}
-            <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont}>
+            <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont} imageMode={imageMode}>
                 <AppUI 
                     isLogVisible={isLogVisible} 
                     onCloseLog={() => setIsLogVisible(false)}
