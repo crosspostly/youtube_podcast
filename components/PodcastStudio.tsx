@@ -627,6 +627,11 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                     <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
                                                     )}
                                                 </div>
+                                                {imgSrc && typeof imgSrc === 'object' && imgSrc.photographer && (
+                                                    <div className="text-xs text-slate-400 text-center mt-2">
+                                                        Photo by <a href={imgSrc.photographerUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300">{imgSrc.photographer}</a> on <span className="text-slate-500">{imgSrc.source}</span>
+                                                    </div>
+                                                )}
                                                 {podcast.videoPacingMode === 'manual' && (
                                                     <div className="mt-2">
                                                         <label htmlFor={`duration-${chapter.id}-${index}`} className="block text-xs font-medium text-slate-400 mb-1">Длительность (сек)</label>

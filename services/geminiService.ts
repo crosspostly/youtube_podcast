@@ -69,10 +69,11 @@ export class ApiRequestQueue {
             }
 
             this.queue.push(item);
-            this.log({ 
-                type: 'info', 
-                message: `Request added to queue. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}, Pending: ${this.pendingRequests.size}` 
-            });
+            // НЕ ЛОГИРОВАТЬ технические детали для пользователя
+            // Логировать только в console.log для debugging
+            if (process.env.NODE_ENV === 'development') {
+                console.log(`[Queue Debug] Added. Size: ${this.queue.length}, Active: ${this.currentRequests}`);
+            }
 
             this.processQueue();
         });
@@ -90,9 +91,10 @@ export class ApiRequestQueue {
             if (!item) break;
 
             this.currentRequests++;
+            // Логировать для пользователя только значимые события
             this.log({ 
                 type: 'info', 
-                message: `Processing request ${item.id}. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
+                message: 'Обработка запроса к AI...' 
             });
 
             // Calculate delay needed since last request
@@ -103,7 +105,7 @@ export class ApiRequestQueue {
             if (delayNeeded > 0) {
                 this.log({ 
                     type: 'info', 
-                    message: `Delaying request ${item.id} by ${delayNeeded}ms to respect rate limits` 
+                    message: `Ожидание ${Math.round(delayNeeded/1000)}с перед следующим запросом...` 
                 });
                 await this.delay(delayNeeded);
             }
@@ -124,16 +126,13 @@ export class ApiRequestQueue {
         try {
             this.log({ 
                 type: 'request', 
-                message: `Executing request ${item.id}` 
+                message: `Отправка запроса к Gemini...` 
             });
             
             this.lastRequestTime = Date.now();
             const result = await item.execute();
             
-            this.log({ 
-                type: 'response', 
-                message: `Request ${item.id} completed successfully` 
-            });
+            // Не логировать успешные запросы для пользователя
             
             item.resolve(result);
         } catch (error) {
@@ -146,10 +145,7 @@ export class ApiRequestQueue {
             item.reject(error);
         } finally {
             this.currentRequests--;
-            this.log({ 
-                type: 'info', 
-                message: `Request ${item.id} finished. Queue size: ${this.queue.length}, Current requests: ${this.currentRequests}` 
-            });
+            // Не логировать технические детали завершения для пользователя
             
             // Note: processQueue() is not called here anymore since we're executing sequentially
         }
@@ -166,7 +162,7 @@ let globalQueue: ApiRequestQueue | null = null;
 const getQueue = (log: LogFunction): ApiRequestQueue => {
     if (!globalQueue) {
         globalQueue = new ApiRequestQueue(log, 10000); // Increased to 10000ms (10 seconds) for strict free tier limits
-        log({ type: 'info', message: 'Gemini API request queue initialized (10s delay)' });
+        log({ type: 'info', message: 'Очередь запросов к Gemini API инициализирована (10с задержка)' });
     }
     return globalQueue;
 };
