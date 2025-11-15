@@ -161,11 +161,14 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, a
 };
 
 export const findSfxWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<SoundEffect[]> => {
-    log({ type: 'request', message: `Запрос ключевых слов для SFX: "${description}"` });
+    // Sanitize and truncate long descriptions to prevent potential hangs in specific environments.
+    const sanitizedDescription = description.replace(/[\r\n]/g, ' ').substring(0, 250);
+    
+    log({ type: 'request', message: `Запрос ключевых слов для SFX: "${sanitizedDescription}"` });
 
     const prompt = `For the following sound effect description, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
     
-    Description: "${description}"
+    Description: "${sanitizedDescription}"
     
     Return ONLY the comma-separated keywords.
     
@@ -200,7 +203,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
         log({ type: 'info', message: `По ключевым словам "${keywords}" ничего не найдено.` });
         return [];
     } catch (error) {
-        log({ type: 'error', message: `Ошибка в процессе поиска SFX с ИИ для "${description}".`, data: error });
+        log({ type: 'error', message: `Ошибка в процессе поиска SFX с ИИ для "${sanitizedDescription}".`, data: error });
         throw new Error('Не удалось подобрать SFX.');
     }
 };

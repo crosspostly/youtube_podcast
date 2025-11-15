@@ -194,7 +194,7 @@ export const generateStyleImages = async (
     const targetImageCount = imageCount > 0 ? imageCount : 3;
     let finalPrompts = [...prompts];
     if (finalPrompts.length === 0) {
-         log({ type: 'info', message: 'Промпты для изображений не предоставлены, пропуск генерации.' });
+        log({ type: 'info', message: 'Промпты для изображений не предоставлены, пропуск генерации.' });
         return [];
     }
     while (finalPrompts.length < targetImageCount) {
@@ -202,16 +202,27 @@ export const generateStyleImages = async (
     }
     finalPrompts = finalPrompts.slice(0, targetImageCount);
 
-    const generatedImages: GeneratedImage[] = [];
-    for (const [i, prompt] of finalPrompts.entries()) {
-        try {
-            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference);
-            log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
-            generatedImages.push(imageData);
-        } catch (error) {
-            log({ type: 'error', message: `Не удалось получить изображение ${i + 1}. Пропуск.`, data: error });
+    const imagePromises = finalPrompts.map((prompt, i) => 
+        regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference)
+            .then(imageData => {
+                log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
+                return { status: 'fulfilled', value: imageData } as const;
+            })
+            .catch(error => {
+                log({ type: 'error', message: `Не удалось получить изображение ${i + 1}. Пропуск.`, data: error });
+                return { status: 'rejected', reason: error } as const;
+            })
+    );
+    
+    const results = await Promise.all(imagePromises);
+
+    // FIX: Replaced .filter().map() with .reduce() to fix TypeScript error where it couldn't infer the narrowed type after filtering.
+    const generatedImages = results.reduce<GeneratedImage[]>((acc, result) => {
+        if (result.status === 'fulfilled') {
+            acc.push(result.value);
         }
-    }
+        return acc;
+    }, []);
 
     return generatedImages;
 };
@@ -234,16 +245,27 @@ export const generateMoreImages = async (
         selectedPrompts.push(prompts[Math.floor(Math.random() * prompts.length)]);
     }
 
-    const generatedImages: GeneratedImage[] = [];
-    for (const [i, prompt] of selectedPrompts.entries()) {
-        try {
-            const imageData = await regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference);
-            log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
-            generatedImages.push(imageData);
-        } catch (error) {
-            log({ type: 'error', message: `Не удалось получить дополнительное изображение ${i + 1}. Пропуск.`, data: error });
+    const imagePromises = selectedPrompts.map((prompt, i) => 
+        regenerateSingleImage(prompt, log, apiKeys, imageMode, stockPhotoPreference)
+            .then(imageData => {
+                log({ type: 'info', message: `Дополнительное изображение ${i + 1}/${targetImageCount} успешно получено (${imageData.source}).` });
+                return { status: 'fulfilled', value: imageData } as const;
+            })
+            .catch(error => {
+                log({ type: 'error', message: `Не удалось получить дополнительное изображение ${i + 1}. Пропуск.`, data: error });
+                return { status: 'rejected', reason: error } as const;
+            })
+    );
+    
+    const results = await Promise.all(imagePromises);
+    
+    // FIX: Replaced .filter().map() with .reduce() to fix TypeScript error where it couldn't infer the narrowed type after filtering.
+    const generatedImages = results.reduce<GeneratedImage[]>((acc, result) => {
+        if (result.status === 'fulfilled') {
+            acc.push(result.value);
         }
-    }
+        return acc;
+    }, []);
     
     return generatedImages;
 };
