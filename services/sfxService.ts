@@ -17,17 +17,19 @@ export const performFreesoundSearch = async (searchTags: string, log: LogFunctio
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
         
+        const body: { query: string; customApiKey?: string } = { query: tags };
+        if (customApiKey) {
+            body.customApiKey = customApiKey;
+        }
+
         let response: Response;
         try {
-            log({ type: 'info', message: 'Выполнение fetch-запроса...', data: { query: tags } });
+            log({ type: 'info', message: 'Выполнение fetch-запроса...', data: body });
             response = await fetch(FREESOUND_PROXY_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 signal: controller.signal,
-                body: JSON.stringify({
-                    query: tags,
-                    customApiKey: customApiKey,
-                }),
+                body: JSON.stringify(body),
             });
             log({ type: 'info', message: 'Fetch-запрос завершен, получен ответ.' });
         } catch (fetchError: any) {

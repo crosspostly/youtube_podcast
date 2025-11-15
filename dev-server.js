@@ -84,6 +84,8 @@ app.get('/api/audio-proxy', async (req, res) => {
 });
 
 app.post('/api/freesound', async (req, res) => {
+  // Add a header to indicate this proxy was invoked
+  res.setHeader('X-Dev-Proxy-Invoked', 'true');
   try {
     const { query, customApiKey } = req.body;
 
@@ -91,10 +93,26 @@ app.post('/api/freesound', async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = customApiKey || DEFAULT_FREESOUND_KEY;
+    let apiKey;
+
+    // 1. Prioritize user-provided key
+    if (customApiKey && typeof customApiKey === 'string' && customApiKey.trim() !== '') {
+        apiKey = customApiKey.trim();
+        console.log("Dev Server: Using custom Freesound API key from request body.");
+    }
+    // 2. Fallback to environment variable (for local dev)
+    else if (process.env.FREESOUND_API_KEY) {
+        apiKey = process.env.FREESOUND_API_KEY;
+        console.log("Dev Server: Using Freesound API key from environment variable.");
+    }
+    // 3. Fallback to hardcoded default key
+    else {
+        apiKey = DEFAULT_FREESOUND_KEY;
+        console.log("Dev Server: Using default Freesound API key.");
+    }
 
     if (!apiKey) {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings or ensure a default key is available.";
+      const errorMessage = "Freesound API key is not configured. Please add it in the settings, configure a .env file, or ensure a default key is available.";
       console.error(errorMessage);
       return res.status(401).json({
         error: "Unauthorized",

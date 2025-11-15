@@ -4,8 +4,10 @@ import { DEFAULT_FREESOUND_KEY } from '../config/appConfig';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // Add a header to indicate this proxy was invoked
+  res.setHeader('X-Vercel-Proxy-Invoked', 'true');
 
   // Handle preflight requests
   if (req.method === 'OPTIONS') {
@@ -13,23 +15,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return;
   }
 
-  if (req.method !== 'GET' && req.method !== 'POST') {
+  if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' });
     return;
   }
 
   try {
-    const { query, customApiKey } = req.method === 'GET' ? req.query : req.body;
+    const { query, customApiKey } = req.body;
 
     if (!query) {
       res.status(400).json({ error: 'Missing query parameter' });
       return;
     }
 
-    const apiKey = (customApiKey as string) || process.env.FREESOUND_API_KEY || DEFAULT_FREESOUND_KEY;
+    let apiKey: string | undefined;
+
+    // 1. Prioritize user-provided key
+    if (customApiKey && typeof customApiKey === 'string' && customApiKey.trim() !== '') {
+        apiKey = customApiKey.trim();
+        console.log("Vercel Proxy: Using custom Freesound API key from request body.");
+    }
+    // 2. Fallback to environment variable (for Vercel deployment)
+    else if (process.env.FREESOUND_API_KEY) {
+        apiKey = process.env.FREESOUND_API_KEY;
+        console.log("Vercel Proxy: Using Freesound API key from environment variable.");
+    }
+    // 3. Fallback to hardcoded default key
+    else {
+        apiKey = DEFAULT_FREESOUND_KEY;
+        console.log("Vercel Proxy: Using default Freesound API key.");
+    }
 
     if (!apiKey) {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings or configure a default key.";
+      const errorMessage = "Freesound API key is not configured. Please add it in the settings, configure a Vercel environment variable, or set a default key.";
       console.error(errorMessage);
       return res.status(401).json({
         error: "Unauthorized",
