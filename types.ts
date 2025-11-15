@@ -20,6 +20,12 @@ export interface SoundEffect {
     username: string;
 }
 
+export interface WordTimestamp {
+  word: string;
+  startTime: number;  // в секундах
+  endTime: number;    // в секундах
+}
+
 export interface ScriptLine {
   speaker: string;
   text: string;

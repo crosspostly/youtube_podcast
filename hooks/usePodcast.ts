@@ -394,7 +394,7 @@ export const usePodcast = (
         setLoadingStatus([{ label: 'Сборка и микширование аудио...', status: 'in_progress' }]);
 
         try {
-            let finalBlob = await combineAndMixAudio(podcast);
+            let finalBlob = await combineAndMixAudio(podcast, log);
             let extension = 'wav';
 
             if (format === 'mp3') {
@@ -453,7 +453,7 @@ export const usePodcast = (
         setIsGeneratingVideo(true);
         setVideoGenerationProgress({ progress: 0, message: 'Подготовка...' });
         try {
-            const finalAudioBlob = await combineAndMixAudio(podcastToRender);
+            const finalAudioBlob = await combineAndMixAudio(podcastToRender, log);
 
             const manualDurations = podcastToRender.videoPacingMode === 'manual'
                 ? podcastToRender.chapters.flatMap(c => c.imageDurations || Array(c.generatedImages?.length || 0).fill(60))
