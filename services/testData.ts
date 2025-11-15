@@ -4,7 +4,7 @@ import { Podcast, Chapter, GeneratedImage } from '../types';
 // It has core creative content needed for test.
 export const TEST_PODCAST_BLUEPRINT: Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'youtubeThumbnails' | 'designConcepts' | 'knowledgeBaseText' | 'creativeFreedom' | 'totalDurationMinutes' | 'language' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> = {
   youtubeTitleOptions: ["Тестовый Заголовок: Тайна Маяка", "Что случилось на старом маяке?", "Маяк Потерянных Душ"],
-  description: "Это тестовый подкаст, созданный для проверки видео-движка. Он рассказывает вымышленную историю о старом, заброшенном маяке и его таинственном смотрителе.",
+  description: "Это тестовый подкаст, созданный для проверки видео-движка. Он рассказывает вымышленную историю о старом, заброшенном маяке и его таинственном смотрителе.\n\nПодробности и источники: [https://vk.com/wall-123_456|Исследование в VK] и [https://example.com/source|Дополнительные материалы]",
   seoKeywords: ["тест", "видео", "ffmpeg", "маяк", "тайна", "мистика"],
   characters: [
     { name: "Рассказчик", description: "Мужчина, спокойный, глубокий голос." },
@@ -17,8 +17,8 @@ export const TEST_PODCAST_BLUEPRINT: Omit<Podcast, 'id' | 'topic' | 'selectedTit
       title: "Глава I: Шепот у Скал",
       script: [
         { speaker: "SFX", text: "Звук волн, разбивающихся о скалы, крики чаек" },
-        { speaker: "Рассказчик", text: "На краю мира, где земля встречается с безжалостным океаном, стоит Он. Одинокий страж. Маяк на мысе Отчаяния." },
-        { speaker: "Историк", text: "Его построили в 1888 году. Записи говорят, что первый смотритель, Аластор Кейн, был человеком молчаливым и замкнутым." },
+        { speaker: "Рассказчик", text: "На краю мира, где земля встречается с безжалостным океаном, стоит Он. Одинокий страж. Маяк на мысе Отчаяния. [https://vk.com/photo123_456|Фотография маяка 1890 года]" },
+        { speaker: "Историк", text: "Его построили в 1888 году. Записи говорят, что первый смотритель, Аластор Кейн, был человеком молчаливым и замкнутым. См. [https://example.com/archive|Архивные документы]." },
         { speaker: "Рассказчик", text: "Говорят, он разговаривал с туманом. И туман... отвечал ему." }
       ],
       imagePrompts: [
