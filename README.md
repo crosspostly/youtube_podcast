@@ -41,17 +41,19 @@ This tool is engineered for YouTube creators, marketers, educators, and hobbyist
 
 ### ✒️ AI-Powered Content Pipeline
 - **Automated Scriptwriting:** Generates multi-chapter scripts with unique characters, drawing facts from Google Search or a user-provided knowledge base.
-- **Creative & Documentary Modes:** Choose between a fact-based documentary style or a captivating narrative inspired by masters of suspense like Stephen King and H.P. Lovecraft.
+- **Selectable Narration Modes:** Choose between a single-narrator **Monologue** or a multi-character **Dialogue** for your script.
+- **Creative & Documentary Styles:** Choose between a fact-based documentary style or a captivating narrative inspired by masters of suspense like Stephen King and H.P. Lovecraft.
 - **YouTube Optimization:** Automatically generates multiple clickable titles, SEO-optimized descriptions, and relevant keywords for your video.
 
 ### 🔊 Automated Audio Production
 - **Multi-Voice Narration:** Utilizes Google's latest TTS models to assign distinct, natural-sounding voices to each character in the script.
+- **Granular Regeneration:** Re-generate just the audio for any chapter without affecting the script or images, allowing for quick corrections or alternative takes.
 - **AI-Driven Music Selection:** Intelligently analyzes the script's mood to find and suggest royalty-free background music from the Jamendo API.
 - **Contextual Sound Effects:** Automatically identifies cues in the script and searches the vast Freesound.org library for relevant SFX to enhance the atmosphere.
 
 ### 🖼️ Advanced Visuals Engine
 - **AI-Generated Image Prompts:** Creates detailed, cinematic prompts for each scene based on the script's content.
-- **Hybrid Image Generation:** Uses Google's `Imagen` model to generate images, with an automatic, seamless fallback to high-quality stock photos from **Unsplash** and **Pexels** if the AI service is unavailable.
+- **Hybrid Image Generation:** Uses Google's **`gemini-2.5-flash-image`** model to generate images, with an automatic, seamless fallback to high-quality stock photos from **Unsplash** and **Pexels**.
 - **AI-Designed Thumbnails:** Proposes multiple high-CTR YouTube thumbnail designs in the style of top creators, which can be edited and exported.
 
 ### 🎥 "Bulletproof" Video Assembly
@@ -100,9 +102,9 @@ User Topic
 
 ## Technology Stack
 
-- **Frontend:** React, TypeScript, Tailwind CSS
+- **Frontend:** React, TypeScript, Tailwind CSS (via Vite + PostCSS)
 - **Media Engine:** FFmpeg.wasm (for video), Web Audio API (for audio mixing)
-- **AI Services:** Google Gemini (`gemini-2.5-flash-lite`, `imagen-4.0-generate-001`, `gemini-2.5-flash-preview-tts`)
+- **AI Services:** Google Gemini (`gemini-2.5-flash-lite`, `gemini-2.5-flash-image`, `gemini-2.5-flash-preview-tts`)
 - **Stock Photos:** Unsplash, Pexels (via serverless proxy)
 - **Audio Libraries:** Jamendo (music), Freesound (SFX) (via serverless proxy)
 
@@ -142,12 +144,12 @@ API keys are required for the application to function correctly. Using your own 
 
 1.  **Obtain Your API Keys:**
     - **Google Gemini:** Essential for all AI features. Get a key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-    - **Freesound:** **Required** for sound effects.
+    - **⚠️ Freesound (Required):** Essential for sound effects. The app will not function correctly without it.
         1. Go to the [Freesound API Documentation](https://freesound.org/docs/api/) page and log in or create an account.
         2. Click on **"Create OAuth2 credentials"** or go to your [API credentials page](https://freesound.org/home/app_new/).
         3. Fill out the form (app name, description, etc.). The "OAuth2 redirect URI" is not needed for this app.
         4. After creating the app, you will see your **Client ID** and **Client Secret**. For this application, you need the **Client Secret**. This is your API Key.
-    - **Unsplash & Pexels:** For stock photo fallbacks. Get keys from their respective developer portals.
+    - **Unsplash & Pexels (Recommended):** For stock photo fallbacks. Get keys from their respective developer portals.
 
 2.  **Enter Keys in the UI:**
     - Click the **Settings (key) icon** in the top-right corner of the application.
@@ -184,7 +186,8 @@ We welcome contributions! Please follow these guidelines:
 1.  **Fork and Branch:** Create a new branch from `main` for your feature or fix.
 2.  **Atomic Commits:** Write clear, concise, and atomic commits. Use conventional commit messages (e.g., `feat:`, `fix:`, `docs:`).
 3.  **Update Documentation:** Any changes to features, configuration, or architecture must be reflected in this README.
-4.  **Submit a Pull Request:** Reference any related issues and provide a clear description of your changes and how to test them.
+4.  **Code Quality:** The codebase maintains a high standard of quality with strict TypeScript type safety, ensuring reliability and maintainability. Please adhere to these standards.
+5.  **Submit a Pull Request:** Reference any related issues and provide a clear description of your changes and how to test them.
 
 For more details, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
@@ -192,14 +195,14 @@ For more details, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## Troubleshooting & FAQ
 
+- **I'm getting `401 Unauthorized` errors for Freesound.**
+  This is expected behavior if you have not configured your own API key. The application requires a valid key to search for sound effects. Please see the [Configuration](#configuration) section for instructions on how to get one.
+
 - **I'm getting `429 Too Many Requests` errors.**
   This can happen if you are using shared default API keys. The app's built-in retry logic will handle it, but for a better experience, please use your own API keys.
 
 - **Video generation is slow or freezes.**
   Video rendering is computationally intensive and happens entirely in your browser. Ensure you have sufficient RAM (8GB+ recommended) and are using a modern browser like Chrome or Firefox. Close other heavy tabs for best performance. The planned move to a Web Worker (see Roadmap) will solve UI freezing.
-
-- **Can I customize the generated content?**
-  Yes! Every asset (script line, SFX, music track, image) can be individually reviewed and regenerated from the Podcast Studio view.
 
 For more, see the detailed [`FAQ.md`](./FAQ.md).
 
