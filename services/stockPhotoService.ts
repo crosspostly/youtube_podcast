@@ -5,6 +5,9 @@ import { blockKey, getKeyStatus } from '../utils/stockPhotoKeyManager';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
+// Placeholder image for fallback cases (1024x576 gray placeholder with text)
+const PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAyNCIgaGVpZ2h0PSI1NzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEwMjQiIGhlaWdodD0iNTc2IiBmaWxsPSIjMzc0MTUxIi8+CiAgPHRleHQgeD0iNTEyIiB5PSIyODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzMiIgZmlsbD0iIzlDQTNBRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+CiAgICBJbWFnZSBVbmF2YWlsYWJsZQogIDwvdGV4dD4KICA8dGV4dCB4PSI1MTIiIHk9IjMyMCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjNkI3MjgwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj4KICAgIFBsYWNlaG9sZGVyCiAgPC90ZXh0Pgo8L3N2Zz4=';
+
 // ============================================================================
 // УПРОЩЕНИЕ AI-ПРОМПТОВ ДЛЯ СТОКОВЫХ ПОИСКОВ
 // ============================================================================
@@ -224,7 +227,14 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
         const img = new Image();
         img.crossOrigin = 'anonymous';
         
+        // Timeout 5 секунд для предотвращения зависания
+        const timeout = setTimeout(() => {
+            reject(new Error('Image load timeout (5s)'));
+        }, 5000);
+        
         img.onload = () => {
+            clearTimeout(timeout);
+            
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
@@ -254,6 +264,7 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
         };
         
         img.onerror = (error) => {
+            clearTimeout(timeout);
             log({ type: 'error', message: 'Не удалось загрузить изображение для обрезки', data: error });
             reject(new Error('Failed to load image'));
         };
@@ -263,31 +274,46 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
 };
 
 /**
- * Скачивает изображение и конвертирует в base64
+ * Скачивает изображение и конвертирует в base64 через proxy
  */
 export const downloadStockPhoto = async (photo: StockPhoto, log: LogFunction): Promise<string> => {
     try {
-        log({ type: 'request', message: `Скачивание фото от ${photo.photographer}...` });
+        log({ type: 'request', message: `Скачивание фото через proxy от ${photo.photographer}...` });
         
-        const response = await fetch(photo.downloadUrl);
-        const blob = await response.blob();
-        
-        // Конвертируем в base64
-        const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
+        // Запрос к proxy endpoint
+        const response = await fetch('/api/download-image', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ url: photo.downloadUrl })
         });
+
+        if (!response.ok) {
+            throw new Error(`Proxy endpoint error: ${response.status}`);
+        }
+
+        const { base64 } = await response.json();
+        
+        if (!base64) {
+            throw new Error('No base64 data received from proxy');
+        }
         
         // Обрезаем до 16:9
         const croppedBase64 = await cropToAspectRatio(base64, log);
         
-        log({ type: 'response', message: `Фото скачано и обработано` });
+        log({ type: 'response', message: `✅ Фото скачано и обработано через proxy` });
         return croppedBase64;
         
     } catch (error) {
-        log({ type: 'error', message: 'Не удалось скачать фото', data: error });
-        throw error;
+        log({ 
+            type: 'error', 
+            message: '❌ Не удалось скачать фото, используем placeholder', 
+            data: error 
+        });
+        
+        // FALLBACK: Возвращаем placeholder
+        return PLACEHOLDER_BASE64;
     }
 };
 

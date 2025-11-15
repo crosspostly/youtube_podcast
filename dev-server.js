@@ -88,7 +88,7 @@ app.all('/api/freesound', async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = customApiKey || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+    const apiKey = customApiKey || '4E54XDGL5Pc3Pf6Gk';
     const searchUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
 
     const response = await fetch(searchUrl, {
@@ -119,6 +119,74 @@ app.all('/api/freesound', async (req, res) => {
   }
 });
 
+app.post('/api/download-image', async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'Missing or invalid url parameter' });
+    }
+
+    // Validate URL format and domain
+    let targetUrl;
+    try {
+      targetUrl = url;
+      const parsedUrl = new URL(targetUrl);
+      
+      // Only allow unsplash.com and pexels.com domains for security
+      if (!parsedUrl.hostname.includes('unsplash.com') && !parsedUrl.hostname.includes('pexels.com')) {
+        console.warn(`Image download proxy: Blocked request to non-stock-photo domain: ${parsedUrl.hostname}`);
+        return res.status(403).json({ error: 'Only unsplash.com and pexels.com URLs are allowed' });
+      }
+    } catch (error) {
+      console.error('Image download proxy: Invalid URL format:', url);
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    console.log(`Image download proxy: Downloading image from ${targetUrl}`);
+
+    // Fetch the image file
+    const response = await fetch(targetUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Image download proxy error: ${response.statusText}`, errorText);
+      return res.status(response.status).json({
+        error: `Failed to fetch image: ${response.statusText}`,
+        details: errorText,
+      });
+    }
+
+    // Get content type from response or default to image/jpeg
+    const contentType = response.headers.get('content-type') || 'image/jpeg';
+    
+    // Convert to ArrayBuffer and then to base64
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    
+    // Return base64 with Data URL scheme
+    const dataUrl = `data:${contentType};base64,${base64}`;
+
+    console.log(`Image download proxy: Successfully downloaded ${arrayBuffer.byteLength} bytes from ${targetUrl}`);
+
+    res.status(200).json({ 
+      base64: dataUrl
+    });
+
+  } catch (error) {
+    console.error('Image download proxy error:', error);
+    res.status(500).json({
+      error: 'Internal Server Error',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Handle preflight requests
 app.options('/api/*', cors());
 
@@ -126,5 +194,6 @@ app.listen(PORT, () => {
   console.log(`Development API server running on http://localhost:${PORT}`);
   console.log('Available endpoints:');
   console.log('  GET /api/audio-proxy?url=<encoded_url>');
+  console.log('  POST /api/download-image (body: { url })');
   console.log('  POST /api/freesound (body: { query, customApiKey? })');
 });
