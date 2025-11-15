@@ -31,10 +31,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       targetUrl = decodeURIComponent(url);
       const parsedUrl = new URL(targetUrl);
       
-      // Only allow freesound.org domain for security
-      if (!parsedUrl.hostname.includes('freesound.org')) {
-        console.warn(`Audio proxy: Blocked request to non-freesound domain: ${parsedUrl.hostname}`);
-        res.status(403).json({ error: 'Only freesound.org URLs are allowed' });
+      // Allow freesound.org and jamendo.com domains for security
+      if (!parsedUrl.hostname.includes('freesound.org') && !parsedUrl.hostname.includes('jamendo.com')) {
+        console.warn(`Audio proxy: Blocked request to non-allowed domain: ${parsedUrl.hostname}`);
+        res.status(403).json({ error: 'Only freesound.org and jamendo.com URLs are allowed' });
         return;
       }
     } catch (error) {

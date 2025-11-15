@@ -224,7 +224,8 @@ const searchPexels = async (
  */
 const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<string> => {
     return new Promise((resolve, reject) => {
-        const img = new Image();
+        // FIX: Use `window.Image` to resolve missing DOM type error for the Image constructor.
+        const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         
         // Timeout 5 секунд для предотвращения зависания
@@ -235,7 +236,8 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
         img.onload = () => {
             clearTimeout(timeout);
             
-            const canvas = document.createElement('canvas');
+            // FIX: Use `window.document` to resolve missing DOM type error for document.
+            const canvas = (window as any).document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             
             if (!ctx) {

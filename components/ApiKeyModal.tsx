@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
 import type { ImageMode, StockPhotoPreference, ApiRetryConfig } from '../types';
 import { getKeyStatus, unblockKey } from '../utils/stockPhotoKeyManager';
+import { getGeminiImageStatus, resetGeminiCircuitBreaker } from '../services/imageService';
 
 interface ApiKeyModalProps {
     onClose: () => void;
@@ -50,6 +51,15 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(currentRetryConfig);
     const [stockPhotoPreference, setStockPhotoPreference] = useState<StockPhotoPreference>(currentStockPhotoPreference);
     const [activeTab, setActiveTab] = useState<Tab>('gemini');
+    
+    const [geminiStatus, setGeminiStatus] = useState(getGeminiImageStatus());
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setGeminiStatus(getGeminiImageStatus());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     const handleSave = () => {
         onSave({ 
@@ -65,6 +75,11 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
             stockPhotoPreference
         });
         onClose();
+    };
+    
+    const handleResetCircuitBreaker = () => {
+        resetGeminiCircuitBreaker();
+        setGeminiStatus(getGeminiImageStatus());
     };
 
     const TabButton: React.FC<{ tabId: Tab; label: string }> = ({ tabId, label }) => (
@@ -110,6 +125,43 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
         );
     };
 
+    const GeminiStatusIndicator = () => {
+        const { isTripped, consecutiveFailures, lastFailureTimestamp } = geminiStatus;
+        const coolDownPeriod = 5 * 60 * 1000;
+        const remainingCooldown = Math.ceil((lastFailureTimestamp + coolDownPeriod - Date.now()) / 1000);
+
+        if (isTripped) {
+            return (
+                 <div className="flex items-center justify-between gap-2 text-red-400 text-sm">
+                    <div className="flex items-center gap-2">
+                        <span>🛑</span>
+                        <span>Gemini Image: Отключен (осталось {Math.floor(remainingCooldown / 60)} мин {remainingCooldown % 60} сек)</span>
+                    </div>
+                    <button 
+                        onClick={handleResetCircuitBreaker}
+                        className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded"
+                    >
+                        Сбросить
+                    </button>
+                </div>
+            );
+        }
+        if (consecutiveFailures > 0) {
+             return (
+                <div className="flex items-center gap-2 text-yellow-400 text-sm">
+                    <span>⚠️</span>
+                    <span>Gemini Image: {consecutiveFailures} / 3 ошибок подряд</span>
+                </div>
+            );
+        }
+        return (
+            <div className="flex items-center gap-2 text-green-400 text-sm">
+                <span>✅</span>
+                <span>Gemini Image: Активен</span>
+            </div>
+        );
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-slate-800/80 backdrop-blur-lg rounded-lg shadow-2xl w-full max-w-md border border-slate-700">
@@ -139,11 +191,14 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="geminiApiKeyInput"
                                     type="password"
                                     value={geminiApiKey}
-                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                     onChange={(e) => setGeminiApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ API..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
+                            </div>
+                            <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                                <h5 className="text-sm font-semibold text-slate-300 mb-2">Статус генерации изображений:</h5>
+                                <GeminiStatusIndicator />
                             </div>
                         </div>
                     )}
@@ -160,7 +215,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="freesoundApiKeyInput"
                                     type="password"
                                     value={freesoundApiKey}
-                                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                     onChange={(e) => setFreesoundApiKey((e.currentTarget as any).value)}
                                     placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
@@ -176,7 +230,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                 Если поля пустые — используются дефолтные ключи разработчика с общими лимитами.
                             </p>
                             
-                            {/* Unsplash API Key */}
                             <div>
                                 <label htmlFor="unsplashApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
                                     Unsplash API Key
@@ -199,7 +252,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                 </a>
                             </div>
                             
-                            {/* Pexels API Key */}
                             <div>
                                 <label htmlFor="pexelsApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
                                     Pexels API Key
@@ -222,7 +274,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                 </a>
                             </div>
                             
-                            {/* Приоритетный источник */}
                             <div>
                                 <label htmlFor="stockPhotoPreferenceSelect" className="block text-sm font-medium text-slate-300 mb-1">
                                     Приоритетный источник фото
@@ -242,7 +293,6 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                 </p>
                             </div>
                             
-                            {/* Статус ключей */}
                             <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
                                 <h5 className="text-sm font-semibold text-slate-300 mb-2">Статус ключей:</h5>
                                 <KeyStatusIndicator service="unsplash" />

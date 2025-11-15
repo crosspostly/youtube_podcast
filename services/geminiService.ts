@@ -33,11 +33,9 @@ export class ApiRequestQueue {
     async add<T>(executeFn: () => Promise<T>, requestKey?: string): Promise<T> {
         // Check for duplicate requests
         if (requestKey && this.pendingRequests.has(requestKey)) {
-            this.log({ 
-                type: 'info', 
-                message: `Duplicate request detected for key: ${requestKey}. Skipping.` 
-            });
-            throw new Error(`Duplicate request: ${requestKey}`);
+            const warningMsg = `Duplicate request in queue for key "${requestKey}". Skipping.`;
+            this.log({ type: 'warning', message: warningMsg });
+            return Promise.reject(new Error(warningMsg));
         }
 
         return new Promise<T>((resolve, reject) => {
@@ -53,24 +51,21 @@ export class ApiRequestQueue {
             if (requestKey) {
                 this.pendingRequests.add(requestKey);
                 
-                // Clean up the request key when done
                 const originalResolve = item.resolve;
                 const originalReject = item.reject;
                 
                 item.resolve = (result) => {
-                    this.pendingRequests.delete(requestKey);
+                    this.pendingRequests.delete(requestKey!);
                     originalResolve(result);
                 };
                 
                 item.reject = (error) => {
-                    this.pendingRequests.delete(requestKey);
+                    this.pendingRequests.delete(requestKey!);
                     originalReject(error);
                 };
             }
 
             this.queue.push(item);
-            // НЕ ЛОГИРОВАТЬ технические детали для пользователя
-            // Логировать только в console.log для debugging
             if (process.env.NODE_ENV === 'development') {
                 console.log(`[Queue Debug] Added. Size: ${this.queue.length}, Active: ${this.currentRequests}`);
             }
@@ -91,32 +86,30 @@ export class ApiRequestQueue {
             if (!item) break;
 
             this.currentRequests++;
-            // Логировать для пользователя только значимые события
             this.log({ 
                 type: 'info', 
                 message: 'Обработка запроса к AI...' 
             });
 
-            // Calculate delay needed since last request
             const now = Date.now();
             const timeSinceLastRequest = now - this.lastRequestTime;
             const delayNeeded = Math.max(0, this.minDelayBetweenRequests - timeSinceLastRequest);
 
             if (delayNeeded > 0) {
+                const waitSeconds = Math.round(delayNeeded / 1000);
                 this.log({ 
                     type: 'info', 
-                    message: `Ожидание ${Math.round(delayNeeded/1000)}с перед следующим запросом...` 
+                    message: `Ожидание ${waitSeconds}с перед следующим запросом...`,
+                    showToUser: waitSeconds > 5 // Only show long waits to user
                 });
                 await this.delay(delayNeeded);
             }
 
-            // Execute the request sequentially - wait for completion before processing next
             await this.executeRequest(item);
         }
 
         this.isProcessing = false;
         
-        // Process any remaining items that might have been added while processing
         if (this.queue.length > 0) {
             this.processQueue();
         }
@@ -131,9 +124,6 @@ export class ApiRequestQueue {
             
             this.lastRequestTime = Date.now();
             const result = await item.execute();
-            
-            // Не логировать успешные запросы для пользователя
-            
             item.resolve(result);
         } catch (error) {
             this.log({ 
@@ -145,9 +135,6 @@ export class ApiRequestQueue {
             item.reject(error);
         } finally {
             this.currentRequests--;
-            // Не логировать технические детали завершения для пользователя
-            
-            // Note: processQueue() is not called here anymore since we're executing sequentially
         }
     }
 
@@ -156,16 +143,17 @@ export class ApiRequestQueue {
     }
 }
 
-// Global queue instance for general text-based requests
-let globalQueue: ApiRequestQueue | null = null;
+// Store for named queues
+const queues = new Map<string, ApiRequestQueue>();
 
-const getQueue = (log: LogFunction): ApiRequestQueue => {
-    if (!globalQueue) {
-        globalQueue = new ApiRequestQueue(log, 10000); // Increased to 10000ms (10 seconds) for strict free tier limits
-        log({ type: 'info', message: 'Очередь запросов к Gemini API инициализирована (10с задержка)' });
+const getNamedQueue = (name: string, log: LogFunction, minDelay: number): ApiRequestQueue => {
+    if (!queues.has(name)) {
+        log({ type: 'info', message: `Инициализация очереди "${name}" с задержкой ${minDelay}ms.` });
+        queues.set(name, new ApiRequestQueue(log, minDelay));
     }
-    return globalQueue;
+    return queues.get(name)!;
 };
+
 
 // Centralized client creation.
 const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
@@ -224,7 +212,6 @@ export const withRetries = async <T>(
 
     while (attempt <= retries) {
         try {
-            // Reset consecutive 429 count on successful attempt
             if (attempt > 1) {
                 log({ 
                     type: 'info', 
@@ -234,7 +221,6 @@ export const withRetries = async <T>(
             consecutive429Count = 0;
             return await fn();
         } catch (error: any) {
-            // Check for common retryable error patterns in message, status, or code.
             const errorMessage = safeLower(error?.message || '');
             const status = error?.status || error?.response?.status;
 
@@ -249,7 +235,6 @@ export const withRetries = async <T>(
                 errorMessage.includes('failed to fetch') ||
                 errorMessage.includes('connection reset');
 
-            // Track consecutive 429 errors for enhanced user messaging
             if (status === 429) {
                 consecutive429Count++;
             } else {
@@ -257,7 +242,6 @@ export const withRetries = async <T>(
             }
 
             if (isRetryable && attempt < retries) {
-                // Add jitter to the backoff to prevent thundering herd
                 const jitter = currentDelay * jitterFactor * (Math.random() - 0.5);
                 const delayWithJitter = Math.min(currentDelay + jitter, maxDelay);
 
@@ -274,7 +258,6 @@ export const withRetries = async <T>(
                     } 
                 };
                 
-                // Enhanced user-facing messages for rate limiting
                 if (status === 429) {
                     let userMessage: string;
                     
@@ -301,7 +284,6 @@ export const withRetries = async <T>(
                 attempt++;
                 currentDelay = Math.min(currentDelay * exponentialBase, maxDelay); // Exponential backoff with cap
             } else {
-                // Create enhanced error message based on what went wrong
                 let finalErrorMessage: string;
                 
                 if (status === 429 && consecutive429Count > 0) {
@@ -337,19 +319,18 @@ export const withRetries = async <T>(
             }
         }
     }
-    // This part is unreachable due to the throw in the loop but is required by TypeScript.
     throw new Error("Exhausted all retries. This should not be reached.");
 };
 
-// Queue-aware retry wrapper for any async function.
-// Combines queue management with retry logic for better rate limit handling.
 export const withQueueAndRetries = async <T>(
     fn: () => Promise<T>, 
     log: LogFunction, 
     config: RetryConfig = {},
+    queueName: string,
+    delay: number,
     requestKey?: string
 ): Promise<T> => {
-    const queue = getQueue(log);
+    const queue = getNamedQueue(queueName, log, delay);
     return await queue.add(() => withRetries(fn, log, config), requestKey);
 };
 
@@ -363,8 +344,6 @@ export const generateContentWithFallback = async (
     apiKeys: { gemini?: string; }
 ): Promise<GenerateContentResponse> => {
     
-    const queue = getQueue(log);
-    
     const attemptGeneration = (model: string) => {
         log({ type: 'request', message: `Attempting generation with model: ${model}`, data: { contents: params.contents } });
         const ai = getAiClient(apiKeys.gemini, log);
@@ -372,12 +351,17 @@ export const generateContentWithFallback = async (
     };
 
     try {
-        // Try the primary model, wrapped in our retry logic and queue.
-        return await queue.add(() => withRetries(() => attemptGeneration(PRIMARY_TEXT_MODEL), log), `text-${PRIMARY_TEXT_MODEL}`);
+        const requestKey = `text-gen-${typeof params.contents === 'string' ? params.contents.slice(0, 50) : crypto.randomUUID()}`;
+        return await withQueueAndRetries(
+            () => attemptGeneration(PRIMARY_TEXT_MODEL),
+            log,
+            {}, // retry config
+            'text', // queue name
+            1500,   // delay
+            requestKey
+        );
     } catch (primaryError) {
         log({ type: 'error', message: `Primary model (${PRIMARY_TEXT_MODEL}) failed after all retries.`, data: primaryError });
-        
-        // No fallback - just throw the original error with a more specific message
         throw new Error(`Primary model (${PRIMARY_TEXT_MODEL}) failed. Please check your API key and try again.`);
     }
 };

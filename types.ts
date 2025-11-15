@@ -35,7 +35,8 @@ export interface ScriptLine {
   searchTags?: string; // Embedded search tags for SFX (to avoid additional Gemini requests)
 }
 
-export type ChapterStatus = 'pending' | 'script_generating' | 'generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';
+// FIX: Added 'script_completed' to the ChapterStatus union type to represent the state where a chapter's script has been generated but its assets (audio/images) have not yet been.
+export type ChapterStatus = 'pending' | 'script_generating' | 'script_completed' | 'generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';
 
 export interface MusicTrack {
   id: string;

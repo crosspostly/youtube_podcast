@@ -23,10 +23,10 @@ app.get('/api/audio-proxy', async (req, res) => {
       targetUrl = decodeURIComponent(url);
       const parsedUrl = new URL(targetUrl);
       
-      // Only allow freesound.org domain for security
-      if (!parsedUrl.hostname.includes('freesound.org')) {
-        console.warn(`Audio proxy: Blocked request to non-freesound domain: ${parsedUrl.hostname}`);
-        return res.status(403).json({ error: 'Only freesound.org URLs are allowed' });
+      // Allow freesound.org and jamendo.com domains for security
+      if (!parsedUrl.hostname.includes('freesound.org') && !parsedUrl.hostname.includes('jamendo.com')) {
+        console.warn(`Audio proxy: Blocked request to non-allowed domain: ${parsedUrl.hostname}`);
+        return res.status(403).json({ error: 'Only freesound.org and jamendo.com URLs are allowed' });
       }
     } catch (error) {
       console.error('Audio proxy: Invalid URL format:', url);
@@ -88,7 +88,7 @@ app.post('/api/freesound', async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = customApiKey || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6GkC';
+    const apiKey = customApiKey || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
     const searchUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
 
     const response = await fetch(searchUrl, {

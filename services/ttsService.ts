@@ -566,12 +566,11 @@ const generateAudioWithRetries = async (
 ): Promise<GenerateContentResponse> => {
     const ai = getTtsAiClient(customApiKey, log);
 
-    // Use the most stable model directly
     const model = 'gemini-2.5-flash-preview-tts';
     try {
         log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
         const generateCall = () => ai.models.generateContent({ model, ...params });
-        const response = await withQueueAndRetries(generateCall, log);
+        const response = await withQueueAndRetries(generateCall, log, {}, 'audio', 1500);
         log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
         return response;
     } catch (error) {

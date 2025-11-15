@@ -1,9 +1,9 @@
-// services/imageService.ts (ПРАВИЛЬНАЯ ВЕРСИЯ БЕЗ КОНФЛИКТОВ)
+// services/imageService.ts (ПРАВИЛЬНАЯ ВЕРСЯ БЕЗ КОНФЛИКТОВ)
 
-import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage } from '../types';
 import { drawCanvas } from './canvasUtils';
-import { withRetries, ApiRequestQueue, LogFunction, RetryConfig } from './geminiService';
+import { withRetries, LogFunction, RetryConfig, withQueueAndRetries } from './geminiService';
 import { searchStockPhotos, downloadStockPhoto } from './stockPhotoService';
 
 type ApiKeys = { 
@@ -12,22 +12,49 @@ type ApiKeys = {
   pexels?: string; 
 };
 
-// --- START: Image-specific Request Queue ---
-let imageQueue: ApiRequestQueue | null = null;
+// --- START: Gemini Image Service Circuit Breaker ---
+interface GeminiCircuitBreakerState {
+    isTripped: boolean;
+    consecutiveFailures: number;
+    lastFailureTimestamp: number;
+}
 
-const getImageQueue = (log: LogFunction): ApiRequestQueue => {
-    if (!imageQueue) {
-        imageQueue = new ApiRequestQueue(log, 65000);
-        log({ type: 'info', message: 'Очередь генерации изображений инициализирована (65с задержка)' });
+const CONSECUTIVE_FAILURE_THRESHOLD = 3;
+const COOL_DOWN_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+
+let circuitBreakerState: GeminiCircuitBreakerState = {
+    isTripped: false,
+    consecutiveFailures: 0,
+    lastFailureTimestamp: 0,
+};
+
+export const getGeminiImageStatus = (): Readonly<GeminiCircuitBreakerState> => {
+    if (circuitBreakerState.isTripped && Date.now() > circuitBreakerState.lastFailureTimestamp + COOL_DOWN_PERIOD_MS) {
+        resetGeminiCircuitBreaker();
     }
-    return imageQueue;
+    return circuitBreakerState;
 };
 
-const withImageQueueAndRetries = async <T>(fn: () => Promise<T>, log: LogFunction, config: RetryConfig = {}, requestKey?: string): Promise<T> => {
-    const queue = getImageQueue(log);
-    return await queue.add(() => withRetries(fn, log, config), requestKey);
+const recordGeminiFailure = () => {
+    circuitBreakerState.consecutiveFailures++;
+    circuitBreakerState.lastFailureTimestamp = Date.now();
+    if (circuitBreakerState.consecutiveFailures >= CONSECUTIVE_FAILURE_THRESHOLD) {
+        circuitBreakerState.isTripped = true;
+    }
 };
-// --- END: Image-specific Request Queue ---
+
+const recordGeminiSuccess = () => {
+    circuitBreakerState.consecutiveFailures = 0;
+};
+
+export const resetGeminiCircuitBreaker = () => {
+    circuitBreakerState = {
+        isTripped: false,
+        consecutiveFailures: 0,
+        lastFailureTimestamp: 0,
+    };
+};
+// --- END: Circuit Breaker ---
 
 const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
   const finalApiKey = apiKey || process.env.API_KEY;
@@ -53,109 +80,85 @@ export const regenerateSingleImage = async (
     stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
+    const status = getGeminiImageStatus();
+    const canUseGemini = imageMode === 'generate' && !status.isTripped;
     
-    // РЕЖИМ 1: Подбор стоковых фото
-    if (imageMode === 'unsplash' || imageMode === 'pexels' || imageMode === 'auto') {
+    // РЕЖИМ 1: Сначала пробуем Gemini, если разрешено
+    if (canUseGemini) {
         try {
-            let preferredService: 'unsplash' | 'pexels' | 'auto';
+            log({ type: 'request', message: `Запрос изображения от Gemini` });
+            const ai = getAiClient(apiKeys.gemini, log);
             
-            if (imageMode === 'auto') {
-                preferredService = stockPhotoPreference;
-            } else {
-                preferredService = imageMode === 'unsplash' ? 'unsplash' : 'pexels';
-            }
+            const generateCall = () => ai.models.generateImages({
+                model: 'imagen-4.0-generate-001',
+                prompt: fullPrompt,
+                config: {
+                    numberOfImages: 1,
+                    outputMimeType: 'image/png',
+                    aspectRatio: '16:9',
+                },
+            });
+    
+            const requestKey = `image-gen-${prompt.slice(0, 50)}`;
+            const response = await withQueueAndRetries(generateCall, log, { retries: 2 }, 'image', 65000, requestKey);
             
-            const photos = await searchStockPhotos(
-                prompt,
-                { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
-                apiKeys.gemini,
-                preferredService,
-                log
-            );
-            
-            if (photos.length > 0) {
-                log({ type: 'response', message: `✅ Изображение найдено на ${photos[0].source}` });
-                const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
+            const base64Image = response?.generatedImages?.[0]?.image?.imageBytes;
+            if (base64Image) {
+                log({ type: 'response', message: 'Изображение создано через Gemini (Imagen)' });
+                recordGeminiSuccess(); // Сообщаем об успехе
                 return {
-                    url: base64,
-                    photographer: photos[0].photographer,
-                    photographerUrl: photos[0].photographerUrl,
-                    source: photos[0].source,
-                    license: photos[0].license
+                    url: `data:image/png;base64,${base64Image}`,
+                    source: 'generated'
                 };
             }
-        } catch (error) {
-            log({ type: 'warning', message: 'Стоковые фото не найдены, переключаемся на генерацию...', data: error });
-            // Продолжаем к AI генерации (fallback)
-        }
-    }
+            throw new Error("No image data in Imagen response");
     
-    // РЕЖИМ 2: AI Генерация (Попытка 1: Gemini)
-    try {
-        log({ type: 'request', message: `Запрос изображения от Gemini` });
-        const ai = getAiClient(apiKeys.gemini, log);
-        
-        const generateCall = () => ai.models.generateContent({
-            model: 'imagen-4.0-generate-001',
-            contents: { parts: [{ text: fullPrompt }] },
-            config: { responseModalities: [Modality.IMAGE] },
-        });
+        } catch (geminiError: any) {
+            recordGeminiFailure(); // Сообщаем о провале
+            const updatedStatus = getGeminiImageStatus();
+            
+            if (updatedStatus.isTripped) {
+                log({ type: 'error', message: `❌ Gemini отключен на 5 минут из-за ${updatedStatus.consecutiveFailures} ошибок подряд. Переключаемся на стоковые фото.`, showToUser: true, data: geminiError });
+            } else {
+                 log({ type: 'warning', message: `Ошибка генерации Gemini (попытка ${updatedStatus.consecutiveFailures}/${CONSECUTIVE_FAILURE_THRESHOLD}). Переключаемся на стоковые фото...`, data: geminiError });
+            }
+        }
+    } else if (imageMode === 'generate' && status.isTripped) {
+        log({ type: 'warning', message: '⚠️ Gemini временно отключен из-за ошибок. Используем стоковые фото.', showToUser: true });
+    }
 
-        // FIX: Explicitly type the response to help TypeScript's inference.
-        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log, { retries: 2 });
+    // РЕЖИМ 2: Стоковые фото (как основной режим или fallback)
+    try {
+        // FIX: Determine the correct stock photo service to use. 
+        // When imageMode is 'generate', it should fallback to the user's stock photo preference.
+        // The searchStockPhotos function does not accept 'generate' as a parameter.
+        const preferredStockService = (imageMode === 'generate' || imageMode === 'auto')
+            ? stockPhotoPreference
+            : imageMode;
+
+        const photos = await searchStockPhotos(
+            prompt,
+            { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
+            apiKeys.gemini,
+            preferredStockService,
+            log
+        );
         
-        const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-        if (part?.inlineData) {
-            log({ type: 'response', message: 'Изображение создано через Gemini' });
-            const base64Image: string = part.inlineData.data;
+        if (photos.length > 0) {
+            log({ type: 'response', message: `✅ Изображение найдено на стоковом сервисе (fallback)` });
+            const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
             return {
-                url: `data:image/png;base64,${base64Image}`,
-                source: 'generated'
+                url: base64,
+                photographer: photos[0].photographer,
+                photographerUrl: photos[0].photographerUrl,
+                source: photos[0].source,
+                license: photos[0].license
             };
         }
-        throw new Error("No image data in Gemini response");
-
-    } catch (geminiError: any) {
-        const status = geminiError?.status || geminiError?.originalError?.status;
-        
-        // Специальная обработка 404 — модель не найдена
-        if (status === 404) {
-            log({ 
-                type: 'error', 
-                message: '❌ Модель Gemini недоступна (404). Проверьте название модели в imageService.ts. Переключаемся на стоковые фото...', 
-                showToUser: true 
-            });
-        } else {
-            log({ type: 'warning', message: `Генерация изображения не удалась, переключаемся на стоковые фото...`, data: geminiError });
-        }
-        
-        // FALLBACK: Стоковые фото (финальный fallback)
-        try {
-            const photos = await searchStockPhotos(
-                prompt,
-                { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
-                apiKeys.gemini,
-                'auto',
-                log
-            );
-            
-            if (photos.length > 0) {
-                log({ type: 'response', message: '✅ Изображение найдено на стоковом сервисе (fallback)' });
-                const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
-                return {
-                    url: base64,
-                    photographer: photos[0].photographer,
-                    photographerUrl: photos[0].photographerUrl,
-                    source: photos[0].source,
-                    license: photos[0].license
-                };
-            }
-        } catch (stockError) {
-            log({ type: 'error', message: 'Все методы получения изображения провалились' });
-            throw new Error('❌ Не удалось получить изображение ни одним способом');
-        }
-        
-        throw geminiError;
+        throw new Error('Не удалось найти подходящие стоковые фото.');
+    } catch (stockError) {
+        log({ type: 'error', message: 'Все методы получения изображения провалились.' });
+        throw new Error('❌ Не удалось получить изображение ни одним способом.');
     }
 };
 
@@ -190,7 +193,6 @@ export const generateStyleImages = async (
             generatedImages.push(imageData);
         } catch (error) {
             log({ type: 'error', message: `Не удалось получить изображение ${i + 1}. Пропуск.`, data: error });
-            // Continue to the next image
         }
     }
 
@@ -223,7 +225,6 @@ export const generateMoreImages = async (
             generatedImages.push(imageData);
         } catch (error) {
             log({ type: 'error', message: `Не удалось получить дополнительное изображение ${i + 1}. Пропуск.`, data: error });
-            // Continue to the next image
         }
     }
     
