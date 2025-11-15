@@ -68,16 +68,20 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const [stockPhotoQuery, setStockPhotoQuery] = useState('');
     const [stockPhotoChapterId, setStockPhotoChapterId] = useState<string | null>(null);
     const [regenerationProgress, setRegenerationProgress] = useState({ current: 0, total: 0 });
-    const audioPlayerRef = useRef<HTMLAudioElement>(null);
+    // FIX: Cannot find name 'HTMLAudioElement'. Changed ref type to 'any'.
+    const audioPlayerRef = useRef<any>(null);
     const [musicModalChapter, setMusicModalChapter] = useState<Chapter | null>(null);
     const [sfxModalLine, setSfxModalLine] = useState<{chapterId: string, line: ScriptLine, lineIndex: number} | null>(null);
     const [volumePopoverChapterId, setVolumePopoverChapterId] = useState<string | null>(null);
-    const volumePopoverRef = useRef<HTMLDivElement>(null);
+    // FIX: Cannot find name 'HTMLDivElement'. Changed ref type to 'any'.
+    const volumePopoverRef = useRef<any>(null);
     const [isDownloadMenuOpen, setIsDownloadMenuOpen] = useState(false);
-    const downloadMenuRef = useRef<HTMLDivElement>(null);
+    // FIX: Cannot find name 'HTMLDivElement'. Changed ref type to 'any'.
+    const downloadMenuRef = useRef<any>(null);
 
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
+        // FIX: Cannot find name 'MouseEvent'. Changed event type to 'any'.
+        const handleClickOutside = (event: any) => {
              // FIX: Cast ref to `any` to use `contains` method due to missing DOM types.
              if (downloadMenuRef.current && !(downloadMenuRef.current as any).contains(event.target as any)) {
                 setIsDownloadMenuOpen(false);
@@ -726,7 +730,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         <span className="font-semibold text-sm">Переозвучить всё</span>
                     </button>
                     <button 
-                        onClick={() => generateVideo()} 
+                        // FIX: The `generateVideo` function from the context hook takes no arguments.
+                        onClick={generateVideo} 
                         disabled={!allChaptersDone || isGeneratingVideo} 
                         className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-800/60 rounded-lg hover:bg-purple-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-purple-300">
                         {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}

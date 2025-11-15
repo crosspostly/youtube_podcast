@@ -101,13 +101,15 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const [characterVoices, setCharacterVoices] = useState<{ [key: string]: string }>({ character1: 'Puck', character2: 'Zephyr' });
     const [monologueVoice, setMonologueVoice] = useState<string>('Puck');
     const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
-    const audioRef = useRef<HTMLAudioElement>(null);
+    // FIX: Cannot find name 'HTMLAudioElement'. Changed ref type to 'any'.
+    const audioRef = useRef<any>(null);
     const [voiceFilter, setVoiceFilter] = useState<'all' | 'male' | 'female'>('all');
     const activeBlobUrls = useRef<Map<string, string>>(new Map());
 
     const [langSearchTerm, setLangSearchTerm] = useState('');
     const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
-    const langDropdownRef = useRef<HTMLDivElement>(null);
+    // FIX: Cannot find name 'HTMLDivElement'. Changed ref type to 'any'.
+    const langDropdownRef = useRef<any>(null);
 
     const filteredLanguages = useMemo(() => 
         languages.filter(l => safeIncludes(l.name, langSearchTerm)),
@@ -119,7 +121,8 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     }, [voiceFilter]);
     
     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
+        // FIX: Cannot find name 'MouseEvent'. Changed event type to 'any'.
+        const handleClickOutside = (event: any) => {
             // FIX: Cast ref and event target to `any` to use `contains` method.
             if (langDropdownRef.current && !(langDropdownRef.current as any).contains(event.target as any)) {
                 setIsLangDropdownOpen(false);

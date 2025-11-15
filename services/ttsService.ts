@@ -377,14 +377,14 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
 
     if (narrationMode === 'dialogue') {
         characterInstruction = `1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).`;
-        dialogueRequirement = `**CRITICAL DIALOGUE REQUIREMENT:** The script MUST be a dialogue between the two characters. Alternate speakers frequently. DO NOT write a long monologue for a single character.`;
+        dialogueRequirement = `**CRITICAL DIALOGUE REQUIREMENT:** The script for this chapter MUST be a dialogue between the two characters you have just defined in the 'characters' array. Alternate speakers frequently. DO NOT write a long monologue for a single character. Ensure both characters have speaking lines.`;
         charactersJson = `"characters": [
         { "name": "Character Name 1", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." },
         { "name": "Character Name 2", "description": "Brief description, gender, and voice character. E.g., Female, calm, intriguing voice." }
       ],`;
     } else { // Monologue
         characterInstruction = `1.  **Character:** Create one character for this video (a "Narrator"). Give them a brief description (gender, voice character).`;
-        dialogueRequirement = `**CRITICAL MONOLOGUE REQUIREMENT:** The script MUST be a monologue from the single "Narrator" character.`;
+        dialogueRequirement = `**CRITICAL MONOLOGUE REQUIREMENT:** The script MUST be a monologue from the single "Narrator" character you have just defined.`;
         charactersJson = `"characters": [{ "name": "Narrator", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." }],`;
     }
 
@@ -515,7 +515,7 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     const scriptLengthInstruction = getScriptLengthInstruction(totalDurationMinutes);
 
     const dialogueRequirement = narrationMode === 'dialogue'
-        ? `**CRITICAL DIALOGUE REQUIREMENT:** The script MUST be a dialogue between the characters. Alternate speakers frequently. DO NOT write a long monologue for a single character.`
+        ? `**CRITICAL DIALOGUE REQUIREMENT:** The script for this new chapter MUST be a dialogue between the characters: ${characters.map(c => `"${c.name}"`).join(' and ')}. Alternate speakers frequently. DO NOT write a long monologue for a single character. Ensure both characters have speaking lines.`
         : `**CRITICAL MONOLOGUE REQUIREMENT:** The script MUST be a monologue from the single "Narrator" character.`;
 
     const prompt = `You are a master of suspense, an AI screenwriter continuing a long-form podcast.

@@ -89,7 +89,7 @@ const StockPhotoModal: React.FC<StockPhotoModalProps> = ({
                             <input
                                 type="text"
                                 value={searchQuery}
-                                // FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'.
+                                // FIX: Cannot find name 'HTMLInputElement'. Changed event type to 'any'.
                                 onChange={(e: any) => setSearchQuery(e.currentTarget.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && searchPhotos()}
                                 placeholder="Поиск фотографий..."

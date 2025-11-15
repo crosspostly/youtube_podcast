@@ -1,3 +1,6 @@
+// FIX: Add reference to node types to fix "Cannot find name 'Buffer'" error.
+/// <reference types="node" />
+
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

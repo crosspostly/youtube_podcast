@@ -16,7 +16,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
     const [results, setResults] = useState<SoundEffect[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
-    const audioRef = useRef<HTMLAudioElement>(null);
+    // FIX: Cannot find name 'HTMLAudioElement'. Changed ref type to 'any'.
+    const audioRef = useRef<any>(null);
     const { log: contextLog, apiKeys } = usePodcastContext();
 
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
@@ -100,7 +101,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'.
+                    // FIX: Cannot find name 'HTMLInputElement'. Changed event type to 'any'.
                     onChange={(e: any) => setDescription(e.currentTarget.value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"

@@ -29,13 +29,20 @@ export const useHistory = () => {
         const updateLocalStorage = (newHistory: Podcast[]) => {
             const serializableHistory = newHistory.map(p => {
                 const { chapters, ...podcastRest } = p;
-                const serializablePodcast: any = {
-                    ...podcastRest,
-                    chapters: chapters.map(({ audioBlob, ...chapterRest }) => chapterRest)
-                };
+                
+                // Start with a base object that excludes large or non-serializable top-level fields
+                const serializablePodcast: any = { ...podcastRest };
         
+                // Process chapters: always remove audioBlob, conditionally remove generatedImages
+                serializablePodcast.chapters = chapters.map(({ audioBlob, generatedImages, ...chapterRest }) => {
+                    if (saveMediaInHistory) {
+                        return { generatedImages, ...chapterRest }; // Keep images
+                    }
+                    return chapterRest; // Discard images
+                });
+        
+                // Conditionally remove top-level thumbnails
                 if (!saveMediaInHistory) {
-                    delete serializablePodcast.generatedImages;
                     delete serializablePodcast.youtubeThumbnails;
                 }
         

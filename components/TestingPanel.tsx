@@ -25,7 +25,8 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
     const [renderedResults, setRenderedResults] = useState<RenderedResult[]>([]);
     const [isTesting, setIsTesting] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
-    const imageRef = useRef<HTMLImageElement | null>(null);
+    // FIX: Cannot find name 'HTMLImageElement'. Changed ref type to 'any'.
+    const imageRef = useRef<any>(null);
     const { log: contextLog, apiKeys, defaultFont } = usePodcastContext(); // Get defaultFont from context
 
 

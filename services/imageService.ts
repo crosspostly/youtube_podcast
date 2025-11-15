@@ -100,7 +100,14 @@ export const regenerateSingleImage = async (
             });
     
             const requestKey = `image-gen-${prompt.slice(0, 50)}`;
-            const response: GenerateContentResponse = await withQueueAndRetries(generateCall, log, { retries: 2 }, 'image', 65000, requestKey);
+            const response: GenerateContentResponse = await withQueueAndRetries(
+                generateCall, 
+                log, 
+                { retries: 2, initialDelay: 30000 }, // Retry after 30s for 429 errors
+                'image', 
+                90000, // Wait 90s between image requests
+                requestKey
+            );
             
             let base64Image: string | undefined;
 

@@ -3,7 +3,8 @@ import { cleanupPodcastImages, forceGarbageCollection } from '../utils/memoryCle
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually } from '../services/ttsService';
-import { findSfxWithAi, findSfxManually } from '../services/sfxService';
+// FIX: Import `findSfxWithAi` to resolve the error.
+import { findSfxForScript, findSfxManually, findSfxWithAi } from '../services/sfxService';
 import { generateSrtFile } from '../services/srtService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
@@ -168,134 +169,121 @@ export const usePodcast = (
         setLogs([]);
         setGenerationProgress(0);
         setIsGenerationPaused(false);
-    
+
         const CHAPTER_DURATION_MIN = 7;
         const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN));
-    
+        const progressPerScript = 40 / totalChapters;
+        const progressPerAssetBundle = 50 / totalChapters;
+
         const initialSteps: LoadingStatus[] = [
-            // FIX: Explicitly cast status strings to their literal types using 'as const' to prevent them from being widened to the general 'string' type, resolving a TypeScript error.
             { label: 'Создание концепции и сценария главы 1', status: 'pending' as const },
             ...Array.from({ length: totalChapters - 1 }, (_, i) => ({ label: `Генерация сценария главы ${i + 2}`, status: 'pending' as const })),
-            { label: 'Параллельная генерация аудио', status: 'pending' as const },
-            { label: 'Параллельная генерация изображений', status: 'pending' as const },
+            ...Array.from({ length: totalChapters }, (_, i) => ({ label: `Генерация ассетов для главы ${i + 1}`, status: 'pending' as const })),
             { label: 'Создание обложек', status: 'pending' as const },
         ];
         setLoadingStatus(initialSteps);
-    
+
         const updateStatus = (label: string, status: LoadingStatus['status']) => {
             setLoadingStatus(prev => prev.map(step => step.label === label ? { ...step, status } : step));
         };
-    
+
         try {
-            // --- PHASE 0: Blueprint ---
             updateStatus('Создание концепции и сценария главы 1', 'in_progress');
             const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, narrationMode, log, apiKeys, initialImageCount);
             updateStatus('Создание концепции и сценария главы 1', 'completed');
-            setGenerationProgress(100 / (totalChapters + 2));
-    
+            setGenerationProgress(progressPerScript);
+
             const finalCharacterVoices: { [key: string]: string } = {};
             if (blueprint.characters.length > 0 && characterVoicePrefs.character1) finalCharacterVoices[blueprint.characters[0].name] = characterVoicePrefs.character1;
             if (blueprint.characters.length > 1 && characterVoicePrefs.character2) finalCharacterVoices[blueprint.characters[1].name] = characterVoicePrefs.character2;
-    
+
             const chapters: Chapter[] = [
-                // FIX: Explicitly cast status string to its literal type using 'as const' to prevent it from being widened to the general 'string' type, resolving a TypeScript assignment error.
                 { id: crypto.randomUUID(), ...blueprint.chapters[0], status: 'script_completed' as const },
                 ...Array.from({ length: totalChapters - 1 }, (_, i) => ({
                     id: crypto.randomUUID(), title: `Глава ${i + 2}`, script: [], status: 'pending' as const, imagePrompts: [], selectedBgIndex: 0
                 }))
             ];
-    
+
             let tempPodcast: Podcast = {
                 id: crypto.randomUUID(), ...blueprint, topic, selectedTitle: blueprint.youtubeTitleOptions[0] || topic, language,
                 chapters, knowledgeBaseText, creativeFreedom, totalDurationMinutes, narrationMode,
                 characterVoices: finalCharacterVoices, monologueVoice, initialImageCount, backgroundMusicVolume: 0.02, videoPacingMode: 'auto',
             };
-            setPodcast(tempPodcast);
+            setPodcast({ ...tempPodcast });
     
-            // --- PHASE 1: Sequential Script Generation ---
-            for (let i = 1; i < totalChapters; i++) {
-                if (isGenerationPaused) { await new Promise(resolve => { const interval = setInterval(() => { if (!isGenerationPaused) { clearInterval(interval); resolve(null); }}, 500); });}
-                updateStatus(`Генерация сценария главы ${i + 2}`, 'in_progress');
-                const chapterData = await generateNextChapterScript(topic, tempPodcast.selectedTitle, tempPodcast.characters, tempPodcast.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
-                tempPodcast.chapters[i] = { ...tempPodcast.chapters[i], ...chapterData, status: 'script_completed' };
-                setPodcast({ ...tempPodcast });
-                updateStatus(`Генерация сценария главы ${i + 2}`, 'completed');
-                setGenerationProgress(p => p + 100 / (totalChapters + 2));
-            }
-    
-            // --- PHASE 2: Parallel Asset Generation (Refactored to prevent race conditions) ---
-            updateStatus('Параллельная генерация аудио', 'in_progress');
-            updateStatus('Параллельная генерация изображений', 'in_progress');
+            const allAssetPromises: Promise<void>[] = [];
 
-            const assetPromises = tempPodcast.chapters.map(chapter => 
-                Promise.allSettled([
-                    generateChapterAudio(chapter.script, narrationMode, finalCharacterVoices, monologueVoice, log, apiKeys),
-                    generateStyleImages(chapter.imagePrompts, initialImageCount, log, apiKeys, imageMode, stockPhotoPreference),
-                    findMusicWithAi(chapter.script.map(l => l.text).join(' '), log, apiKeys)
-                ]).then(([audioResult, imageResult, musicResult]) => ({
-                    chapterId: chapter.id,
-                    audioBlob: audioResult.status === 'fulfilled' ? audioResult.value : null,
-                    generatedImages: imageResult.status === 'fulfilled' ? imageResult.value : [],
-                    backgroundMusic: musicResult.status === 'fulfilled' ? (musicResult.value[0] || undefined) : undefined,
-                    audioError: audioResult.status === 'rejected' ? audioResult.reason : null,
-                    imageError: imageResult.status === 'rejected' ? imageResult.reason : null,
-                    musicError: musicResult.status === 'rejected' ? musicResult.reason : null,
-                }))
-            );
-            
-            const assetResults = await Promise.all(assetPromises);
-
-            // Update the local tempPodcast object with all results before setting state
-            tempPodcast.chapters = tempPodcast.chapters.map(chapter => {
-                const result = assetResults.find(r => r.chapterId === chapter.id);
-                if (!result) return chapter;
-
-                if (result.audioError) {
-                    log({ type: 'error', message: `Ошибка аудио для главы "${chapter.title}"`, data: result.audioError });
-                    return { ...chapter, status: 'error' as const, error: 'Ошибка генерации аудио' };
-                }
-                if (result.imageError) {
-                    log({ type: 'warning', message: `Ошибка изображений для главы "${chapter.title}"`, data: result.imageError });
-                }
-                if (result.musicError) {
-                    log({ type: 'warning', message: `Ошибка музыки для главы "${chapter.title}"`, data: result.musicError });
+            for (let i = 0; i < totalChapters; i++) {
+                if (isGenerationPaused) {
+                    await new Promise(resolve => {
+                        const interval = setInterval(() => {
+                            if (!isGenerationPaused) {
+                                clearInterval(interval);
+                                resolve(null);
+                            }
+                        }, 500);
+                    });
                 }
                 
-                return {
-                    ...chapter,
-                    audioBlob: result.audioBlob || undefined,
-                    generatedImages: result.generatedImages,
-                    backgroundMusic: result.backgroundMusic,
-                };
-            });
+                let currentChapter: Chapter;
+                if (i > 0) {
+                    updateStatus(`Генерация сценария главы ${i + 1}`, 'in_progress');
+                    const chapterData = await generateNextChapterScript(topic, tempPodcast.selectedTitle, tempPodcast.characters, tempPodcast.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
+                    tempPodcast.chapters[i] = { ...tempPodcast.chapters[i], ...chapterData, status: 'script_completed' };
+                    currentChapter = tempPodcast.chapters[i];
+                    setPodcast({ ...tempPodcast });
+                    updateStatus(`Генерация сценария главы ${i + 1}`, 'completed');
+                    setGenerationProgress(p => p + progressPerScript);
+                } else {
+                    currentChapter = tempPodcast.chapters[0];
+                }
 
-            // Set state once with the updated local object
-            setPodcast({ ...tempPodcast });
-            
-            updateStatus('Параллельная генерация аудио', 'completed');
-            updateStatus('Параллельная генерация изображений', 'completed');
-            setGenerationProgress(p => p + 100 / (totalChapters + 2));
+                // Fire-and-forget asset generation for the current chapter
+                const assetPromise = (async () => {
+                    const chapterId = currentChapter.id;
+                    updateStatus(`Генерация ассетов для главы ${i + 1}`, 'in_progress');
 
-            // --- FINALIZATION ---
+                    try {
+                        const [audioResult, imageResult, musicResult] = await Promise.allSettled([
+                            generateChapterAudio(currentChapter.script, narrationMode, finalCharacterVoices, monologueVoice, log, apiKeys),
+                            generateStyleImages(currentChapter.imagePrompts, initialImageCount, log, apiKeys, imageMode, stockPhotoPreference),
+                            findMusicWithAi(currentChapter.script.map(l => l.text).join(' '), log, apiKeys)
+                        ]);
+
+                        const audioBlob = audioResult.status === 'fulfilled' ? audioResult.value : null;
+                        if (audioResult.status === 'rejected') {
+                            throw new Error(`Audio generation failed: ${audioResult.reason?.message || audioResult.reason}`);
+                        }
+
+                        const generatedImages = imageResult.status === 'fulfilled' ? imageResult.value : [];
+                        const backgroundMusic = musicResult.status === 'fulfilled' ? (musicResult.value[0] || undefined) : undefined;
+                        
+                        updateChapterState(chapterId, 'completed', { audioBlob, generatedImages, backgroundMusic });
+                        updateStatus(`Генерация ассетов для главы ${i + 1}`, 'completed');
+                    } catch(err: any) {
+                        const friendlyError = parseErrorMessage(err);
+                        log({type: 'error', message: `Ошибка при генерации ассетов для главы ${i + 1}`, data: { friendlyMessage: friendlyError, originalError: err }});
+                        updateChapterState(chapterId, 'error', { error: friendlyError });
+                        updateStatus(`Генерация ассетов для главы ${i + 1}`, 'error');
+                    } finally {
+                        setGenerationProgress(p => p + progressPerAssetBundle);
+                    }
+                })();
+                allAssetPromises.push(assetPromise);
+            }
+
+            await Promise.all(allAssetPromises);
+
             updateStatus('Создание обложек', 'in_progress');
-            // Use the up-to-date local variable, NOT a stale ref, to prevent race conditions
-            const finalPodcastState = tempPodcast;
-            
+            const finalPodcastState = podcast || tempPodcast;
             const thumbnailBaseImage = finalPodcastState.chapters.flatMap(c => c.generatedImages || [])[0];
             const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys);
             const youtubeThumbnails = thumbnailBaseImage?.url ? await generateYoutubeThumbnails(thumbnailBaseImage.url, finalPodcastState.selectedTitle, designConcepts, log, defaultFont) : [];
             updateStatus('Создание обложек', 'completed');
             setGenerationProgress(100);
 
-            // Final state update with all generated assets
-            setPodcast({
-                ...finalPodcastState,
-                chapters: finalPodcastState.chapters.map(c => c.status !== 'error' ? { ...c, status: 'completed' as const } : c),
-                thumbnailBaseImage,
-                designConcepts,
-                youtubeThumbnails,
-            });
-    
+            setPodcast(p => p ? { ...p, thumbnailBaseImage, designConcepts, youtubeThumbnails } : null);
+
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
             setLoadingStatus(prev => prev.map(s => s.status === 'in_progress' ? { ...s, status: 'error' as const } : s));
