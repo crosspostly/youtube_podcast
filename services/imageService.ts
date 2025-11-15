@@ -18,7 +18,7 @@ let imageQueue: ApiRequestQueue | null = null;
 const getImageQueue = (log: LogFunction): ApiRequestQueue => {
     if (!imageQueue) {
         imageQueue = new ApiRequestQueue(log, 65000);
-        log({ type: 'info', message: 'Image generation API request queue initialized (65s delay)' });
+        log({ type: 'info', message: 'Очередь генерации изображений инициализирована (65с задержка)' });
     }
     return imageQueue;
 };
@@ -96,7 +96,7 @@ export const regenerateSingleImage = async (
         const ai = getAiClient(apiKeys.gemini, log);
         
         const generateCall = () => ai.models.generateContent({
-            model: 'imagen-4.0-fast-generate-001',
+            model: 'imagen-3.0-generate-001',
             contents: { parts: [{ text: fullPrompt }] },
             config: { responseModalities: [Modality.IMAGE] },
         });
@@ -115,7 +115,18 @@ export const regenerateSingleImage = async (
         throw new Error("No image data in Gemini response");
 
     } catch (geminiError: any) {
-        log({ type: 'warning', message: `Gemini failed, trying stock photos...`, data: geminiError });
+        const status = geminiError?.status || geminiError?.originalError?.status;
+        
+        // Специальная обработка 404 — модель не найдена
+        if (status === 404) {
+            log({ 
+                type: 'error', 
+                message: '❌ Модель Gemini недоступна (404). Проверьте название модели в imageService.ts. Переключаемся на стоковые фото...', 
+                showToUser: true 
+            });
+        } else {
+            log({ type: 'warning', message: `Gemini failed, trying stock photos...`, data: geminiError });
+        }
         
         // FALLBACK: Стоковые фото (финальный fallback)
         try {

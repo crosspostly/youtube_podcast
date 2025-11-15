@@ -145,6 +145,8 @@ export interface Podcast {
   thumbnailBaseImage?: GeneratedImage;
   // New field for video pacing control
   videoPacingMode?: 'auto' | 'manual';
+  // New field for selected thumbnail style
+  selectedThumbnailStyle?: string;
 }
 
 // Configuration interface for API retry behavior

@@ -130,21 +130,36 @@ export const usePodcast = (
             const scriptText = chapterData.script.map(line => line.text).join(' ');
             const musicTracks = await findMusicWithAi(scriptText, log, apiKeys);
             const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
-            
-            updateChapterState(chapterId, 'images_generating', { 
+
+            updateChapterState(chapterId, 'audio_generating', { 
                 script: chapterData.script, 
                 title: chapterData.title, 
                 imagePrompts: chapterData.imagePrompts,
                 backgroundMusic
             });
 
-            // Step 3: Generate Images (using prompts from Step 1)
-            const newImages = await generateImagesForChapter(chapterId, chapterData.imagePrompts);
-            updateChapterState(chapterId, 'audio_generating', { generatedImages: newImages });
+            // Step 3 & 4: ПАРАЛЛЕЛЬНО генерируем изображения И аудио
+            const [newImages, audioBlob] = await Promise.allSettled([
+                generateImagesForChapter(chapterId, chapterData.imagePrompts),
+                generateChapterAudio(chapterData.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys)
+            ]);
 
-            // Step 4: Generate Audio (using the script from Step 1)
-            const audioBlob = await generateChapterAudio(chapterData.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys);
-            updateChapterState(chapterId, 'completed', { audioBlob });
+            // Обработка результатов
+            const images = newImages.status === 'fulfilled' ? newImages.value : [];
+            const audio = audioBlob.status === 'fulfilled' ? audioBlob.value : null;
+
+            if (images.length === 0) {
+                log({ type: 'warning', message: 'Изображения не сгенерированы, но аудио готово' });
+            }
+
+            if (!audio) {
+                throw new Error('Не удалось сгенерировать аудио для главы');
+            }
+
+            updateChapterState(chapterId, 'completed', { 
+                generatedImages: images, 
+                audioBlob: audio 
+            });
 
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
