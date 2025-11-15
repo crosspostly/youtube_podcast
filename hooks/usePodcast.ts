@@ -60,6 +60,12 @@ export const usePodcast = (
                         source: 'generated'
                     };
                 }
+                
+                // Migration: Set selectedThumbnail to first thumbnail if not set
+                if (newState.youtubeThumbnails && newState.youtubeThumbnails.length > 0 && !newState.selectedThumbnail) {
+                    newState.selectedThumbnail = newState.youtubeThumbnails[0];
+                }
+                
                 updateHistory(newState);
             }
             return newState;

@@ -40,8 +40,14 @@ const LoadingScreen: React.FC<LoadingScreenProps> = ({ loadingStatus, generation
             ))}
         </div>
         <div className="w-full bg-slate-700 rounded-full h-2.5">
-            <div className="bg-gradient-to-r from-teal-400 to-cyan-500 h-2.5 rounded-full" style={{ width: `${generationProgress}%`, transition: 'width 0.5s ease-in-out' }}></div>
+            <div 
+                className="bg-gradient-to-r from-teal-400 to-cyan-500 h-2.5 rounded-full transition-all duration-500 ease-in-out" 
+                style={{ width: `${Math.min(100, Math.max(0, generationProgress))}%` }}
+            ></div>
         </div>
+        <p className="text-slate-300 text-sm mt-2 font-medium">
+            {Math.min(100, Math.max(0, Math.round(generationProgress)))}% завершено
+        </p>
     </div>
 );
 
