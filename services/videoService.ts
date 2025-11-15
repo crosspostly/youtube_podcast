@@ -8,9 +8,9 @@ import { generateSrtFile } from './srtService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
-const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
-const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
+const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.15/dist/esm/ffmpeg-core.js';
+const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.15/dist/esm/ffmpeg-core.wasm';
+const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.15/dist/esm/ffmpeg-core.worker.js';
 
 let ffmpeg: FFmpeg | null = null;
 let isCancellationRequested = false;

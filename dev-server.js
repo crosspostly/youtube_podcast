@@ -8,6 +8,9 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json());
 
+// Default developer key for Freesound, mirroring appConfig.ts
+const DEFAULT_FREESOUND_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+
 // API Routes
 app.get('/api/audio-proxy', async (req, res) => {
   try {
@@ -82,16 +85,16 @@ app.get('/api/audio-proxy', async (req, res) => {
 
 app.post('/api/freesound', async (req, res) => {
   try {
-    const { query, customApiKey } = req.method === 'GET' ? req.query : req.body;
+    const { query, customApiKey } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = customApiKey || 'YOUR_FREESOUND_API_KEY_HERE';
+    const apiKey = customApiKey || DEFAULT_FREESOUND_KEY;
 
-    if (!apiKey || apiKey === 'YOUR_FREESOUND_API_KEY_HERE') {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings.";
+    if (!apiKey) {
+      const errorMessage = "Freesound API key is not configured. Please add it in the settings or ensure a default key is available.";
       console.error(errorMessage);
       return res.status(401).json({
         error: "Unauthorized",

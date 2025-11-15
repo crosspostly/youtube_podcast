@@ -33,8 +33,10 @@ export const updateApiRetryConfig = (updates: Partial<ApiRetryConfig>) => {
 };
 
 // ============================================================================
-// ДЕФОЛТНЫЕ API КЛЮЧИ ДЛЯ СТОКОВЫХ ФОТО (разработчика)
+// ДЕФОЛТНЫЕ API КЛЮЧИ (разработчика)
 // ============================================================================
+
+export const DEFAULT_FREESOUND_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
 
 export const DEFAULT_STOCK_PHOTO_KEYS = {
   unsplash: 'C04GfIdNUSfivrygInhzaCQ6233tvsT5QhJ76Th6RD4',  // ← ВСТАВИТЬ СЮДА ВАШ КЛЮЧ

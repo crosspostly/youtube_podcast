@@ -60,6 +60,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         setThumbnailBaseImage, setPodcast, setVideoPacingMode, setImageDuration,
         cancelVideoGeneration,
         regenerateChapterAudio,
+        regenerateThumbnails,
+        isRegeneratingThumbnails,
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -619,7 +621,19 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
                                 {(chapter.status === 'script_generating' || chapter.status === 'audio_generating' || chapter.status === 'images_generating') && <Spinner className="w-5 h-5"/>}
                                 {chapter.status === 'completed' && audioUrls[chapter.id] && <audio src={audioUrls[chapter.id]} controls className="h-8 w-60 sm:w-72"/>}
-                                {(chapter.status === 'completed' || chapter.status === 'error') && (
+                                {chapter.status === 'error' && (
+                                    <>
+                                        <button 
+                                            onClick={() => regenerateChapterAudio(chapter.id)} 
+                                            className="p-1.5 rounded-full text-purple-400 bg-purple-900/50 hover:bg-purple-800" 
+                                            title="Пересоздать только аудио"
+                                        >
+                                            <SpeakerWaveIcon className="w-4 h-4"/>
+                                        </button>
+                                        <button onClick={() => handleGenerateChapter(chapter.id)} className="p-1.5 rounded-full text-red-400 bg-red-900/50 hover:bg-red-800" title="Пересоздать главу (сценарий, аудио, изображения)"><RedoIcon className="w-4 h-4"/></button>
+                                    </>
+                                )}
+                                {chapter.status === 'completed' && (
                                     <button 
                                         onClick={() => regenerateChapterAudio(chapter.id)} 
                                         className="p-1.5 rounded-full text-purple-400 bg-purple-900/50 hover:bg-purple-800" 
@@ -627,9 +641,6 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                     >
                                         <SpeakerWaveIcon className="w-4 h-4"/>
                                     </button>
-                                )}
-                                {(chapter.status === 'error' || chapter.status === 'completed') && (
-                                    <button onClick={() => handleGenerateChapter(chapter.id)} className={`p-1.5 rounded-full ${chapter.status === 'error' ? 'text-red-400 bg-red-900/50 hover:bg-red-800' : 'text-blue-400 bg-blue-900/50 hover:bg-blue-800'}`} title="Пересоздать главу (сценарий, аудио, изображения)"><RedoIcon className="w-4 h-4"/></button>
                                 )}
                             </div>
                         </div>
@@ -752,10 +763,14 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </div>
             </div>
             
-            {podcast.thumbnailBaseImage && (
-                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                    {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 && (
+            {/* Thumbnail and Title Section - Always visible after initial generation */}
+            {!isQueueActive && (
+                <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Обложки и Заголовки</h3>
+                    
+                    {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 ? (
                         <div>
+                            {/* Title Selection */}
                             <div className="mb-8">
                                 <h4 className="text-lg font-semibold text-slate-200 flex items-center gap-3 mb-4"><SubtitleIcon /> Выбор заголовка для обложки</h4>
                                 <div className="space-y-3">
@@ -774,6 +789,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                     ))}
                                 </div>
                             </div>
+                            
+                            {/* Thumbnail Grid */}
                             <div>
                                 <h4 className="font-semibold text-lg text-slate-200 mb-4">Варианты обложек от AI-дизайнера</h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -789,6 +806,21 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    ) : (
+                        <div className="text-center p-4 bg-slate-800/50 rounded-lg">
+                            <h4 className="font-semibold text-lg text-yellow-300">Не удалось создать обложки</h4>
+                            <p className="text-slate-400 mt-2 text-sm max-w-md mx-auto">
+                                Возможно, не были сгенерированы фоновые изображения или произошла ошибка API. Проверьте журнал для подробностей.
+                            </p>
+                            <button
+                                onClick={regenerateThumbnails}
+                                disabled={isRegeneratingThumbnails}
+                                className="mt-4 flex items-center justify-center gap-2 mx-auto px-6 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white font-bold rounded-lg hover:from-purple-400 hover:to-indigo-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-wait"
+                            >
+                                {isRegeneratingThumbnails ? <Spinner className="w-5 h-5" /> : <RedoIcon className="w-5 h-5" />}
+                                <span>Пересоздать обложки</span>
+                            </button>
                         </div>
                     )}
                 </div>

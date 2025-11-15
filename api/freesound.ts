@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-const FREESOUND_API_KEY_PLACEHOLDER = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+import { DEFAULT_FREESOUND_KEY } from '../config/appConfig';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -27,10 +26,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const apiKey = (customApiKey as string) || process.env.FREESOUND_API_KEY;
+    const apiKey = (customApiKey as string) || process.env.FREESOUND_API_KEY || DEFAULT_FREESOUND_KEY;
 
-    if (!apiKey || apiKey === FREESOUND_API_KEY_PLACEHOLDER) {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings.";
+    if (!apiKey) {
+      const errorMessage = "Freesound API key is not configured. Please add it in the settings or configure a default key.";
       console.error(errorMessage);
       return res.status(401).json({
         error: "Unauthorized",

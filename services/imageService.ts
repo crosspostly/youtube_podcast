@@ -103,9 +103,9 @@ export const regenerateSingleImage = async (
             const response: GenerateContentResponse = await withQueueAndRetries(
                 generateCall, 
                 log, 
-                { retries: 2, initialDelay: 30000 }, // Retry after 30s for 429 errors
+                { retries: 3, initialDelay: 10000 }, // Retry after 10s for 429 errors
                 'image', 
-                90000, // Wait 90s between image requests
+                5000, // Wait 5s between image requests
                 requestKey
             );
             

@@ -48,6 +48,7 @@ export const usePodcast = (
     const [isGeneratingSrt, setIsGeneratingSrt] = useState(false);
     const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
     const [videoGenerationProgress, setVideoGenerationProgress] = useState<{ progress: number, message: string }>({ progress: 0, message: '' });
+    const [isRegeneratingThumbnails, setIsRegeneratingThumbnails] = useState(false);
 
 
     const setPodcast = useCallback((updater: React.SetStateAction<Podcast | null>) => {
@@ -850,6 +851,46 @@ export const usePodcast = (
         }
     };
 
+    const regenerateThumbnails = async () => {
+        if (!podcast) return;
+    
+        setIsRegeneratingThumbnails(true);
+        log({ type: 'info', message: 'Принудительная регенерация обложек...' });
+    
+        try {
+            // 1. Find a base image
+            let baseImage = podcast.thumbnailBaseImage;
+            if (!baseImage || !baseImage.url) {
+                log({ type: 'info', message: 'Фоновое изображение для обложки не найдено, поиск по главам...' });
+                baseImage = podcast.chapters.flatMap(c => c.generatedImages || [])[0];
+            }
+    
+            if (!baseImage || !baseImage.url) {
+                throw new Error('Не найдены фоновые изображения для создания обложек. Сначала сгенерируйте изображения для глав.');
+            }
+    
+            // 2. Ensure design concepts exist
+            let concepts = podcast.designConcepts;
+            if (!concepts || concepts.length === 0) {
+                log({ type: 'info', message: 'Дизайн-концепции не найдены, генерируем заново...' });
+                concepts = await generateThumbnailDesignConcepts(podcast.topic, podcast.language, log, apiKeys);
+            }
+    
+            // 3. Generate thumbnails
+            const newThumbnails = await generateYoutubeThumbnails(baseImage.url, podcast.selectedTitle, concepts, log, defaultFont);
+            
+            setPodcast(p => p ? { ...p, thumbnailBaseImage: baseImage, designConcepts: concepts, youtubeThumbnails: newThumbnails } : null);
+            log({ type: 'response', message: 'Обложки успешно пересозданы.' });
+    
+        } catch (err: any) {
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Ошибка при регенерации обложек', data: { friendlyMessage: friendlyError, originalError: err } });
+        } finally {
+            setIsRegeneratingThumbnails(false);
+        }
+    };
+
     const manualTtsScript = useMemo(() => {
         if (!podcast) return 'Генерация сценария...';
         const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.script?.length > 0);
@@ -997,5 +1038,7 @@ export const usePodcast = (
         startVideoTest,
         setVideoPacingMode, setImageDuration,
         regenerateChapterAudio,
+        regenerateThumbnails,
+        isRegeneratingThumbnails,
     };
 };
