@@ -1,26 +1,68 @@
 import React, { useState } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
+import type { ImageMode, StockPhotoPreference, ApiRetryConfig } from '../types';
+import { getKeyStatus, unblockKey } from '../utils/stockPhotoKeyManager';
 
 interface ApiKeyModalProps {
     onClose: () => void;
-    onSave: (data: { keys: { gemini: string; freesound: string }, defaultFont: string }) => void;
-    currentKeys: { gemini: string; freesound: string };
+    onSave: (data: { 
+        keys: { 
+            gemini: string; 
+            freesound: string;
+            unsplash: string;
+            pexels: string;
+        };
+        defaultFont: string;
+        imageMode: ImageMode;
+        retryConfig: ApiRetryConfig;
+        stockPhotoPreference: StockPhotoPreference;
+    }) => void;
+    currentKeys: { 
+        gemini: string; 
+        freesound: string;
+        unsplash: string;
+        pexels: string;
+    };
     currentFont: string;
+    currentImageMode: ImageMode;
+    currentRetryConfig: ApiRetryConfig;
+    currentStockPhotoPreference: StockPhotoPreference;
 }
 
-type Tab = 'gemini' | 'sfx' | 'style' | 'retry';
+type Tab = 'gemini' | 'sfx' | 'stocks' | 'style' | 'retry';
 
-const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
+const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ 
+    onClose, 
+    onSave, 
+    currentKeys, 
+    currentFont, 
+    currentImageMode, 
+    currentRetryConfig, 
+    currentStockPhotoPreference 
+}) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
     const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound);
+    const [unsplashApiKey, setUnsplashApiKey] = useState(currentKeys.unsplash || '');
+    const [pexelsApiKey, setPexelsApiKey] = useState(currentKeys.pexels || '');
     const [defaultFont, setDefaultFont] = useState(currentFont);
+    const [imageMode, setImageMode] = useState<ImageMode>(currentImageMode);
+    const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(currentRetryConfig);
+    const [stockPhotoPreference, setStockPhotoPreference] = useState<StockPhotoPreference>(currentStockPhotoPreference);
     const [activeTab, setActiveTab] = useState<Tab>('gemini');
 
     const handleSave = () => {
         onSave({ 
-            keys: { gemini: geminiApiKey, freesound: freesoundApiKey },
-            defaultFont
+            keys: { 
+                gemini: geminiApiKey, 
+                freesound: freesoundApiKey,
+                unsplash: unsplashApiKey,
+                pexels: pexelsApiKey
+            },
+            defaultFont,
+            imageMode,
+            retryConfig,
+            stockPhotoPreference
         });
         onClose();
     };
@@ -38,6 +80,36 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
         </button>
     );
 
+    const KeyStatusIndicator: React.FC<{ service: 'unsplash' | 'pexels' }> = ({ service }) => {
+        const status = getKeyStatus(service);
+        
+        if (!status.isBlocked) {
+            return (
+                <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <span>✅</span>
+                    <span className="capitalize">{service}: Активен</span>
+                </div>
+            );
+        }
+        
+        const remainingMinutes = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
+        
+        return (
+            <div className="flex items-center justify-between gap-2 text-orange-400 text-sm">
+                <div className="flex items-center gap-2">
+                    <span>⏸️</span>
+                    <span className="capitalize">{service}: Заблокирован ({remainingMinutes} мин)</span>
+                </div>
+                <button 
+                    onClick={() => unblockKey(service)}
+                    className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded"
+                >
+                    Разблокировать
+                </button>
+            </div>
+        );
+    };
+
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
             <div className="bg-slate-800/80 backdrop-blur-lg rounded-lg shadow-2xl w-full max-w-md border border-slate-700">
@@ -49,6 +121,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                     <div className="flex items-center border-b border-slate-700">
                         <TabButton tabId="gemini" label="Google Gemini" />
                         <TabButton tabId="sfx" label="SFX" />
+                        <TabButton tabId="stocks" label="Стоковые фото" />
                         <TabButton tabId="style" label="Стиль канала" />
                     </div>
                 </div>
@@ -92,6 +165,88 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
+                            </div>
+                        </div>
+                    )}
+                    {activeTab === 'stocks' && (
+                        <div className="space-y-4">
+                            <h4 className="text-lg font-semibold text-white mb-2">API ключи для стоковых фото</h4>
+                            <p className="text-slate-300 text-sm mb-4">
+                                Используются для поиска обложек и фоновых изображений. 
+                                Если поля пустые — используются дефолтные ключи разработчика с общими лимитами.
+                            </p>
+                            
+                            {/* Unsplash API Key */}
+                            <div>
+                                <label htmlFor="unsplashApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
+                                    Unsplash API Key
+                                </label>
+                                <input
+                                    id="unsplashApiKeyInput"
+                                    type="password"
+                                    value={unsplashApiKey}
+                                    onChange={(e) => setUnsplashApiKey((e.currentTarget as any).value)}
+                                    placeholder="Введите ваш Access Key..."
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                />
+                                <a 
+                                    href="https://unsplash.com/oauth/applications" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-cyan-400 hover:underline text-xs mt-1 inline-block"
+                                >
+                                    Получить ключ →
+                                </a>
+                            </div>
+                            
+                            {/* Pexels API Key */}
+                            <div>
+                                <label htmlFor="pexelsApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
+                                    Pexels API Key
+                                </label>
+                                <input
+                                    id="pexelsApiKeyInput"
+                                    type="password"
+                                    value={pexelsApiKey}
+                                    onChange={(e) => setPexelsApiKey((e.currentTarget as any).value)}
+                                    placeholder="Введите ваш API Key..."
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                />
+                                <a 
+                                    href="https://www.pexels.com/api/" 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-cyan-400 hover:underline text-xs mt-1 inline-block"
+                                >
+                                    Получить ключ →
+                                </a>
+                            </div>
+                            
+                            {/* Приоритетный источник */}
+                            <div>
+                                <label htmlFor="stockPhotoPreferenceSelect" className="block text-sm font-medium text-slate-300 mb-1">
+                                    Приоритетный источник фото
+                                </label>
+                                <select
+                                    id="stockPhotoPreferenceSelect"
+                                    value={stockPhotoPreference}
+                                    onChange={(e) => setStockPhotoPreference((e.currentTarget as any).value as StockPhotoPreference)}
+                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                >
+                                    <option value="auto">Авто (пробовать оба)</option>
+                                    <option value="unsplash">Unsplash (приоритет)</option>
+                                    <option value="pexels">Pexels (приоритет)</option>
+                                </select>
+                                <p className="text-slate-400 text-xs mt-1">
+                                    При выборе "Авто" система автоматически пробует оба сервиса с fallback.
+                                </p>
+                            </div>
+                            
+                            {/* Статус ключей */}
+                            <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
+                                <h5 className="text-sm font-semibold text-slate-300 mb-2">Статус ключей:</h5>
+                                <KeyStatusIndicator service="unsplash" />
+                                <KeyStatusIndicator service="pexels" />
                             </div>
                         </div>
                     )}
