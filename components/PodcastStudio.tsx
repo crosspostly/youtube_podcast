@@ -457,6 +457,13 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const someChaptersDone = podcast.chapters.some(c => c.status === 'completed');
     const isQueueActive = !allChaptersDone && podcast.chapters.some(c => c.status !== 'error');
 
+    const handleThumbnailSelection = (thumbnail: YoutubeThumbnail) => {
+        setPodcast({
+            ...podcast,
+            selectedThumbnail: thumbnail
+        });
+    };
+
     const handleSfxPreview = (url: string, volume: number) => {
         if (!audioPlayerRef.current) return;
         // FIX: Cast `audioPlayerRef.current` to `any` to access audio properties.
