@@ -131,7 +131,7 @@ export const usePodcast = (
             const musicTracks = await findMusicWithAi(scriptText, log, apiKeys);
             const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
 
-            updateChapterState(chapterId, 'audio_generating', { 
+            updateChapterState(chapterId, 'generating', { 
                 script: chapterData.script, 
                 title: chapterData.title, 
                 imagePrompts: chapterData.imagePrompts,
@@ -153,7 +153,9 @@ export const usePodcast = (
             }
 
             if (!audio) {
-                throw new Error('Не удалось сгенерировать аудио для главы');
+                const reason = audioBlob.status === 'rejected' ? audioBlob.reason?.message || audioBlob.reason : 'Unknown error';
+                log({ type: 'error', message: `Ошибка генерации аудио: ${reason}` });
+                throw new Error(`Не удалось сгенерировать аудио для главы: ${reason}`);
             }
 
             updateChapterState(chapterId, 'completed', { 

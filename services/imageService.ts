@@ -125,7 +125,7 @@ export const regenerateSingleImage = async (
                 showToUser: true 
             });
         } else {
-            log({ type: 'warning', message: `Gemini failed, trying stock photos...`, data: geminiError });
+            log({ type: 'warning', message: `Генерация изображения не удалась, переключаемся на стоковые фото...`, data: geminiError });
         }
         
         // FALLBACK: Стоковые фото (финальный fallback)

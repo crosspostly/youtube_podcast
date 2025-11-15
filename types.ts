@@ -29,7 +29,7 @@ export interface ScriptLine {
   searchTags?: string; // Embedded search tags for SFX (to avoid additional Gemini requests)
 }
 
-export type ChapterStatus = 'pending' | 'script_generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';
+export type ChapterStatus = 'pending' | 'script_generating' | 'generating' | 'images_generating' | 'audio_generating' | 'completed' | 'error';
 
 export interface MusicTrack {
   id: string;
