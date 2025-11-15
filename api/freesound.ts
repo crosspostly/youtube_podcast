@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const FREESOUND_API_KEY_PLACEHOLDER = 'YOUR_FREESOUND_API_KEY_HERE';
+const FREESOUND_API_KEY_PLACEHOLDER = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
