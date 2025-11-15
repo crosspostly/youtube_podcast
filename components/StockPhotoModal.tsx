@@ -89,8 +89,8 @@ const StockPhotoModal: React.FC<StockPhotoModalProps> = ({
                             <input
                                 type="text"
                                 value={searchQuery}
-                                // FIX: Cast e.target to any to access value property due to missing DOM types.
-                                onChange={(e) => setSearchQuery((e.target as any).value)}
+                                // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.currentTarget.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && searchPhotos()}
                                 placeholder="Поиск фотографий..."
                                 className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"

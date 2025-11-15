@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
-const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
+const FREESOUND_API_KEY_PLACEHOLDER = 'YOUR_FREESOUND_API_KEY_HERE';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -28,8 +27,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const apiKey = (customApiKey as string) || FREESOUND_API_KEY;
-    const searchUrl = `${FREESOUND_API_URL}?query=${encodeURIComponent(query as string)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
+    const apiKey = (customApiKey as string) || process.env.FREESOUND_API_KEY;
+
+    if (!apiKey || apiKey === FREESOUND_API_KEY_PLACEHOLDER) {
+      const errorMessage = "Freesound API key is not configured. Please add it in the settings.";
+      console.error(errorMessage);
+      return res.status(401).json({
+        error: "Unauthorized",
+        details: errorMessage,
+      });
+    }
+    
+    const searchUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query as string)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
 
     const response = await fetch(searchUrl, {
       method: 'GET',

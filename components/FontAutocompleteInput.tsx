@@ -22,21 +22,21 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            // FIX: Cast `wrapperRef.current` to `any` to use `contains` method and `event.target` to `any` due to missing DOM types.
+            // FIX: Property 'contains' does not exist on type 'HTMLDivElement'. Cannot find name 'Node'.
             if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target as any)) {
                 setIsOpen(false);
             }
         };
-        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+        // FIX: Cannot find name 'document'.
         (window as any).document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            // FIX: Cannot find name 'document'.
             (window as any).document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // FIX: Use `e.currentTarget.value` to access the input value correctly.
+        // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
         const newSearchTerm = e.currentTarget.value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {

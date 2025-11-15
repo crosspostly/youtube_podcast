@@ -69,9 +69,8 @@ export const cleanupPodcastImages = (podcast: Podcast): number => {
  * Принудительный вызов garbage collector (если доступен)
  * Работает только в некоторых окружениях с флагом --expose-gc
  */
-// FIX: Replaced non-standard `global` with `globalThis` for cross-environment compatibility.
 export const forceGarbageCollection = () => {
-    if (typeof (globalThis as any).gc === 'function') {
-        (globalThis as any).gc();
+    if (typeof globalThis.gc === 'function') {
+        globalThis.gc();
     }
 };

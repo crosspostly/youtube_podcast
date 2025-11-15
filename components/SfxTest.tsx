@@ -49,9 +49,9 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
-        // FIX: Cast audioRef.current to `any` to access audio properties.
+        // FIX: Cast audio ref to any to access properties in a missing DOM lib environment.
         const audio = audioRef.current as any;
-        const isCurrentlyPlaying = !audio.paused && audio.src === url;
+        const isCurrentlyPlaying = !audio.paused && audio.src.endsWith(encodeURIComponent(url));
 
         if (isCurrentlyPlaying) {
             audio.pause();
@@ -100,8 +100,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
-                    onChange={(e) => setDescription((e.currentTarget as any).value)}
+                    // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.currentTarget.value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

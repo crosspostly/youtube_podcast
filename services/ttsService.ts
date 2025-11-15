@@ -54,7 +54,7 @@ const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChanne
     return new Blob([view], { type: 'audio/wav' });
 };
 
-// FIX: Use `any` for AudioBuffer as the type is not available in the current context.
+// FIX: Cannot find name 'AudioBuffer'.
 const audioBufferToWavBlob = (buffer: any): Blob => {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
@@ -103,7 +103,7 @@ const audioBufferToWavBlob = (buffer: any): Blob => {
 };
 
 export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
-    // FIX: Use `(window as any)` to access AudioContext to resolve missing DOM type error.
+    // FIX: Property 'AudioContext' does not exist on type 'Window'.
     const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
 
     // Create a new array containing only chapters with audio blobs.
@@ -122,7 +122,7 @@ export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Pr
     const sampleRate = chapterAudioBuffers[0].sampleRate;
     const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
 
-    // FIX: Use `(window as any)` to access OfflineAudioContext to resolve missing DOM type error.
+    // FIX: Cannot find name 'OfflineAudioContext'.
     const offlineContext = new (window as any).OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
     let speechTimeCursor = 0;
@@ -590,7 +590,7 @@ export const previewVoice = async (voiceName: string, languageCode: string, log:
     const params = {
         contents: [{ parts: [{ text: textToSpeak }] }],
         config: {
-            responseModalities: [Modality.AUDIO],
+            responseModalities: [Modality.AUDIO] as Modality[],
             speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName } },
             },
@@ -631,7 +631,7 @@ export const generateChapterAudio = async (
     if (narrationMode === 'monologue') {
         ttsPrompt = dialogueScript.map(line => line.text).join(' \n');
         ttsConfig = {
-            responseModalities: [Modality.AUDIO],
+            responseModalities: [Modality.AUDIO] as Modality[],
             speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } },
             },
@@ -649,7 +649,7 @@ export const generateChapterAudio = async (
 
         ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
         ttsConfig = {
-            responseModalities: [Modality.AUDIO],
+            responseModalities: [Modality.AUDIO] as Modality[],
             speechConfig: { 
                 multiSpeakerVoiceConfig: { speakerVoiceConfigs }
             }

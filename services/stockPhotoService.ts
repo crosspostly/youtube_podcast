@@ -224,7 +224,7 @@ const searchPexels = async (
  */
 const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<string> => {
     return new Promise((resolve, reject) => {
-        // FIX: Use `window.Image` to resolve missing DOM type error.
+        // FIX: Cannot find name 'Image'.
         const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         
@@ -236,7 +236,7 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
         img.onload = () => {
             clearTimeout(timeout);
             
-            // FIX: Use `window.document` to resolve missing DOM type error.
+            // FIX: Cannot find name 'document'.
             const canvas = (window as any).document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             

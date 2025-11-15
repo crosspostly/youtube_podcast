@@ -138,16 +138,20 @@ User Topic
 
 ## Configuration
 
-API keys are required for the application to function correctly. While default, rate-limited keys are provided for some services, using your own is highly recommended for stability.
+API keys are required for the application to function correctly. Using your own is highly recommended for stability and to avoid rate limits.
 
 1.  **Obtain Your API Keys:**
     - **Google Gemini:** Essential for all AI features. Get a key from [Google AI Studio](https://aistudio.google.com/app/apikey).
-    - **Freesound:** For sound effects. Create an app on the [Freesound Developers](https://freesound.org/docs/api/) page.
+    - **Freesound:** **Required** for sound effects.
+        1. Go to the [Freesound API Documentation](https://freesound.org/docs/api/) page and log in or create an account.
+        2. Click on **"Create OAuth2 credentials"** or go to your [API credentials page](https://freesound.org/home/app_new/).
+        3. Fill out the form (app name, description, etc.). The "OAuth2 redirect URI" is not needed for this app.
+        4. After creating the app, you will see your **Client ID** and **Client Secret**. For this application, you need the **Client Secret**. This is your API Key.
     - **Unsplash & Pexels:** For stock photo fallbacks. Get keys from their respective developer portals.
 
 2.  **Enter Keys in the UI:**
     - Click the **Settings (key) icon** in the top-right corner of the application.
-    - Enter your keys in the respective tabs.
+    - Go to the respective tabs (`Google Gemini`, `Freesound`, `Стоковые фото`) and enter your keys.
     - All settings are saved securely in your browser's `localStorage`.
 
 ---
@@ -189,7 +193,7 @@ For more details, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 ## Troubleshooting & FAQ
 
 - **I'm getting `429 Too Many Requests` errors.**
-  This is expected when using the shared default API keys. The app's built-in retry logic will handle it, but for a better experience, please use your own API keys.
+  This can happen if you are using shared default API keys. The app's built-in retry logic will handle it, but for a better experience, please use your own API keys.
 
 - **Video generation is slow or freezes.**
   Video rendering is computationally intensive and happens entirely in your browser. Ensure you have sufficient RAM (8GB+ recommended) and are using a modern browser like Chrome or Firefox. Close other heavy tabs for best performance. The planned move to a Web Worker (see Roadmap) will solve UI freezing.

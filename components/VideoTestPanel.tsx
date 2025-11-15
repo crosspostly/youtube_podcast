@@ -163,7 +163,6 @@ const VideoTestPanel: React.FC<{ onClose: () => void }> = ({ onClose }) => {
         }
     };
     
-    // FIX: Correctly type LogLine as a React functional component to handle the `key` prop.
     const LogLine: React.FC<{ entry: LogEntry }> = ({ entry }) => {
         let colorClass = 'text-slate-400';
         switch (entry.type) {

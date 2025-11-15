@@ -3,7 +3,7 @@ import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
 import type { ImageMode, StockPhotoPreference, ApiRetryConfig } from '../types';
 import { getKeyStatus, unblockKey } from '../utils/stockPhotoKeyManager';
-import { getGeminiImageStatus, resetGeminiCircuitBreaker } from '../services/imageService';
+import { getGeminiImageStatus, resetGeminiCircuitBreaker, COOL_DOWN_PERIOD_MS } from '../services/imageService';
 
 interface ApiKeyModalProps {
     onClose: () => void;
@@ -85,244 +85,135 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     const TabButton: React.FC<{ tabId: Tab; label: string }> = ({ tabId, label }) => (
         <button
             onClick={() => setActiveTab(tabId)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors border-b-2 ${
-                activeTab === tabId
-                    ? 'text-cyan-400 border-cyan-400'
-                    : 'text-slate-400 hover:text-white border-transparent'
-            }`}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${activeTab === tabId ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
         >
             {label}
         </button>
     );
 
-    const KeyStatusIndicator: React.FC<{ service: 'unsplash' | 'pexels' }> = ({ service }) => {
-        const status = getKeyStatus(service);
-        
-        if (!status.isBlocked) {
-            return (
-                <div className="flex items-center gap-2 text-green-400 text-sm">
-                    <span>✅</span>
-                    <span className="capitalize">{service}: Активен</span>
-                </div>
-            );
-        }
-        
-        const remainingMinutes = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
-        
-        return (
-            <div className="flex items-center justify-between gap-2 text-orange-400 text-sm">
-                <div className="flex items-center gap-2">
-                    <span>⏸️</span>
-                    <span className="capitalize">{service}: Заблокирован ({remainingMinutes} мин)</span>
-                </div>
-                <button 
-                    onClick={() => unblockKey(service)}
-                    className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded"
-                >
-                    Разблокировать
-                </button>
-            </div>
-        );
-    };
-
-    const GeminiStatusIndicator = () => {
-        const { isTripped, consecutiveFailures, lastFailureTimestamp } = geminiStatus;
-        const coolDownPeriod = 5 * 60 * 1000;
-        const remainingCooldown = Math.ceil((lastFailureTimestamp + coolDownPeriod - Date.now()) / 1000);
-
-        if (isTripped) {
-            return (
-                 <div className="flex items-center justify-between gap-2 text-red-400 text-sm">
-                    <div className="flex items-center gap-2">
-                        <span>🛑</span>
-                        <span>Gemini Image: Отключен (осталось {Math.floor(remainingCooldown / 60)} мин {remainingCooldown % 60} сек)</span>
-                    </div>
-                    <button 
-                        onClick={handleResetCircuitBreaker}
-                        className="text-xs px-2 py-1 bg-slate-700 hover:bg-slate-600 rounded"
-                    >
-                        Сбросить
-                    </button>
-                </div>
-            );
-        }
-        if (consecutiveFailures > 0) {
-             return (
-                <div className="flex items-center gap-2 text-yellow-400 text-sm">
-                    <span>⚠️</span>
-                    <span>Gemini Image: {consecutiveFailures} / 3 ошибок подряд</span>
-                </div>
-            );
-        }
-        return (
-            <div className="flex items-center gap-2 text-green-400 text-sm">
-                <span>✅</span>
-                <span>Gemini Image: Активен</span>
-            </div>
-        );
-    };
-
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-            <div className="bg-slate-800/80 backdrop-blur-lg rounded-lg shadow-2xl w-full max-w-md border border-slate-700">
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+            <div className="bg-slate-800/80 backdrop-blur-lg rounded-lg shadow-2xl w-full max-w-2xl flex flex-col border border-slate-700 max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 <div className="flex justify-between items-center p-4 border-b border-slate-700">
-                    <h3 className="text-xl font-bold text-white flex items-center gap-2"><KeyIcon/>Настройки</h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-white"><CloseIcon/></button>
+                    <h2 className="text-xl font-bold text-white flex items-center gap-2"><KeyIcon /> Настройки API и Стили</h2>
+                    <button onClick={onClose} className="text-slate-400 hover:text-white"><CloseIcon /></button>
                 </div>
-                <div className="px-6 pt-2">
-                    <div className="flex items-center border-b border-slate-700">
-                        <TabButton tabId="gemini" label="Google Gemini" />
-                        <TabButton tabId="sfx" label="SFX" />
-                        <TabButton tabId="stocks" label="Стоковые фото" />
-                        <TabButton tabId="style" label="Стиль канала" />
-                    </div>
+                
+                <div className="flex border-b border-slate-700 px-4">
+                    <TabButton tabId="gemini" label="Google Gemini" />
+                    <TabButton tabId="sfx" label="Freesound" />
+                    <TabButton tabId="stocks" label="Стоковые фото" />
+                    <TabButton tabId="style" label="Стиль" />
+                    <TabButton tabId="retry" label="API Retries" />
                 </div>
-                <div className="p-6 space-y-4">
+
+                <div className="p-6 space-y-4 overflow-y-auto flex-grow">
                     {activeTab === 'gemini' && (
                         <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">Google Gemini API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Основной сервис для генерации текста и изображений. Если поле пустое, будет использоваться ключ по умолчанию.
-                                Для изображений используется автоматический fallback на Unsplash & Pexels при исчерпании квоты.
-                            </p>
-                            <div>
-                                <label htmlFor="geminiApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Gemini API-ключ</label>
-                                <input
-                                    id="geminiApiKeyInput"
-                                    type="password"
-                                    value={geminiApiKey}
-                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
-                                    onChange={(e) => setGeminiApiKey(e.currentTarget.value)}
-                                    placeholder="Введите ваш ключ API..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
-                            </div>
-                            <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                                <h5 className="text-sm font-semibold text-slate-300 mb-2">Статус генерации изображений:</h5>
-                                <GeminiStatusIndicator />
+                            <h3 className="text-lg font-semibold text-white mb-2">Google Gemini API</h3>
+                            <p className="text-sm text-slate-400 mb-4">Ключ для генерации текста, аудио и изображений.</p>
+                            <label className="block text-sm font-medium text-slate-300 mb-1">Gemini API Key</label>
+                            {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                            <input type="password" value={geminiApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGeminiApiKey(e.currentTarget.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+
+                            <div className="mt-6 border-t border-slate-700 pt-4">
+                                <h4 className="text-md font-semibold text-white mb-2">Статус генерации изображений (Circuit Breaker)</h4>
+                                {geminiStatus.isTripped ? (
+                                    <div className="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300">
+                                        <p className="font-bold">Сервис отключен</p>
+                                        <p className="text-sm">Генерация изображений временно отключена из-за {geminiStatus.consecutiveFailures} последовательных ошибок. Будет автоматически включена через {Math.max(0, Math.ceil((geminiStatus.lastFailureTimestamp + COOL_DOWN_PERIOD_MS - Date.now()) / 60000))} мин.</p>
+                                        <button onClick={handleResetCircuitBreaker} className="mt-2 text-sm font-bold text-white bg-red-600 px-3 py-1 rounded hover:bg-red-700">Сбросить сейчас</button>
+                                    </div>
+                                ) : (
+                                    <div className="p-3 bg-green-900/50 border border-green-700 rounded-lg text-green-300">
+                                        <p className="font-bold">Сервис активен</p>
+                                        <p className="text-sm">Генерация изображений работает в штатном режиме. Последовательных ошибок: {geminiStatus.consecutiveFailures}.</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
-                     {activeTab === 'sfx' && (
+                    
+                    {activeTab === 'sfx' && (
                         <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">Freesound API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Ключ для доступа к библиотеке звуковых эффектов Freesound.org. Если поле пустое, будет использоваться ключ по умолчанию с общими лимитами.
-                                <a href="https://freesound.org/docs/api/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
-                            </p>
-                            <div>
-                                <label htmlFor="freesoundApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Freesound API-ключ</label>
-                                <input
-                                    id="freesoundApiKeyInput"
-                                    type="password"
-                                    value={freesoundApiKey}
-                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
-                                    onChange={(e) => setFreesoundApiKey(e.currentTarget.value)}
-                                    placeholder="Введите ваш ключ Freesound..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
-                            </div>
+                             <h3 className="text-lg font-semibold text-white mb-2">Freesound API</h3>
+                             <p className="text-sm text-slate-400 mb-4">Ключ для поиска звуковых эффектов (SFX).</p>
+                             <label className="block text-sm font-medium text-slate-300 mb-1">Freesound API Key</label>
+                             {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                             <input type="password" value={freesoundApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFreesoundApiKey(e.currentTarget.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                         </div>
                     )}
+
                     {activeTab === 'stocks' && (
                         <div className="space-y-4">
-                            <h4 className="text-lg font-semibold text-white mb-2">API ключи для стоковых фото</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Используются для поиска обложек и фоновых изображений. 
-                                Если поля пустые — используются дефолтные ключи разработчика с общими лимитами.
-                            </p>
-                            
                             <div>
-                                <label htmlFor="unsplashApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
-                                    Unsplash API Key
-                                </label>
-                                <input
-                                    id="unsplashApiKeyInput"
-                                    type="password"
-                                    value={unsplashApiKey}
-                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
-                                    onChange={(e) => setUnsplashApiKey(e.currentTarget.value)}
-                                    placeholder="Введите ваш Access Key..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
-                                <a 
-                                    href="https://unsplash.com/oauth/applications" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-cyan-400 hover:underline text-xs mt-1 inline-block"
-                                >
-                                    Получить ключ →
-                                </a>
+                                 <h3 className="text-lg font-semibold text-white mb-2">API ключи для стоковых фото</h3>
+                                 <p className="text-sm text-slate-400 mb-4">Используются как fallback, если генерация Gemini недоступна.</p>
+                                 <label className="block text-sm font-medium text-slate-300 mb-1">Unsplash Access Key</label>
+                                 {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                                 <input type="password" value={unsplashApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUnsplashApiKey(e.currentTarget.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
-                            
                             <div>
-                                <label htmlFor="pexelsApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">
-                                    Pexels API Key
-                                </label>
-                                <input
-                                    id="pexelsApiKeyInput"
-                                    type="password"
-                                    value={pexelsApiKey}
-                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
-                                    onChange={(e) => setPexelsApiKey(e.currentTarget.value)}
-                                    placeholder="Введите ваш API Key..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
-                                <a 
-                                    href="https://www.pexels.com/api/" 
-                                    target="_blank" 
-                                    rel="noopener noreferrer" 
-                                    className="text-cyan-400 hover:underline text-xs mt-1 inline-block"
-                                >
-                                    Получить ключ →
-                                </a>
+                                 <label className="block text-sm font-medium text-slate-300 mb-1">Pexels API Key</label>
+                                 {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                                 <input type="password" value={pexelsApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPexelsApiKey(e.currentTarget.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
-                            
-                            <div>
-                                <label htmlFor="stockPhotoPreferenceSelect" className="block text-sm font-medium text-slate-300 mb-1">
-                                    Приоритетный источник фото
-                                </label>
-                                <select
-                                    id="stockPhotoPreferenceSelect"
-                                    value={stockPhotoPreference}
-                                    // FIX: Use `e.currentTarget.value` to access the select value correctly.
-                                    onChange={(e) => setStockPhotoPreference(e.currentTarget.value as StockPhotoPreference)}
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                >
-                                    <option value="auto">Авто (пробовать оба)</option>
-                                    <option value="unsplash">Unsplash (приоритет)</option>
-                                    <option value="pexels">Pexels (приоритет)</option>
+                            <div className="border-t border-slate-700 pt-4">
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Предпочтительный сервис</label>
+                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the select value. */}
+                                <select value={stockPhotoPreference} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStockPhotoPreference(e.currentTarget.value as StockPhotoPreference)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
+                                    <option value="unsplash">Unsplash</option>
+                                    <option value="pexels">Pexels</option>
+                                    <option value="auto">Авто (сначала Unsplash)</option>
                                 </select>
-                                <p className="text-slate-400 text-xs mt-1">
-                                    При выборе "Авто" система автоматически пробует оба сервиса с fallback.
-                                </p>
-                            </div>
-                            
-                            <div className="mt-4 p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                                <h5 className="text-sm font-semibold text-slate-300 mb-2">Статус ключей:</h5>
-                                <KeyStatusIndicator service="unsplash" />
-                                <KeyStatusIndicator service="pexels" />
                             </div>
                         </div>
                     )}
-                     {activeTab === 'style' && (
-                        <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">Шрифт по умолчанию</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Укажите основной шрифт из Google Fonts для вашего канала. Он будет использоваться по умолчанию для всех новых проектов, обеспечивая единый стиль.
-                            </p>
+
+                    {activeTab === 'style' && (
+                        <div className="space-y-4">
                             <div>
-                                <label htmlFor="defaultFontInput" className="block text-sm font-medium text-slate-300 mb-1">Название шрифта</label>
-                                <FontAutocompleteInput 
-                                    id="defaultFontInput"
-                                    value={defaultFont} 
-                                    onChange={setDefaultFont} 
-                                />
+                                <h3 className="text-lg font-semibold text-white mb-2">Стиль и брендинг</h3>
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Шрифт по умолчанию для обложек</label>
+                                <FontAutocompleteInput value={defaultFont} onChange={setDefaultFont} />
+                            </div>
+                            <div className="border-t border-slate-700 pt-4">
+                                <label className="block text-sm font-medium text-slate-300 mb-1">Режим получения изображений</label>
+                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the select value. */}
+                                <select value={imageMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setImageMode(e.currentTarget.value as ImageMode)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
+                                    <option value="generate">Генерация (с fallback на стоки)</option>
+                                    <option value="unsplash">Только Unsplash</option>
+                                    <option value="pexels">Только Pexels</option>
+                                    <option value="auto">Авто-выбор стока</option>
+                                </select>
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'retry' && (
+                        <div className="space-y-4">
+                            <h3 className="text-lg font-semibold text-white mb-2">Настройки повторных запросов к API</h3>
+                            <p className="text-sm text-slate-400 mb-4">Настройте, как приложение будет повторять неудачные запросы (например, при превышении лимитов).</p>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300">Количество попыток</label>
+                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                                <input type="number" value={retryConfig.retries || 3} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, retries: parseInt(e.currentTarget.value, 10) || 3}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300">Начальная задержка (ms)</label>
+                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                                <input type="number" value={retryConfig.initialDelay || 5000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, initialDelay: parseInt(e.currentTarget.value, 10) || 5000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-300">Максимальная задержка (ms)</label>
+                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
+                                <input type="number" value={retryConfig.maxDelay || 60000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, maxDelay: parseInt(e.currentTarget.value, 10) || 60000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                         </div>
                     )}
                 </div>
-                <div className="flex justify-end gap-4 p-4 bg-slate-900/50 border-t border-slate-700 rounded-b-lg">
+
+                <div className="flex justify-end gap-4 p-4 border-t border-slate-700 bg-slate-800/50 rounded-b-lg">
                     <button onClick={onClose} className="px-6 py-2 bg-slate-600 text-white font-bold rounded-lg hover:bg-slate-700">Отмена</button>
                     <button onClick={handleSave} className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500">Сохранить</button>
                 </div>

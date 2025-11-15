@@ -4,7 +4,7 @@ import type { TextOptions } from '../types';
 const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
-    // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+    // FIX: Cannot find name 'document'.
     if (!fontFamily || (window as any).document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
@@ -14,17 +14,17 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
-        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+        // FIX: Cannot find name 'document'.
         if (!(window as any).document.querySelector(`link[href="${fontUrl}"]`)) {
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            // FIX: Cannot find name 'document'.
             const link = (window as any).document.createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            // FIX: Cannot find name 'document'.
             (window as any).document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
+            // FIX: Cannot find name 'document'.
             await (window as any).document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
@@ -35,7 +35,7 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 };
 
 
-// FIX: Use `any` for CanvasRenderingContext2D due to missing DOM types.
+// FIX: Cannot find name 'CanvasRenderingContext2D'.
 const wrapText = (context: any, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
     if (words.length === 0) return [];
@@ -58,9 +58,10 @@ const wrapText = (context: any, text: string, maxWidth: number): string[] => {
 };
 
 
-// FIX: Use `any` for CanvasRenderingContext2D and HTMLImageElement due to missing DOM types.
 export const drawCanvas = async (
+  // FIX: Cannot find name 'CanvasRenderingContext2D'.
   context: any,
+  // FIX: Cannot find name 'HTMLImageElement'.
   baseImage: any,
   options: TextOptions
 ): Promise<void> => {

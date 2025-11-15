@@ -130,14 +130,15 @@ const App: React.FC = () => {
 
     useEffect(() => {
         try {
-            const storedKeys = localStorage.getItem('apiKeys');
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            const storedKeys = (window as any).localStorage.getItem('apiKeys');
             if (storedKeys && storedKeys !== 'undefined') {
                 try {
                     const parsedKeys = JSON.parse(storedKeys);
                     // Migration: Remove openRouter key if it exists
                     if (parsedKeys.openRouter !== undefined) {
                         delete parsedKeys.openRouter;
-                        localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
+                        (window as any).localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
                     }
                     // Merge with default to ensure all keys exist
                     setApiKeys(prevKeys => ({
@@ -147,20 +148,23 @@ const App: React.FC = () => {
                 } catch (e) {
                     console.error('Failed to parse API keys:', e);
                     // Очистить некорректные данные
-                    localStorage.removeItem('apiKeys');
+                    (window as any).localStorage.removeItem('apiKeys');
                 }
             }
-            const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
             
             // Load image mode from localStorage
-            const storedImageMode = localStorage.getItem('imageMode');
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            const storedImageMode = (window as any).localStorage.getItem('imageMode');
             if (storedImageMode && storedImageMode !== 'undefined') {
                 setImageMode(storedImageMode as ImageMode);
             }
             
             // Load retry config from localStorage
-            const storedRetryConfig = localStorage.getItem('apiRetryConfig');
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            const storedRetryConfig = (window as any).localStorage.getItem('apiRetryConfig');
             if (storedRetryConfig && storedRetryConfig !== 'undefined') {
                 try {
                     const parsedRetryConfig = JSON.parse(storedRetryConfig);
@@ -168,12 +172,13 @@ const App: React.FC = () => {
                     updateApiRetryConfig(parsedRetryConfig);
                 } catch (e) {
                     console.error('Failed to parse retry config:', e);
-                    localStorage.removeItem('apiRetryConfig');
+                    (window as any).localStorage.removeItem('apiRetryConfig');
                 }
             }
             
             // Load stock photo preference from localStorage
-            const storedPreference = localStorage.getItem('stockPhotoPreference');
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            const storedPreference = (window as any).localStorage.getItem('stockPhotoPreference');
             if (storedPreference && storedPreference !== 'undefined') {
                 setStockPhotoPreference(storedPreference as StockPhotoPreference);
             }
@@ -200,11 +205,12 @@ const App: React.FC = () => {
         updateApiRetryConfig(data.retryConfig);
         
         try {
-            localStorage.setItem('apiKeys', JSON.stringify(data.keys));
-            localStorage.setItem('channelDefaultFont', data.defaultFont);
-            localStorage.setItem('imageMode', data.imageMode);
-            localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
-            localStorage.setItem('stockPhotoPreference', data.stockPhotoPreference);
+            // FIX: Access localStorage via window to avoid DOM type errors.
+            (window as any).localStorage.setItem('apiKeys', JSON.stringify(data.keys));
+            (window as any).localStorage.setItem('channelDefaultFont', data.defaultFont);
+            (window as any).localStorage.setItem('imageMode', data.imageMode);
+            (window as any).localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
+            (window as any).localStorage.setItem('stockPhotoPreference', data.stockPhotoPreference);
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
     };
     

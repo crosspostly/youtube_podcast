@@ -54,16 +54,14 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
+        // FIX: Cast audio ref to any to access properties in a missing DOM lib environment.
         const audio = audioRef.current as any;
-        // FIX: Cast audioRef.current to `any` to access audio properties.
         const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
         if (isCurrentlyPlaying) {
-            // FIX: Cast audioRef.current to `any` to access audio properties.
             audio.pause();
             setPreviewingUrl(null);
         } else {
-            // FIX: Cast audioRef.current to `any` to access audio properties.
             audio.pause();
             audio.src = url;
             audio.volume = 0.1;
@@ -91,8 +89,8 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
                 <input
                     type="text"
                     value={topic}
-                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
-                    onChange={(e) => setTopic((e.currentTarget as any).value)}
+                    // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopic(e.currentTarget.value)}
                     placeholder="Введите тему для подбора музыки..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

@@ -20,7 +20,7 @@ interface GeminiCircuitBreakerState {
 }
 
 const CONSECUTIVE_FAILURE_THRESHOLD = 3;
-const COOL_DOWN_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+export const COOL_DOWN_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
 
 let circuitBreakerState: GeminiCircuitBreakerState = {
     isTripped: false,
