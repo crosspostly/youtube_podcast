@@ -350,7 +350,7 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> & { chapters: Chapter[] }> => {
+export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number): Promise<Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume' | 'thumbnailBaseImage'> & { chapters: Chapter[] }> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
 
     const sourceInstruction = knowledgeBaseText
@@ -371,6 +371,23 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
 
     const scriptLengthInstruction = getScriptLengthInstruction(totalDurationMinutes);
 
+    let characterInstruction: string;
+    let dialogueRequirement: string;
+    let charactersJson: string;
+
+    if (narrationMode === 'dialogue') {
+        characterInstruction = `1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).`;
+        dialogueRequirement = `**CRITICAL DIALOGUE REQUIREMENT:** The script MUST be a dialogue between the two characters. Alternate speakers frequently. DO NOT write a long monologue for a single character.`;
+        charactersJson = `"characters": [
+        { "name": "Character Name 1", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." },
+        { "name": "Character Name 2", "description": "Brief description, gender, and voice character. E.g., Female, calm, intriguing voice." }
+      ],`;
+    } else { // Monologue
+        characterInstruction = `1.  **Character:** Create one character for this video (a "Narrator"). Give them a brief description (gender, voice character).`;
+        dialogueRequirement = `**CRITICAL MONOLOGUE REQUIREMENT:** The script MUST be a monologue from the single "Narrator" character.`;
+        charactersJson = `"characters": [{ "name": "Narrator", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." }],`;
+    }
+
     const prompt = `You are an AI screenwriter and YouTube producer. Your task is to create a complete package of materials for a compelling YouTube video on the topic: "${topic}".
     
     **CRITICAL INSTRUCTION: Generate all text content STRICTLY in the following language: ${language}.**
@@ -379,9 +396,9 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
     ${styleInstruction}
 
     **General Task Requirements:**
-    1.  **Characters:** Create two unique characters for this video (e.g., "Host", "Historian"). Give each a brief description (gender, voice character).
+    ${characterInstruction}
     2.  **YouTube Assets:** Create YouTube-optimized text assets (title options, description, tags).
-    3.  **Script:** Write the script for the FIRST CHAPTER. ${scriptLengthInstruction}
+    3.  **Script:** Write the script for the FIRST CHAPTER. ${scriptLengthInstruction} ${dialogueRequirement}
     4.  **Sound Design:** You MUST add 3-5 relevant sound effect cues throughout the script to create atmosphere. Format all sound effect cues as a separate element with the speaker "SFX". **IMPORTANT: For each SFX, include simple search keywords (2-3 English words) that would work well on Freesound.org.** Example: { "speaker": "SFX", "text": "Sound of a creaking door opening", "searchTags": "door creak wood" }
     5.  **Image Prompts:** Based on the script content, create ${initialImageCount} detailed, cinematic image prompts in English.
 
@@ -392,16 +409,12 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
       "youtubeTitleOptions": [ "An array of 3-5 clickable, intriguing, and SEO-optimized titles for the YouTube video" ],
       "description": "A detailed description for the YouTube video (2-3 paragraphs). It should engage the viewer, summarize the content, and include a call to action (subscribe, like).",
       "seoKeywords": ["list", "of", "10-15", "relevant", "tags", "for", "the YouTube video"],
-      "characters": [
-        { "name": "Character Name 1", "description": "Brief description, gender, and voice character. E.g., Male, deep, authoritative voice." },
-        { "name": "Character Name 2", "description": "Brief description, gender, and voice character. E.g., Female, calm, intriguing voice." }
-      ],
+      ${charactersJson}
       "chapter": {
         "title": "Title of the first chapter",
         "script": [
           { "speaker": "SFX", "text": "Sound of a creaking door opening", "searchTags": "door creak wood" },
-          { "speaker": "Character Name 1", "text": "Intriguing introduction text..." },
-          { "speaker": "Character Name 2", "text": "Mysterious response..." }
+          { "speaker": "Character Name 1", "text": "Intriguing introduction text..." }
         ],
         "imagePrompts": ["An array of ${initialImageCount} detailed, cinematic image prompts in English"]
       }
@@ -482,7 +495,7 @@ export const regenerateTextAssets = async (topic: string, knowledgeBaseText: str
     }
 };
 
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDurationMinutes: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<{title: string, script: ScriptLine[], imagePrompts: string[]}> => {
+export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDurationMinutes: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys): Promise<{title: string, script: ScriptLine[], imagePrompts: string[]}> => {
     log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
@@ -501,6 +514,10 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
 
     const scriptLengthInstruction = getScriptLengthInstruction(totalDurationMinutes);
 
+    const dialogueRequirement = narrationMode === 'dialogue'
+        ? `**CRITICAL DIALOGUE REQUIREMENT:** The script MUST be a dialogue between the characters. Alternate speakers frequently. DO NOT write a long monologue for a single character.`
+        : `**CRITICAL MONOLOGUE REQUIREMENT:** The script MUST be a monologue from the single "Narrator" character.`;
+
     const prompt = `You are a master of suspense, an AI screenwriter continuing a long-form podcast.
 
     Podcast Topic: "${topic}"
@@ -518,12 +535,13 @@ export const generateNextChapterScript = async (topic: string, podcastTitle: str
     - **Image Prompts:** Based on the new script content, create 3 detailed, cinematic image prompts in English.
     - **Formatting:** Use only the character names: ${characters.map(c => `"${c.name}"`).join(', ')}. Format all cues and sound effects as a separate element with the speaker "SFX".
     - ${styleInstruction}
+    ${dialogueRequirement}
     ${sourceInstruction}
     
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     Structure: {
         "title": "Title of this new chapter",
-        "script": [{ "speaker": "SFX", "text": "...", "searchTags": "keywords here" }, { "speaker": "${characters[0].name}", "text": "..." }, { "speaker": "${characters[1].name}", "text": "..." }],
+        "script": [{ "speaker": "SFX", "text": "...", "searchTags": "keywords here" }, { "speaker": "${characters[0].name}", "text": "..." }],
         "imagePrompts": ["Prompt 1 in English", "Prompt 2 in English", "Prompt 3 in English"]
     }${knowledgeBaseBlock}`;
     

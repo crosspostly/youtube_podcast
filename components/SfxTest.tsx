@@ -100,8 +100,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.currentTarget.value)}
+                    // FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'.
+                    onChange={(e: any) => setDescription(e.currentTarget.value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

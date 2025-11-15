@@ -59,6 +59,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
         setThumbnailBaseImage, setPodcast, setVideoPacingMode, setImageDuration,
         cancelVideoGeneration,
+        regenerateChapterAudio,
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -614,8 +615,17 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
                                 {(chapter.status === 'script_generating' || chapter.status === 'audio_generating' || chapter.status === 'images_generating') && <Spinner className="w-5 h-5"/>}
                                 {chapter.status === 'completed' && audioUrls[chapter.id] && <audio src={audioUrls[chapter.id]} controls className="h-8 w-60 sm:w-72"/>}
+                                {(chapter.status === 'completed' || chapter.status === 'error') && (
+                                    <button 
+                                        onClick={() => regenerateChapterAudio(chapter.id)} 
+                                        className="p-1.5 rounded-full text-purple-400 bg-purple-900/50 hover:bg-purple-800" 
+                                        title="Пересоздать только аудио"
+                                    >
+                                        <SpeakerWaveIcon className="w-4 h-4"/>
+                                    </button>
+                                )}
                                 {(chapter.status === 'error' || chapter.status === 'completed') && (
-                                    <button onClick={() => handleGenerateChapter(chapter.id)} className={`p-1.5 rounded-full ${chapter.status === 'error' ? 'text-red-400 bg-red-900/50 hover:bg-red-800' : 'text-blue-400 bg-blue-900/50 hover:bg-blue-800'}`} title="Повторить генерацию"><RedoIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => handleGenerateChapter(chapter.id)} className={`p-1.5 rounded-full ${chapter.status === 'error' ? 'text-red-400 bg-red-900/50 hover:bg-red-800' : 'text-blue-400 bg-blue-900/50 hover:bg-blue-800'}`} title="Пересоздать главу (сценарий, аудио, изображения)"><RedoIcon className="w-4 h-4"/></button>
                                 )}
                             </div>
                         </div>

@@ -116,8 +116,8 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Текст</label>
-                            {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the textarea value. */}
-                            <textarea value={options.text} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleOptionChange('text', e.currentTarget.value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
+                            {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLTextAreaElement'. Changed event type to 'any'. */}
+                            <textarea value={options.text} onChange={(e: any) => handleOptionChange('text', e.currentTarget.value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Шрифт (Google Fonts)</label>
@@ -129,21 +129,21 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
                                 <label className="block text-sm font-medium text-slate-300">Размер</label>
-                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number(e.currentTarget.value))} className="w-full mt-1"/>
+                                {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                <input type="range" min="30" max="200" value={options.fontSize} onChange={(e: any) => handleOptionChange('fontSize', Number(e.currentTarget.value))} className="w-full mt-1"/>
                             </div>
-                            {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                             <input type="number" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number(e.currentTarget.value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
+                            {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                             <input type="number" value={options.fontSize} onChange={(e: any) => handleOptionChange('fontSize', Number(e.currentTarget.value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
                         </div>
                         <div className="flex items-center gap-4">
                              <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                             {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                             <input type="color" value={options.fillStyle} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fillStyle', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                             {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                             <input type="color" value={options.fillStyle} onChange={(e: any) => handleOptionChange('fillStyle', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Выравнивание</label>
-                            {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the select value. */}
-                            <select value={options.textAlign} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleOptionChange('textAlign', e.currentTarget.value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
+                            {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLSelectElement'. Changed event type to 'any'. */}
+                            <select value={options.textAlign} onChange={(e: any) => handleOptionChange('textAlign', e.currentTarget.value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
                                 <option value="left">По левому краю</option>
                                 <option value="center">По центру</option>
                                 <option value="right">По правому краю</option>
@@ -154,13 +154,13 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
                              <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeColor', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                 <input type="color" value={options.strokeColor || '#000000'} onChange={(e: any) => handleOptionChange('strokeColor', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                              </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Толщина: {options.strokeWidth || 0}px</label>
-                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeWidth', Number(e.currentTarget.value))} className="w-full mt-1"/>
+                                {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e: any) => handleOptionChange('strokeWidth', Number(e.currentTarget.value))} className="w-full mt-1"/>
                             </div>
                         </div>
 
@@ -168,23 +168,23 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Тень</h4>
                             <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                 <input type="color" value={options.shadow.color} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('color', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
+                                 {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                 <input type="color" value={options.shadow.color} onChange={(e: any) => handleShadowChange('color', e.currentTarget.value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Размытие: {options.shadow.blur}px</label>
-                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('blur', Number(e.currentTarget.value))} className="w-full mt-1"/>
+                                {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e: any) => handleShadowChange('blur', Number(e.currentTarget.value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение X: {options.shadow.offsetX}px</label>
-                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetX', Number(e.currentTarget.value))} className="w-full mt-1"/>
+                                {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e: any) => handleShadowChange('offsetX', Number(e.currentTarget.value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение Y: {options.shadow.offsetY}px</label>
-                                {/* FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value. */}
-                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetY', Number(e.currentTarget.value))} className="w-full mt-1"/>
+                                {/* FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'. */}
+                                <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e: any) => handleShadowChange('offsetY', Number(e.currentTarget.value))} className="w-full mt-1"/>
                             </div>
                         </div>
                     </div>

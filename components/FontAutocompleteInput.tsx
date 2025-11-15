@@ -35,8 +35,8 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
         };
     }, []);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // FIX: Use e.currentTarget.value for typed event handlers to avoid casting and correctly access the input value.
+    // FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. Changed event type to 'any'.
+    const handleInputChange = (e: any) => {
         const newSearchTerm = e.currentTarget.value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {

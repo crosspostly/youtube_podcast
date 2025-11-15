@@ -113,7 +113,7 @@ export const usePodcast = (
         try {
             // Step 1: Generate Script
             updateChapterState(chapterId, 'script_generating');
-            const chapterData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.totalDurationMinutes, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log, apiKeys);
+            const chapterData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.totalDurationMinutes, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, podcast.narrationMode, log, apiKeys);
             
             // Step 2: Find Music
             const scriptText = chapterData.script.map(line => line.text).join(' ');
@@ -189,7 +189,7 @@ export const usePodcast = (
         try {
             // --- PHASE 0: Blueprint ---
             updateStatus('Создание концепции и сценария главы 1', 'in_progress');
-            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, log, apiKeys, initialImageCount);
+            const blueprint = await generatePodcastBlueprint(topic, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, narrationMode, log, apiKeys, initialImageCount);
             updateStatus('Создание концепции и сценария главы 1', 'completed');
             setGenerationProgress(100 / (totalChapters + 2));
     
@@ -216,7 +216,7 @@ export const usePodcast = (
             for (let i = 1; i < totalChapters; i++) {
                 if (isGenerationPaused) { await new Promise(resolve => { const interval = setInterval(() => { if (!isGenerationPaused) { clearInterval(interval); resolve(null); }}, 500); });}
                 updateStatus(`Генерация сценария главы ${i + 2}`, 'in_progress');
-                const chapterData = await generateNextChapterScript(topic, tempPodcast.selectedTitle, tempPodcast.characters, tempPodcast.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, log, apiKeys);
+                const chapterData = await generateNextChapterScript(topic, tempPodcast.selectedTitle, tempPodcast.characters, tempPodcast.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
                 tempPodcast.chapters[i] = { ...tempPodcast.chapters[i], ...chapterData, status: 'script_completed' };
                 setPodcast({ ...tempPodcast });
                 updateStatus(`Генерация сценария главы ${i + 2}`, 'completed');
@@ -487,7 +487,7 @@ export const usePodcast = (
             
         } catch (err: any) {
             if (safeLower(err.message).includes('cancelled')) {
-                log({type: 'info', message: 'Генерация видео отменена.'});
+                log({type: 'info', message: 'Генерация видео отменена пользователем.'});
             } else {
                 const friendlyError = parseErrorMessage(err);
                 setError(friendlyError);
@@ -837,6 +837,30 @@ export const usePodcast = (
             setGeneratingMoreImages(null);
         }
     };
+    
+    const regenerateChapterAudio = async (chapterId: string) => {
+        const chapter = podcast?.chapters.find(c => c.id === chapterId);
+        if (!podcast || !chapter || !chapter.script.length) return;
+
+        updateChapterState(chapterId, 'audio_generating');
+
+        try {
+            const audioBlob = await generateChapterAudio(
+                chapter.script,
+                podcast.narrationMode,
+                podcast.characterVoices,
+                podcast.monologueVoice,
+                log,
+                apiKeys
+            );
+            updateChapterState(chapterId, 'completed', { audioBlob });
+            log({ type: 'response', message: `Аудио для главы "${chapter.title}" успешно пересоздано.` });
+        } catch (err: any) {
+            const friendlyError = parseErrorMessage(err);
+            log({ type: 'error', message: `Ошибка при пересоздании аудио для главы "${chapter.title}"`, data: { friendlyMessage: friendlyError, originalError: err } });
+            updateChapterState(chapterId, 'error', { error: friendlyError });
+        }
+    };
 
     const manualTtsScript = useMemo(() => {
         if (!podcast) return 'Генерация сценария...';
@@ -984,5 +1008,6 @@ export const usePodcast = (
         setThumbnailBaseImage,
         startVideoTest,
         setVideoPacingMode, setImageDuration,
+        regenerateChapterAudio,
     };
 };

@@ -1,6 +1,6 @@
 // services/imageService.ts (ПРАВИЛЬНАЯ ВЕРСЯ БЕЗ КОНФЛИКТОВ)
 
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage } from '../types';
 import { drawCanvas } from './canvasUtils';
 import { withRetries, LogFunction, RetryConfig, withQueueAndRetries } from './geminiService';
@@ -89,29 +89,39 @@ export const regenerateSingleImage = async (
             log({ type: 'request', message: `Запрос изображения от Gemini` });
             const ai = getAiClient(apiKeys.gemini, log);
             
-            const generateCall = () => ai.models.generateImages({
-                model: 'imagen-4.0-generate-001',
-                prompt: fullPrompt,
+            const generateCall = () => ai.models.generateContent({
+                model: 'gemini-2.5-flash-image',
+                contents: {
+                    parts: [{ text: fullPrompt }],
+                },
                 config: {
-                    numberOfImages: 1,
-                    outputMimeType: 'image/png',
-                    aspectRatio: '16:9',
+                    responseModalities: [Modality.IMAGE],
                 },
             });
     
             const requestKey = `image-gen-${prompt.slice(0, 50)}`;
-            const response = await withQueueAndRetries(generateCall, log, { retries: 2 }, 'image', 65000, requestKey);
+            const response: GenerateContentResponse = await withQueueAndRetries(generateCall, log, { retries: 2 }, 'image', 65000, requestKey);
             
-            const base64Image = response?.generatedImages?.[0]?.image?.imageBytes;
+            let base64Image: string | undefined;
+
+            if (response?.candidates?.[0]?.content?.parts) {
+                for (const part of response.candidates[0].content.parts) {
+                    if (part.inlineData?.data) {
+                        base64Image = part.inlineData.data;
+                        break;
+                    }
+                }
+            }
+            
             if (base64Image) {
-                log({ type: 'response', message: 'Изображение создано через Gemini (Imagen)' });
+                log({ type: 'response', message: 'Изображение создано через Gemini (Flash Image)' });
                 recordGeminiSuccess(); // Сообщаем об успехе
                 return {
                     url: `data:image/png;base64,${base64Image}`,
                     source: 'generated'
                 };
             }
-            throw new Error("No image data in Imagen response");
+            throw new Error("No image data in Gemini Flash Image response");
     
         } catch (geminiError: any) {
             recordGeminiFailure(); // Сообщаем о провале

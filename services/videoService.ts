@@ -8,9 +8,9 @@ import { generateSrtFile } from './srtService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
-const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
-const FFMPEG_WASM_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
+const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
+const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
+const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
 
 let ffmpeg: FFmpeg | null = null;
 let isCancellationRequested = false;
@@ -29,6 +29,7 @@ export const cancelFfmpeg = () => {
     }
 };
 
+// FIX: Cannot find name 'Image'. Using `(window as any).Image` to access it.
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         const img = new (window as any).Image();
@@ -124,6 +125,7 @@ export const generateVideo = async (
         totalDuration = imageDurations.reduce((sum, d) => sum + d, 0);
     } else {
         log({ type: 'info', message: `Используется автоматический режим расстановки времени.` });
+        // FIX: Property 'AudioContext' does not exist on type 'Window'. Casting window to any.
         const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
         totalDuration = audioBuffer.duration;
@@ -137,13 +139,16 @@ export const generateVideo = async (
     for (let i = 0; i < imagesToUse.length; i++) {
         const progress = 0.15 + (i / imagesToUse.length) * 0.15;
         onProgress(progress, `3/5 Запись данных в память (${i + 1}/${imagesToUse.length})...`);
+        // FIX: Cannot find name 'document'. Using `(window as any).document`.
         const canvas = (window as any).document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error("Could not get canvas context for image processing.");
         ctx.drawImage(imagesToUse[i], 0, 0, 1280, 720);
         const blob = await new Promise<Blob|null>(resolve => canvas.toBlob(resolve, 'image/png'));
-        await ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob!));
+        if (!blob) throw new Error(`Could not convert canvas to blob for image ${i}`);
+        await ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
     }
 
     // --- 4. Build & Execute FFmpeg Command ---
