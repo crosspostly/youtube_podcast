@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import type { StockPhoto, StockPhotoApiKeys, GeneratedImage } from '../types';
 import type { LogEntry } from '../types';
+import { blockKey, getKeyStatus } from '../utils/stockPhotoKeyManager';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -95,6 +96,13 @@ const searchUnsplash = async (
     apiKey: string,
     log: LogFunction
 ): Promise<StockPhoto[]> => {
+    // Проверка блокировки ПЕРЕД запросом
+    const status = getKeyStatus('unsplash');
+    if (status.isBlocked) {
+        const remainingTime = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
+        throw new Error(`Unsplash API временно заблокирован (осталось ${remainingTime} мин). Причина: ${status.lastError}`);
+    }
+    
     log({ type: 'request', message: `Поиск на Unsplash: "${query}"` });
     
     const MIN_WIDTH = 1920;
@@ -110,6 +118,12 @@ const searchUnsplash = async (
     );
 
     if (!response.ok) {
+        // Обработка rate limit
+        if (response.status === 429) {
+            const errorMsg = 'Rate limit exceeded';
+            blockKey('unsplash', errorMsg);
+            log({ type: 'error', message: `❌ Unsplash заблокирован на 1 час: ${errorMsg}` });
+        }
         throw new Error(`Unsplash API error: ${response.status}`);
     }
 
@@ -146,6 +160,13 @@ const searchPexels = async (
     apiKey: string,
     log: LogFunction
 ): Promise<StockPhoto[]> => {
+    // Проверка блокировки ПЕРЕД запросом
+    const status = getKeyStatus('pexels');
+    if (status.isBlocked) {
+        const remainingTime = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
+        throw new Error(`Pexels API временно заблокирован (осталось ${remainingTime} мин). Причина: ${status.lastError}`);
+    }
+    
     log({ type: 'request', message: `Поиск на Pexels: "${query}"` });
     
     const MIN_WIDTH = 1920;
@@ -161,6 +182,12 @@ const searchPexels = async (
     );
 
     if (!response.ok) {
+        // Обработка rate limit
+        if (response.status === 429) {
+            const errorMsg = 'Rate limit exceeded';
+            blockKey('pexels', errorMsg);
+            log({ type: 'error', message: `❌ Pexels заблокирован на 1 час: ${errorMsg}` });
+        }
         throw new Error(`Pexels API error: ${response.status}`);
     }
 

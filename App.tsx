@@ -132,14 +132,20 @@ const App: React.FC = () => {
         try {
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             const storedKeys = (window as any).localStorage.getItem('apiKeys');
-            if (storedKeys) {
-                const parsedKeys = JSON.parse(storedKeys);
-                // Migration: Remove openRouter key if it exists
-                if (parsedKeys.openRouter !== undefined) {
-                    delete parsedKeys.openRouter;
-                    (window as any).localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
+            if (storedKeys && storedKeys !== 'undefined') {
+                try {
+                    const parsedKeys = JSON.parse(storedKeys);
+                    // Migration: Remove openRouter key if it exists
+                    if (parsedKeys.openRouter !== undefined) {
+                        delete parsedKeys.openRouter;
+                        (window as any).localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
+                    }
+                    setApiKeys(parsedKeys);
+                } catch (e) {
+                    console.error('Failed to parse API keys:', e);
+                    // Очистить некорректные данные
+                    (window as any).localStorage.removeItem('apiKeys');
                 }
-                setApiKeys(parsedKeys);
             }
             // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
             const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
@@ -147,21 +153,26 @@ const App: React.FC = () => {
             
             // Load image mode from localStorage
             const storedImageMode = (window as any).localStorage.getItem('imageMode');
-            if (storedImageMode) {
+            if (storedImageMode && storedImageMode !== 'undefined') {
                 setImageMode(storedImageMode as ImageMode);
             }
             
             // Load retry config from localStorage
             const storedRetryConfig = (window as any).localStorage.getItem('apiRetryConfig');
-            if (storedRetryConfig) {
-                const parsedRetryConfig = JSON.parse(storedRetryConfig);
-                setRetryConfig(parsedRetryConfig);
-                updateApiRetryConfig(parsedRetryConfig);
+            if (storedRetryConfig && storedRetryConfig !== 'undefined') {
+                try {
+                    const parsedRetryConfig = JSON.parse(storedRetryConfig);
+                    setRetryConfig(parsedRetryConfig);
+                    updateApiRetryConfig(parsedRetryConfig);
+                } catch (e) {
+                    console.error('Failed to parse retry config:', e);
+                    (window as any).localStorage.removeItem('apiRetryConfig');
+                }
             }
             
             // Load stock photo preference from localStorage
             const storedPreference = (window as any).localStorage.getItem('stockPhotoPreference');
-            if (storedPreference) {
+            if (storedPreference && storedPreference !== 'undefined') {
                 setStockPhotoPreference(storedPreference as StockPhotoPreference);
             }
         } catch (e) { console.error("Failed to load settings from localStorage", e); }

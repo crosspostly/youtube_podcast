@@ -185,6 +185,13 @@ export type StockPhotoApiKeys = {
     pexels?: string;
 };
 
+export interface StockPhotoKeyStatus {
+    service: 'unsplash' | 'pexels';
+    isBlocked: boolean;
+    blockedUntil?: number;  // timestamp
+    lastError?: string;
+}
+
 // Global application configuration
 export interface AppConfig {
   apiRetry: ApiRetryConfig;
