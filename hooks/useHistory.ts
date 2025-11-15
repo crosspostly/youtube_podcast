@@ -15,8 +15,7 @@ export const useHistory = () => {
 
     useEffect(() => {
         try {
-            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-            const storedHistory = (window as any).localStorage.getItem('podcastHistory');
+            const storedHistory = localStorage.getItem('podcastHistory');
             if (storedHistory) {
                 setHistory(JSON.parse(storedHistory));
             }
@@ -44,8 +43,7 @@ export const useHistory = () => {
             });
         
             try {
-                // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-                (window as any).localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
+                localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
             } catch (e) {
                 log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
             }
@@ -62,8 +60,7 @@ export const useHistory = () => {
     
     const clearHistory = () => {
         setHistory([]);
-        // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-        (window as any).localStorage.removeItem('podcastHistory');
+        localStorage.removeItem('podcastHistory');
     };
 
     return {

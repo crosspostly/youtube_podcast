@@ -5,8 +5,7 @@ const KEY_STATUS_STORAGE = 'stockPhotoKeyStatus';
 
 export const getKeyStatus = (service: 'unsplash' | 'pexels'): StockPhotoKeyStatus => {
     try {
-        // Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-        const stored = (window as any).localStorage.getItem(KEY_STATUS_STORAGE);
+        const stored = localStorage.getItem(KEY_STATUS_STORAGE);
         if (!stored || stored === 'undefined') return { service, isBlocked: false };
         
         const statuses = JSON.parse(stored);
@@ -26,8 +25,7 @@ export const getKeyStatus = (service: 'unsplash' | 'pexels'): StockPhotoKeyStatu
 
 export const blockKey = (service: 'unsplash' | 'pexels', errorMessage: string) => {
     try {
-        // Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-        const stored = (window as any).localStorage.getItem(KEY_STATUS_STORAGE);
+        const stored = localStorage.getItem(KEY_STATUS_STORAGE);
         const statuses = stored && stored !== 'undefined' ? JSON.parse(stored) : {};
         
         statuses[service] = {
@@ -37,7 +35,7 @@ export const blockKey = (service: 'unsplash' | 'pexels', errorMessage: string) =
             lastError: errorMessage
         };
         
-        (window as any).localStorage.setItem(KEY_STATUS_STORAGE, JSON.stringify(statuses));
+        localStorage.setItem(KEY_STATUS_STORAGE, JSON.stringify(statuses));
     } catch (e) {
         console.error('Failed to block key:', e);
     }
@@ -45,8 +43,7 @@ export const blockKey = (service: 'unsplash' | 'pexels', errorMessage: string) =
 
 export const unblockKey = (service: 'unsplash' | 'pexels') => {
     try {
-        // Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-        const stored = (window as any).localStorage.getItem(KEY_STATUS_STORAGE);
+        const stored = localStorage.getItem(KEY_STATUS_STORAGE);
         const statuses = stored && stored !== 'undefined' ? JSON.parse(stored) : {};
         
         if (statuses[service]) {
@@ -54,7 +51,7 @@ export const unblockKey = (service: 'unsplash' | 'pexels') => {
             statuses[service].blockedUntil = undefined;
         }
         
-        (window as any).localStorage.setItem(KEY_STATUS_STORAGE, JSON.stringify(statuses));
+        localStorage.setItem(KEY_STATUS_STORAGE, JSON.stringify(statuses));
     } catch (e) {
         console.error('Failed to unblock key:', e);
     }

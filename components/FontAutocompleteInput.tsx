@@ -22,7 +22,7 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            // FIX: Cast wrapperRef.current and event.target to `any` to use `contains` method.
+            // FIX: Cast `wrapperRef.current` to `any` to use `contains` method and `event.target` to `any` due to missing DOM types.
             if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target as any)) {
                 setIsOpen(false);
             }
@@ -36,8 +36,8 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
-        const newSearchTerm = (e.currentTarget as any).value;
+        // FIX: Use `e.currentTarget.value` to access the input value correctly.
+        const newSearchTerm = e.currentTarget.value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {
             const filtered = GOOGLE_FONTS.filter(font =>

@@ -191,7 +191,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="geminiApiKeyInput"
                                     type="password"
                                     value={geminiApiKey}
-                                    onChange={(e) => setGeminiApiKey((e.currentTarget as any).value)}
+                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
+                                    onChange={(e) => setGeminiApiKey(e.currentTarget.value)}
                                     placeholder="Введите ваш ключ API..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -215,7 +216,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="freesoundApiKeyInput"
                                     type="password"
                                     value={freesoundApiKey}
-                                    onChange={(e) => setFreesoundApiKey((e.currentTarget as any).value)}
+                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
+                                    onChange={(e) => setFreesoundApiKey(e.currentTarget.value)}
                                     placeholder="Введите ваш ключ Freesound..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -238,7 +240,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="unsplashApiKeyInput"
                                     type="password"
                                     value={unsplashApiKey}
-                                    onChange={(e) => setUnsplashApiKey((e.currentTarget as any).value)}
+                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
+                                    onChange={(e) => setUnsplashApiKey(e.currentTarget.value)}
                                     placeholder="Введите ваш Access Key..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -260,7 +263,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     id="pexelsApiKeyInput"
                                     type="password"
                                     value={pexelsApiKey}
-                                    onChange={(e) => setPexelsApiKey((e.currentTarget as any).value)}
+                                    // FIX: Use `e.currentTarget.value` to access the input value correctly.
+                                    onChange={(e) => setPexelsApiKey(e.currentTarget.value)}
                                     placeholder="Введите ваш API Key..."
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 />
@@ -281,7 +285,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                 <select
                                     id="stockPhotoPreferenceSelect"
                                     value={stockPhotoPreference}
-                                    onChange={(e) => setStockPhotoPreference((e.currentTarget as any).value as StockPhotoPreference)}
+                                    // FIX: Use `e.currentTarget.value` to access the select value correctly.
+                                    onChange={(e) => setStockPhotoPreference(e.currentTarget.value as StockPhotoPreference)}
                                     className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
                                 >
                                     <option value="auto">Авто (пробовать оба)</option>

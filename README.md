@@ -1,160 +1,206 @@
-# AI Podcast Studio: From Idea to Media in Minutes
+# Mystic Narratives AI: Your Automated Podcast & Video Studio
+
+<div align="center">
+  <img src="https://storage.googleapis.com/gemini-prod/static/634f18635905f85072053965_mystic-narratives-banner.png" alt="Mystic Narratives AI Banner" width="800">
+</div>
+
+<p align="center">
+  <strong>From a single idea to a fully produced, multi-chapter podcast or video in minutes.</strong>
+  <br />
+  AI-powered writing, narration, sound design, and video assembly—all in your browser.
+</p>
 
 ---
 
-> **🚀 Next-Gen Creative Workflow Powered by AI: Automate writing, narration, sound, and visuals—all in your browser. Remix. Direct. Launch.**
-
 ## Table of Contents
+
 - [Overview](#overview)
 - [Key Features](#key-features)
-- [Architecture](#architecture)
-- [Quick Start](#quick-start)
+- [Architecture Deep Dive](#architecture-deep-dive)
+  - [The Multi-Queue System: Performance by Design](#-the-multi-queue-system-performance-by-design)
+  - [Reliability Mechanisms](#-reliability-mechanisms)
+- [Technology Stack](#technology-stack)
+- [Getting Started](#getting-started)
 - [Configuration](#configuration)
-- [Usage Examples](#usage-examples)
-- [Development & Structure](#development--structure)
-- [Advanced: API Keys & Limits](#advanced-api-keys--limits)
-- [Contribution](#contribution)
+- [Roadmap & Future Enhancements](#-roadmap--future-enhancements)
+- [Development & Contribution](#development--contribution)
+- [Troubleshooting & FAQ](#troubleshooting--faq)
 - [License](#license)
-- [FAQ](#faq)
 
 ---
 
 ## Overview
-AI Podcast Studio transforms how you create podcasts, audiobooks, and narrative media. It's a full-featured **client-side web app**: generate scripts, voice-overs, music, SFX, and videos—with just a topic and your taste.
 
-- Democratize storytelling: **AI is your writer, voice actor, composer, and video editor.**
-- From YouTube creators and marketers to hobbyists—**launch media projects with a single person, minimal gear, and unmatched speed**.
-- Every piece is **remixable**: tweak dialogue, swap music/SFX/images, edit at every step.
+**Mystic Narratives AI** is a sophisticated, client-side web application that automates the entire creative workflow for producing narrative media. It empowers a single user to generate a complete media package—including a multi-chapter script, multi-character voice-overs, background music, contextual sound effects, and a final, fully assembled MP4 video—based on just a single topic.
+
+This tool is engineered for YouTube creators, marketers, educators, and hobbyists who need to produce high-quality, atmospheric content with maximum speed and minimal overhead. The AI acts as your co-writer, voice actor, sound designer, and video editor, turning a concept into a finished product in minutes.
 
 ---
 
 ## Key Features
 
-- **AI Scriptwriting:** Fact-checked, multi-chapter scripts with unique characters, creative or documentary styles, and embedded cues for SFX/music/imagery.
-- **AI Voice Acting:** Natural voices assigned per character (Google Gemini TTS and more). Supports both multi-actor dialogue and classic monologue.
-- **Soundtrack/SFX Automation:** Jamendo API for royalty-free music; Freesound for global SFX. AI-generated search tags maximize match rate and variety.
-- **Visuals Pipeline:** AI generates image prompts for each scene/chapter; get themed thumbnails and viral covers fully styled.
-- **Automatic Video Assembly:** Generate MP4 videos from your scripts, images, and audio—complete with subtitles and Ken Burns dynamic effects.
-- **Resumable Projects:** Save/load complete project state (text, audio, images, etc.) locally, edit and relaunch anytime.
-- **Rate-Limit Handling:** Smart backoff/retry for API limits—never hang; see UI feedback and control tuning in real time.
-- **Testing/Diagnostics:** Dedicated panels for visual/musical/SFX rounds of testing, quick resets, and advanced fault diagnostics.
+### ✒️ AI-Powered Content Pipeline
+- **Automated Scriptwriting:** Generates multi-chapter scripts with unique characters, drawing facts from Google Search or a user-provided knowledge base.
+- **Creative & Documentary Modes:** Choose between a fact-based documentary style or a captivating narrative inspired by masters of suspense like Stephen King and H.P. Lovecraft.
+- **YouTube Optimization:** Automatically generates multiple clickable titles, SEO-optimized descriptions, and relevant keywords for your video.
 
+### 🔊 Automated Audio Production
+- **Multi-Voice Narration:** Utilizes Google's latest TTS models to assign distinct, natural-sounding voices to each character in the script.
+- **AI-Driven Music Selection:** Intelligently analyzes the script's mood to find and suggest royalty-free background music from the Jamendo API.
+- **Contextual Sound Effects:** Automatically identifies cues in the script and searches the vast Freesound.org library for relevant SFX to enhance the atmosphere.
 
-## Architecture
+### 🖼️ Advanced Visuals Engine
+- **AI-Generated Image Prompts:** Creates detailed, cinematic prompts for each scene based on the script's content.
+- **Hybrid Image Generation:** Uses Google's `Imagen` model to generate images, with an automatic, seamless fallback to high-quality stock photos from **Unsplash** and **Pexels** if the AI service is unavailable.
+- **AI-Designed Thumbnails:** Proposes multiple high-CTR YouTube thumbnail designs in the style of top creators, which can be edited and exported.
 
-- **Frontend:** React, TypeScript, Tailwind CSS.
-- **Media:** All video/serverless assembly via FFmpeg.wasm, Web Audio API, browser APIs only.
-- **AI:** Google Gemini (multi-modal) with Unsplash & Pexels stock photo fallbacks. All AI runs via secure cloud endpoints.
-- **Music:** Jamendo API — global, legal, royalty-free tracks.
-- **SFX:** Freesound API — world’s largest open sound effect library. Batch + prompt-optimized querying.
-
-```
-User Topic/Knowledge Base
-      ↓
- [AI Script Gen]
-      ↓
- [Per-chapter: Images, Music, SFX searchTags]
-      ↓
- [Voice/Speech Synthesis] + [SFX/Music Download]
-      ↓
- [Audio/Video Assembly (FFmpeg.wasm)]
-      ↓
-User Review/Remix ➔ Export (MP3, MP4)
-```
-
-See [`docs/ENHANCED_429_HANDLING.md`](docs/ENHANCED_429_HANDLING.md) for advanced rate-limit & backoff.
+### 🎥 "Bulletproof" Video Assembly
+- **Client-Side Rendering:** Assembles the final MP4 video directly in your browser using **FFmpeg.wasm**, combining audio, images, and subtitles. No server-side processing is needed.
+- **Automatic Subtitles:** Generates and burns subtitles directly into the video from the script content.
+- **Dynamic "Ken Burns" Effect:** Applies a subtle zoom and pan effect to static images to create a dynamic, engaging visual experience.
+- **Placeholder Protection:** If an image fails to load for any reason (e.g., it's broken or unavailable), it is automatically replaced with a placeholder, **guaranteeing that video generation never fails**.
 
 ---
 
-## Quick Start
+## Architecture Deep Dive
 
-1. **Obtain API Keys**: Google Gemini (essential), Jamendo & Freesound (optional, built-in fallback keys limited).
-2. **Clone & Launch**:
+This is a **purely client-side application** with serverless functions acting as secure proxies for third-party APIs that do not support CORS.
+
+### ⚡ The Multi-Queue System: Performance by Design
+
+The application's core is its parallel processing architecture. Instead of a single, slow queue, it uses three independent, specialized queues to process API requests concurrently. This ensures that slow tasks (like image generation) never block faster ones (like audio synthesis), dramatically reducing total project generation time.
+
+```plaintext
+User Topic
+     │
+     └───▶ [Phase 1: Sequential Script Generation] ───────▶ All Scripts Ready
+                 (Fast Text Queue: 1.5s delay/request)
+                                                                 │
+           ┌─────────────────────────────────────────────────────┴────────────────────────────────────────────────────┐
+           │                                                                                                           │
+     ▼ [Phase 2: Parallel Asset Generation] ▼                                                                    ▼ [Phase 2: Parallel Asset Generation] ▼
+   [Audio Generation for All Chapters]                                                                         [Image Generation for All Chapters]
+   (Fast Audio Queue: 1.5s delay/request)                                                                      (Slow Image Queue: 65s delay/request)
+           │                                                                                                           │
+           └─────────────────────────────────────────────────────┬────────────────────────────────────────────────────┘
+                                                                 │
+                                                           ▼ [Final Assembly] ▼
+                                                         (FFmpeg.wasm in Browser)
+                                                                 │
+                                                         ▼ Final MP4 Video ▼
+```
+
+### 🛡️ Reliability Mechanisms
+
+- **"Circuit Breaker" Pattern:** Automatically detects if the Gemini image generation API is failing repeatedly. After 3 consecutive failures, it "trips the breaker" for 5 minutes, instantly redirecting all image requests to the stock photo fallback to prevent user frustration and wasted time. The status is visible in the settings panel.
+- **Intelligent API Retries:** Implements an exponential backoff with jitter strategy for all API calls. This gracefully handles temporary issues like rate limits (`429`) or server overloads (`503`), ensuring maximum resilience.
+- **"Bulletproof" Video Generation:** The video rendering pipeline is designed to be completely resilient. Before rendering, every image is validated. If an image is broken, unavailable, or fails to load, it is **automatically replaced** with a gray placeholder, guaranteeing that a video is always produced.
+
+---
+
+## Technology Stack
+
+- **Frontend:** React, TypeScript, Tailwind CSS
+- **Media Engine:** FFmpeg.wasm (for video), Web Audio API (for audio mixing)
+- **AI Services:** Google Gemini (`gemini-2.5-flash-lite`, `imagen-4.0-generate-001`, `gemini-2.5-flash-preview-tts`)
+- **Stock Photos:** Unsplash, Pexels (via serverless proxy)
+- **Audio Libraries:** Jamendo (music), Freesound (SFX) (via serverless proxy)
+
+---
+
+## Getting Started
+
+### Prerequisites
+- Node.js (v18 or higher)
+- npm or yarn
+
+### Installation & Launch
+1.  **Clone the Repository:**
     ```sh
     git clone https://github.com/crosspostly/youtube_podcast.git
     cd youtube_podcast
-    npm install
-    npm start
-    # Or: yarn install && yarn start
     ```
-    *For pure browser usage, just open `index.html` in a compatible browser (may need API keys in settings panel).*
-3. **Set API Keys**: In-app key icon → enter Gemini/Freesound keys as needed. Own keys = best UX.
-4. **Instant Project:** Enter your topic, configure language, style and press generate.
+
+2.  **Install Dependencies:**
+    ```sh
+    npm install
+    ```
+
+3.  **Run the Full Development Environment:**
+    This command starts both the Vite frontend server and the local Express API proxy server concurrently.
+    ```sh
+    npm run dev:full
+    ```
+    - The application will be available at `http://localhost:5173` (or another port if 5173 is busy).
+    - The local API proxy runs on `http://localhost:3000`.
 
 ---
 
 ## Configuration
-- All keys/settings saved per session (localStorage).
-- Fallback logic if keys missing—will prompt for access.
-- Customizable retry/backoff—edit `config/appConfig.ts` or use UI controls (preferences panel).
-- See [`docs/ENHANCED_429_HANDLING.md`](docs/ENHANCED_429_HANDLING.md) for advanced tuning.
+
+API keys are required for the application to function correctly. While default, rate-limited keys are provided for some services, using your own is highly recommended for stability.
+
+1.  **Obtain Your API Keys:**
+    - **Google Gemini:** Essential for all AI features. Get a key from [Google AI Studio](https://aistudio.google.com/app/apikey).
+    - **Freesound:** For sound effects. Create an app on the [Freesound Developers](https://freesound.org/docs/api/) page.
+    - **Unsplash & Pexels:** For stock photo fallbacks. Get keys from their respective developer portals.
+
+2.  **Enter Keys in the UI:**
+    - Click the **Settings (key) icon** in the top-right corner of the application.
+    - Enter your keys in the respective tabs.
+    - All settings are saved securely in your browser's `localStorage`.
 
 ---
 
-## Usage Examples
-- **Classic Podcast:**
-  1. Topic: "История Древнего Египта"
-  2. Style: Documentary. Language: Russian or English.
-  3. Review chapter-wise, swap music/images/SFX per taste.
-  4. Export MP3 or assemble YouTube-ready MP4 instantly.
-- **YouTube Viral:**
-  1. Topic: "Dark Mysteries of the Amazon"
-  2. Creative horror/fantasy mode, dramatic AI voices.
-  3. Use the thumbnail editor for ultra-CTR covers.
-- **Educational Series:**
-  1. Feed in your knowledge base, lock fact mode.
-  2. Every asset/quote sourced—no hallucination.
-  3. Regenerate single elements (chapter, asset, etc.) without losing project context.
+## 🚀 Roadmap & Future Enhancements
+
+This project has a solid foundation, but there are several key architectural improvements planned to further enhance performance and user experience.
+
+### Phase 1: UI & Performance Decoupling
+- **Move FFmpeg to a Web Worker:** Isolate the entire video rendering process in a background thread. This will prevent the UI from freezing during intensive operations, ensuring the application remains responsive at all times.
+- **Implement AbortController for Cancellation:** Add a robust cancellation mechanism to safely terminate the FFmpeg process if the user decides to cancel video generation.
+
+### Phase 2: Advanced Caching & Loading
+- **Progressive WASM Loading:** Implement caching for heavy `.wasm` files using a Service Worker. This will dramatically speed up subsequent video renders by eliminating the need to re-download the FFmpeg core.
+- **Batch Image Processing:** Optimize memory usage by processing images in batches (e.g., 3-4 at a time) instead of loading all of them into memory at once, reducing the risk of browser crashes on low-RAM devices.
+
+### Phase 3: Diagnostics & Adaptability
+- **Device Capability Detection:** Automatically detect user's hardware capabilities (`navigator.deviceMemory`, `hardwareConcurrency`) to adapt performance settings, such as FFmpeg presets (`ultrafast` vs. `fast`) and image batch sizes.
+- **Enhanced Diagnostics Panel:** Provide users with clear information about their device's capabilities and offer recommendations for optimal performance.
+
+### Phase 4 (Future): Hybrid Architecture
+- **Optional Server-Side Rendering Backend:** For "power users" or very long projects, implement an optional backend (e.g., using Cloud Run or Vercel Functions) to offload the most intensive FFmpeg tasks from the browser.
 
 ---
 
-## Development & Structure
+## Development & Contribution
 
-- **src/services/**: All AI, music, SFX, TTS, video, and image logic. Entry: `ttsService.ts`, `sfxService.ts`, etc.
-- **hooks/usePodcast.ts**: Main pipeline and project state management (generation, update, queueing).
-- **config/appConfig.ts**: Tunable settings (rate-limits, keys, backoff strategies).
-- **components/**: UI components for editor, test panels, modals, etc.
-- **test/**: Reliability/unit tests (retry, API fallback, etc.).
-- **docs/**: Rate-limit docs, FAQ, advanced guides (batch SFX/searches, contribution tips, etc.).
+We welcome contributions! Please follow these guidelines:
 
----
+1.  **Fork and Branch:** Create a new branch from `main` for your feature or fix.
+2.  **Atomic Commits:** Write clear, concise, and atomic commits. Use conventional commit messages (e.g., `feat:`, `fix:`, `docs:`).
+3.  **Update Documentation:** Any changes to features, configuration, or architecture must be reflected in this README.
+4.  **Submit a Pull Request:** Reference any related issues and provide a clear description of your changes and how to test them.
 
-## Advanced: API Keys, Rate Limits, & Quotas
-- Streaming models like Gemini2.5-Flash are quota-limited: non-personal keys may hit usage warnings or 429 errors in heavy use. Use your own keys in production.
-- **How we handle limits:** on every 429, the app triggers an exponential backoff with jitter—configurable in code/UI (see [`ENHANCED_429_HANDLING.md`](docs/ENHANCED_429_HANDLING.md)).
-- Detailed status always visible; retries, delays, and failure cases surfaced via UI-feedback, never silent jams.
+For more details, see [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ---
 
-## Contribution
+## Troubleshooting & FAQ
 
-1. Fork, branch from `main` or latest stable.
-2. Write clear, atomic commits. PR titles: feat/fix/chore/refactor + scope.
-3. All UI/UX/API/logic/infra must have tests or manual test plans attached.
-4. Documentation required for: new features, changed APIs, config tweaks.
-5. Standard Github PR review applies. Respect CI build, lint, and test actions.
-6. Bugs, issues, use new Issue Template (to be found in `.github/ISSUE_TEMPLATE/`).
+- **I'm getting `429 Too Many Requests` errors.**
+  This is expected when using the shared default API keys. The app's built-in retry logic will handle it, but for a better experience, please use your own API keys.
 
-See [`CONTRIBUTING.md`].
+- **Video generation is slow or freezes.**
+  Video rendering is computationally intensive and happens entirely in your browser. Ensure you have sufficient RAM (8GB+ recommended) and are using a modern browser like Chrome or Firefox. Close other heavy tabs for best performance. The planned move to a Web Worker (see Roadmap) will solve UI freezing.
+
+- **Can I customize the generated content?**
+  Yes! Every asset (script line, SFX, music track, image) can be individually reviewed and regenerated from the Podcast Studio view.
+
+For more, see the detailed [`FAQ.md`](./FAQ.md).
+
+---
 
 ## License
-MIT © [crosspostly](https://github.com/crosspostly)
 
----
-
-## FAQ
-- **How do I reset keys/settings?** Use Settings panel → 'clear all' or manually clear `localStorage`.
-- **Can I use my own soundtrack/SFX?** Yes, replace any asset in the chapter editor at any time.
-- **What if Gemini is down?** For text generation, the app will show an error and you can retry later. For image generation, automatic fallback to Unsplash & Pexels stock photos ensures you can continue working.
-- **Can I export projects/transfers?** Use the export (JSON/MP3/MP4) features; all assets saved client-side, portable.
-- **How to tune retries/backoff for custom API keys?** Edit `config/appConfig.ts` or tune via UI controls.
-
----
-
-## See also
-- [docs/ENHANCED_429_HANDLING.md](docs/ENHANCED_429_HANDLING.md) — details/backoff logic.
-- `src/services/ttsService.ts`, `src/services/sfxService.ts` — advanced pipeline/practical code.
-- [Issue templates and contribution workflow in CONTRIBUTING.md]
-
----
-# Test CI after PR #61 - All critical issues should be fixed now
+This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.

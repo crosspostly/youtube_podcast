@@ -1,12 +1,10 @@
-
-
 import type { TextOptions } from '../types';
 
 // A cache to avoid re-fetching font CSS
 const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
-    // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+    // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
     if (!fontFamily || (window as any).document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
@@ -16,17 +14,17 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
-        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
         if (!(window as any).document.querySelector(`link[href="${fontUrl}"]`)) {
-            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             const link = (window as any).document.createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
-            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             (window as any).document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             await (window as any).document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
@@ -37,7 +35,7 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 };
 
 
-// FIX: Cast `context` to `any` because `CanvasRenderingContext2D` type is not available.
+// FIX: Use `any` for CanvasRenderingContext2D due to missing DOM types.
 const wrapText = (context: any, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
     if (words.length === 0) return [];
@@ -60,8 +58,8 @@ const wrapText = (context: any, text: string, maxWidth: number): string[] => {
 };
 
 
+// FIX: Use `any` for CanvasRenderingContext2D and HTMLImageElement due to missing DOM types.
 export const drawCanvas = async (
-  // FIX: Cast `context` and `baseImage` to `any` because their DOM types are not available.
   context: any,
   baseImage: any,
   options: TextOptions

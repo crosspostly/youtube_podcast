@@ -58,6 +58,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         findMusicForChapter, findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
         setThumbnailBaseImage, setPodcast, setVideoPacingMode, setImageDuration,
+        cancelVideoGeneration,
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -495,10 +496,20 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         <div className="w-full bg-slate-700 rounded-full h-4">
                             <div 
                                 className="bg-gradient-to-r from-teal-400 to-cyan-500 h-4 rounded-full" 
-                                style={{ width: `${videoGenerationProgress.progress * 100}%`, transition: 'width 0.3s ease' }}
+                                style={{ width: `${Math.min(100, Math.max(0, videoGenerationProgress.progress * 100))}%`, transition: 'width 0.3s ease' }}
                             ></div>
                         </div>
-                        <p className="text-white font-bold text-lg mt-2">{Math.round(videoGenerationProgress.progress * 100)}%</p>
+                        <p className="text-white font-bold text-lg mt-2">{Math.round(Math.min(100, Math.max(0, videoGenerationProgress.progress * 100)))}%</p>
+                        <button
+                            onClick={() => {
+                                if ((window as any).confirm("Вы уверены, что хотите отменить генерацию видео?")) {
+                                    cancelVideoGeneration();
+                                }
+                            }}
+                            className="mt-6 px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            Отменить
+                        </button>
                     </div>
                 </div>
             )}

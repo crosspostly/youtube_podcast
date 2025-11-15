@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// FIX: Cast `window` to `any` to access `document` property as DOM types seem to be missing in the environment.
+// FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
 const rootElement = (window as any).document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

@@ -78,8 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Stream the audio data
     const audioBuffer = await response.arrayBuffer();
-    // FIX: Use `(globalThis as any).Buffer` to access the `Buffer` object, as it's globally available in the Vercel/Node.js environment but may be missing from types.
-    res.status(200).send((globalThis as any).Buffer.from(audioBuffer));
+    res.status(200).send(Buffer.from(audioBuffer));
 
     console.log(`Audio proxy: Successfully streamed ${audioBuffer.byteLength} bytes from ${targetUrl}`);
 

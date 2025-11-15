@@ -130,35 +130,37 @@ const App: React.FC = () => {
 
     useEffect(() => {
         try {
-            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-            const storedKeys = (window as any).localStorage.getItem('apiKeys');
+            const storedKeys = localStorage.getItem('apiKeys');
             if (storedKeys && storedKeys !== 'undefined') {
                 try {
                     const parsedKeys = JSON.parse(storedKeys);
                     // Migration: Remove openRouter key if it exists
                     if (parsedKeys.openRouter !== undefined) {
                         delete parsedKeys.openRouter;
-                        (window as any).localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
+                        localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
                     }
-                    setApiKeys(parsedKeys);
+                    // Merge with default to ensure all keys exist
+                    setApiKeys(prevKeys => ({
+                        ...prevKeys,
+                        ...parsedKeys
+                    }));
                 } catch (e) {
                     console.error('Failed to parse API keys:', e);
                     // Очистить некорректные данные
-                    (window as any).localStorage.removeItem('apiKeys');
+                    localStorage.removeItem('apiKeys');
                 }
             }
-            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-            const storedFont = (window as any).localStorage.getItem('channelDefaultFont') || 'Impact';
+            const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
             
             // Load image mode from localStorage
-            const storedImageMode = (window as any).localStorage.getItem('imageMode');
+            const storedImageMode = localStorage.getItem('imageMode');
             if (storedImageMode && storedImageMode !== 'undefined') {
                 setImageMode(storedImageMode as ImageMode);
             }
             
             // Load retry config from localStorage
-            const storedRetryConfig = (window as any).localStorage.getItem('apiRetryConfig');
+            const storedRetryConfig = localStorage.getItem('apiRetryConfig');
             if (storedRetryConfig && storedRetryConfig !== 'undefined') {
                 try {
                     const parsedRetryConfig = JSON.parse(storedRetryConfig);
@@ -166,19 +168,18 @@ const App: React.FC = () => {
                     updateApiRetryConfig(parsedRetryConfig);
                 } catch (e) {
                     console.error('Failed to parse retry config:', e);
-                    (window as any).localStorage.removeItem('apiRetryConfig');
+                    localStorage.removeItem('apiRetryConfig');
                 }
             }
             
             // Load stock photo preference from localStorage
-            const storedPreference = (window as any).localStorage.getItem('stockPhotoPreference');
+            const storedPreference = localStorage.getItem('stockPhotoPreference');
             if (storedPreference && storedPreference !== 'undefined') {
                 setStockPhotoPreference(storedPreference as StockPhotoPreference);
             }
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    // FIX: Corrected the type of `data.keys` to have required `unsplash` and `pexels` properties, matching the state type.
     const handleSaveApiKeys = (data: { 
         keys: { 
             gemini: string; 
@@ -199,16 +200,11 @@ const App: React.FC = () => {
         updateApiRetryConfig(data.retryConfig);
         
         try {
-            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-            (window as any).localStorage.setItem('apiKeys', JSON.stringify(data.keys));
-            // FIX: Cast `window` to `any` to access `localStorage` because DOM types are missing in the environment.
-            (window as any).localStorage.setItem('channelDefaultFont', data.defaultFont);
-            // Save image mode to localStorage
-            (window as any).localStorage.setItem('imageMode', data.imageMode);
-            // Save retry config to localStorage
-            (window as any).localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
-            // Save stock photo preference to localStorage
-            (window as any).localStorage.setItem('stockPhotoPreference', data.stockPhotoPreference);
+            localStorage.setItem('apiKeys', JSON.stringify(data.keys));
+            localStorage.setItem('channelDefaultFont', data.defaultFont);
+            localStorage.setItem('imageMode', data.imageMode);
+            localStorage.setItem('apiRetryConfig', JSON.stringify(data.retryConfig));
+            localStorage.setItem('stockPhotoPreference', data.stockPhotoPreference);
         } catch (e) { console.error("Failed to save settings to localStorage", e); }
     };
     

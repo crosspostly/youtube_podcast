@@ -76,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Convert to ArrayBuffer and then to base64
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = (globalThis as any).Buffer.from(arrayBuffer).toString('base64');
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
     
     // Return base64 with Data URL scheme
     const dataUrl = `data:${contentType};base64,${base64}`;
