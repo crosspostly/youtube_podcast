@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, GenerateContentResponse } from "@google/genai";
 import * as lamejs from 'lamejs';
-import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect, WordTimestamp } from '../types';
+import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, ThumbnailDesignConcept, NarrationMode, MusicTrack, SoundEffect } from '../types';
 import { withQueueAndRetries, generateContentWithFallback, withRetries, RetryConfig } from './geminiService';
 import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
@@ -177,17 +177,20 @@ export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Pr
     }
 
     // ========================================
-    // Layer 2: Sound Effects with Precise Timing
+    // Layer 2: Sound Effects with Improved Timing
     // ========================================
 
-    log({ type: 'info', message: 'Начало наложения звуковых эффектов...' });
+    log({ type: 'info', message: 'Начало наложения звуковых эффектов с улучшенным расчётом тайминга...' });
 
-    // Собираем точные timestamps для каждой главы
+    // Константы для улучшенного расчёта
+    const PAUSE_BETWEEN_LINES = 0.5;  // пауза между репликами (сек)
+    const SFX_ANTICIPATION = 0.2;     // SFX чуть раньше произнесения (сек)
+    const WORDS_PER_SECOND = 2.5;      // средняя скорость речи (точнее, чем chars/15)
+
+    // Собираем информацию о времени для каждой главы
     const chapterTimings: Array<{
         chapterId: string;
         startTime: number;
-        duration: number;
-        wordTimestamps?: WordTimestamp[];
         script: ScriptLine[];
     }> = [];
 
@@ -199,153 +202,68 @@ export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Pr
         chapterTimings.push({
             chapterId: chapter.id,
             startTime: globalTimeCursor,
-            duration: audioBuffer.duration,
-            wordTimestamps: (chapter.audioBlob as any).__timestamps,
-            script: (chapter.audioBlob as any).__script || chapter.script
+            script: chapter.script
         });
         
         globalTimeCursor += audioBuffer.duration;
     }
 
-    // Теперь накладываем SFX с точным таймингом
+    // Накладываем SFX с улучшенным расчётом тайминга
     for (const chapterTiming of chapterTimings) {
-        const { startTime: chapterStartTime, wordTimestamps, script } = chapterTiming;
+        const { startTime: chapterStartTime, script } = chapterTiming;
         
         if (!script || script.length === 0) continue;
         
-        // РЕЖИМ 1: Точные timestamps доступны
-        if (wordTimestamps && wordTimestamps.length > 0) {
-            log({ 
-                type: 'info', 
-                message: `✅ Используются точные timestamps для главы (${wordTimestamps.length} слов)` 
-            });
-            
-            for (const line of script) {
-                if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
-                    try {
-                        // Ищем timestamp ближайшего слова ПЕРЕД этой SFX-строкой
-                        const lineIndex = script.indexOf(line);
-                        let targetTimestamp = 0;
-                        
-                        // Ищем последнее произнесённое слово перед SFX
-                        for (let i = lineIndex - 1; i >= 0; i--) {
-                            const prevLine = script[i];
-                            if (prevLine.speaker.toUpperCase() !== 'SFX' && prevLine.text) {
-                                // Берём последнее слово из предыдущей реплики
-                                const words = prevLine.text.split(/\s+/);
-                                const lastWord = words[words.length - 1].toLowerCase().replace(/[.,!?;:]/g, '');
-                                
-                                // Ищем это слово в timestamps (с конца массива)
-                                for (let j = wordTimestamps.length - 1; j >= 0; j--) {
-                                    const ts = wordTimestamps[j];
-                                    if (ts.word.toLowerCase().includes(lastWord)) {
-                                        targetTimestamp = ts.endTime; // SFX сразу после слова
-                                        break;
-                                    }
-                                }
-                                
-                                if (targetTimestamp > 0) break;
-                            }
-                        }
-                        
-                        // Загружаем SFX
-                        const sfxResponse = await fetch(line.soundEffect.previews['preview-hq-mp3']);
-                        const sfxArrayBuffer = await sfxResponse.arrayBuffer();
-                        const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
-                        
-                        const sfxGainNode = offlineContext.createGain();
-                        sfxGainNode.gain.value = line.soundEffectVolume ?? 0.5;
-                        sfxGainNode.connect(offlineContext.destination);
-                        
-                        const sfxSource = offlineContext.createBufferSource();
-                        sfxSource.buffer = sfxBuffer;
-                        sfxSource.connect(sfxGainNode);
-                        
-                        // Рассчитываем абсолютное время в финальном аудио
-                        const absoluteStartTime = chapterStartTime + targetTimestamp;
-                        const maxStartTime = Math.max(0, totalDuration - sfxBuffer.duration);
-                        const finalStartTime = Math.min(absoluteStartTime, maxStartTime);
-                        
-                        sfxSource.start(finalStartTime);
-                        
-                        log({ 
-                            type: 'info', 
-                            message: `🔊 SFX "${line.soundEffect.name}" наложен на ${finalStartTime.toFixed(2)}с (точный timestamp)` 
-                        });
-                        
-                    } catch (e) {
-                        log({ 
-                            type: 'error', 
-                            message: `Не удалось наложить SFX: ${line.soundEffect?.name}`, 
-                            data: e 
-                        });
-                    }
-                }
-            }
-        } 
-        // РЕЖИМ 2: Fallback - улучшенный расчёт с анализом аудио
-        else {
-            log({ 
-                type: 'warning', 
-                message: `⚠️ Точные timestamps недоступны, используется улучшенный расчёт для главы` 
-            });
-            
-            // Константы для улучшенного расчёта
-            const PAUSE_BETWEEN_LINES = 0.5;  // пауза между репликами (сек)
-            const SFX_ANTICIPATION = 0.2;     // SFX чуть раньше произнесения (сек)
-            
-            let estimatedTimeCursor = chapterStartTime;
-            
-            for (const line of script) {
-                if (line.speaker.toUpperCase() !== 'SFX' && line.text) {
-                    // Рассчитываем длительность реплики (улучшенная формула)
-                    const textLength = line.text.length;
-                    const wordCount = line.text.split(/\s+/).length;
+        let estimatedTimeCursor = chapterStartTime;
+        
+        for (const line of script) {
+            if (line.speaker.toUpperCase() !== 'SFX' && line.text) {
+                // Рассчитываем длительность реплики (улучшенная формула)
+                const wordCount = line.text.split(/\s+/).length;
+                
+                // Средняя скорость: 2.5 слова в секунду (более точно, чем chars/15)
+                const estimatedDuration = Math.max(1, wordCount / WORDS_PER_SECOND);
+                
+                estimatedTimeCursor += estimatedDuration + PAUSE_BETWEEN_LINES;
+                
+            } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+                try {
+                    const sfxResponse = await fetch(line.soundEffect.previews['preview-hq-mp3']);
+                    const sfxArrayBuffer = await sfxResponse.arrayBuffer();
+                    const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
                     
-                    // Средняя скорость: 2.5 слова в секунду (более точно, чем chars/15)
-                    const estimatedDuration = Math.max(1, wordCount / 2.5);
+                    const sfxGainNode = offlineContext.createGain();
+                    sfxGainNode.gain.value = line.soundEffectVolume ?? 0.5;
+                    sfxGainNode.connect(offlineContext.destination);
                     
-                    estimatedTimeCursor += estimatedDuration + PAUSE_BETWEEN_LINES;
+                    const sfxSource = offlineContext.createBufferSource();
+                    sfxSource.buffer = sfxBuffer;
+                    sfxSource.connect(sfxGainNode);
                     
-                } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
-                    try {
-                        const sfxResponse = await fetch(line.soundEffect.previews['preview-hq-mp3']);
-                        const sfxArrayBuffer = await sfxResponse.arrayBuffer();
-                        const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
-                        
-                        const sfxGainNode = offlineContext.createGain();
-                        sfxGainNode.gain.value = line.soundEffectVolume ?? 0.5;
-                        sfxGainNode.connect(offlineContext.destination);
-                        
-                        const sfxSource = offlineContext.createBufferSource();
-                        sfxSource.buffer = sfxBuffer;
-                        sfxSource.connect(sfxGainNode);
-                        
-                        // SFX накладываем с небольшим упреждением
-                        const adjustedTime = Math.max(0, estimatedTimeCursor - SFX_ANTICIPATION);
-                        const maxStartTime = Math.max(0, totalDuration - sfxBuffer.duration);
-                        const finalStartTime = Math.min(adjustedTime, maxStartTime);
-                        
-                        sfxSource.start(finalStartTime);
-                        
-                        log({ 
-                            type: 'info', 
-                            message: `🔊 SFX "${line.soundEffect.name}" наложен на ${finalStartTime.toFixed(2)}с (расчётный метод)` 
-                        });
-                        
-                    } catch (e) {
-                        log({ 
-                            type: 'error', 
-                            message: `Не удалось наложить SFX: ${line.soundEffect?.name}`, 
-                            data: e 
-                        });
-                    }
+                    // SFX накладываем с небольшим упреждением для лучшей синхронизации
+                    const adjustedTime = Math.max(0, estimatedTimeCursor - SFX_ANTICIPATION);
+                    const maxStartTime = Math.max(0, totalDuration - sfxBuffer.duration);
+                    const finalStartTime = Math.min(adjustedTime, maxStartTime);
+                    
+                    sfxSource.start(finalStartTime);
+                    
+                    log({ 
+                        type: 'info', 
+                        message: `🔊 SFX "${line.soundEffect.name}" наложен на ${finalStartTime.toFixed(2)}с (улучшенный расчёт)` 
+                    });
+                    
+                } catch (e) {
+                    log({ 
+                        type: 'error', 
+                        message: `Не удалось наложить SFX: ${line.soundEffect?.name}`, 
+                        data: e 
+                    });
                 }
             }
         }
     }
 
-    log({ type: 'info', message: '✅ Все звуковые эффекты успешно наложены' });
+    log({ type: 'info', message: '✅ Все звуковые эффекты успешно наложены с улучшенным таймингом' });
 
     const renderedBuffer = await offlineContext.startRendering();
     return audioBufferToWavBlob(renderedBuffer);
@@ -717,7 +635,6 @@ export const generateChapterAudio = async (
             responseModalities: [Modality.AUDIO],
             speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } },
-                enableWordTimestamps: true  // ← ДОБАВИТЬ
             },
         };
     } else { // Dialogue mode
@@ -735,8 +652,7 @@ export const generateChapterAudio = async (
         ttsConfig = {
             responseModalities: [Modality.AUDIO],
             speechConfig: { 
-                multiSpeakerVoiceConfig: { speakerVoiceConfigs },
-                enableWordTimestamps: true  // ← ДОБАВИТЬ
+                multiSpeakerVoiceConfig: { speakerVoiceConfigs }
             }
         };
     }
@@ -750,24 +666,9 @@ export const generateChapterAudio = async (
         const response = await generateAudioWithRetries(params, log, apiKeys.gemini);
         const wavBlob = processTtsResponse(response);
         
-        // ← НОВЫЙ КОД: Извлечение timestamps
-        const wordTimestamps = (response.candidates?.[0]?.content?.parts?.[0] as any)?.wordTimestamps;
-        
-        if (wordTimestamps && wordTimestamps.length > 0) {
-            log({ 
-                type: 'info', 
-                message: `✅ Получены точные timestamps для ${wordTimestamps.length} слов` 
-            });
-            
-            // Сохраняем timestamps в метаданных Blob (для использования в combineAndMixAudio)
-            (wavBlob as any).__timestamps = wordTimestamps;
-            (wavBlob as any).__script = dialogueScript; // Сохраняем скрипт для сопоставления
-        } else {
-            log({ 
-                type: 'warning', 
-                message: '⚠️ TTS API не вернул timestamps, будет использован улучшенный расчёт' 
-            });
-        }
+        // TODO: Future enhancement - when Gemini TTS supports word timestamps,
+        // we can extract them here for precise SFX timing.
+        // For now, we'll use the improved calculation method in combineAndMixAudio.
         
         log({ type: 'info', message: 'WAV файл успешно создан.' });
         return wavBlob;
