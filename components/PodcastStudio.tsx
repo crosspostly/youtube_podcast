@@ -617,17 +617,20 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                         {chapter.generatedImages.map((imgSrc, index) => (
                                             <div key={index}>
                                                 <div className="group relative cursor-pointer">
-                                                    <img src={imgSrc} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
+                                                    {/* FIX: Changed `imgSrc` to `imgSrc.url` as `imgSrc` is an object. */}
+                                                    <img src={imgSrc.url} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
                                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
                                                         <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(chapter.id, index); }} disabled={regeneratingImage !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50" title="Пересоздать"><RedoIcon /></button>
                                                         <button onClick={(e) => { e.stopPropagation(); setThumbnailBaseImage(imgSrc); }} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30" title="Сделать фоном для обложки"><ImageIcon /></button>
-                                                        <a href={imgSrc} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
+                                                        {/* FIX: Changed `imgSrc` to `imgSrc.url` for the download link. */}
+                                                        <a href={imgSrc.url} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
                                                     </div>
                                                     {regeneratingImage?.chapterId === chapter.id && regeneratingImage?.index === index && (
                                                     <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
                                                     )}
                                                 </div>
-                                                {imgSrc && typeof imgSrc === 'object' && imgSrc.photographer && (
+                                                {/* FIX: Simplified check for photographer info. */}
+                                                {imgSrc.photographer && (
                                                     <div className="text-xs text-slate-400 text-center mt-2">
                                                         Photo by <a href={imgSrc.photographerUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300">{imgSrc.photographer}</a> on <span className="text-slate-500">{imgSrc.source}</span>
                                                     </div>

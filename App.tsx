@@ -178,12 +178,13 @@ const App: React.FC = () => {
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
+    // FIX: Corrected the type of `data.keys` to have required `unsplash` and `pexels` properties, matching the state type.
     const handleSaveApiKeys = (data: { 
         keys: { 
             gemini: string; 
             freesound: string; 
-            unsplash?: string; 
-            pexels?: string;
+            unsplash: string; 
+            pexels: string;
         }; 
         defaultFont: string; 
         imageMode: ImageMode; 

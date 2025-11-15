@@ -27,7 +27,7 @@ const simplifyPromptForStock = async (
         
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-lite',
+            model: 'gemini-2.5-flash',
             contents: {
                 parts: [{
                     text: `Simplify this AI image generation prompt for stock photo search.
@@ -73,7 +73,7 @@ const translateToEnglish = async (
         
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-lite',
+            model: 'gemini-2.5-flash',
             contents: { parts: [{ text: `Translate to English (output only translation): "${query}"` }] }
         });
         
@@ -276,9 +276,13 @@ const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<st
 /**
  * Скачивает изображение и конвертирует в base64 через proxy
  */
-export const downloadStockPhoto = async (photo: StockPhoto, log: LogFunction): Promise<string> => {
+export const downloadStockPhoto = async (photo: StockPhoto, apiKeys: StockPhotoApiKeys, log: LogFunction): Promise<string> => {
     try {
         log({ type: 'request', message: `Скачивание фото через proxy от ${photo.photographer}...` });
+
+        const { getStockPhotoKeys } = await import('../config/appConfig');
+        const finalKeys = getStockPhotoKeys(apiKeys);
+        const apiKey = photo.source === 'unsplash' ? finalKeys.unsplash : finalKeys.pexels;
         
         // Запрос к proxy endpoint
         const response = await fetch('/api/download-image', {
@@ -286,7 +290,11 @@ export const downloadStockPhoto = async (photo: StockPhoto, log: LogFunction): P
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ url: photo.downloadUrl })
+            body: JSON.stringify({
+                url: photo.downloadUrl,
+                source: photo.source,
+                apiKey: apiKey
+            })
         });
 
         if (!response.ok) {

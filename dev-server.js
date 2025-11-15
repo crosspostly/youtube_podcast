@@ -80,7 +80,7 @@ app.get('/api/audio-proxy', async (req, res) => {
   }
 });
 
-app.all('/api/freesound', async (req, res) => {
+app.post('/api/freesound', async (req, res) => {
   try {
     const { query, customApiKey } = req.method === 'GET' ? req.query : req.body;
 
@@ -88,11 +88,12 @@ app.all('/api/freesound', async (req, res) => {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    const apiKey = customApiKey || '4E54XDGL5Pc3Pf6Gk';
+    const apiKey = customApiKey || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6GkC';
     const searchUrl = `https://freesound.org/apiv2/search/text/?query=${encodeURIComponent(query)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
 
     const response = await fetch(searchUrl, {
       method: 'GET',
+      signal: AbortSignal.timeout(15000), // Add 15s timeout
       headers: {
         'Authorization': `Token ${apiKey}`,
         'Content-Type': 'application/json',
@@ -121,10 +122,10 @@ app.all('/api/freesound', async (req, res) => {
 
 app.post('/api/download-image', async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, source, apiKey } = req.body;
 
-    if (!url || typeof url !== 'string') {
-      return res.status(400).json({ error: 'Missing or invalid url parameter' });
+    if (!url || typeof url !== 'string' || !source || !apiKey) {
+      return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
     }
 
     // Validate URL format and domain
@@ -145,11 +146,19 @@ app.post('/api/download-image', async (req, res) => {
 
     console.log(`Image download proxy: Downloading image from ${targetUrl}`);
 
+    let authHeader = {};
+    if (source === 'unsplash') {
+        authHeader = { 'Authorization': `Client-ID ${apiKey}` };
+    } else if (source === 'pexels') {
+        authHeader = { 'Authorization': apiKey };
+    }
+
     // Fetch the image file
     const response = await fetch(targetUrl, {
       method: 'GET',
       headers: {
         'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+        ...authHeader
       },
     });
 
@@ -194,6 +203,6 @@ app.listen(PORT, () => {
   console.log(`Development API server running on http://localhost:${PORT}`);
   console.log('Available endpoints:');
   console.log('  GET /api/audio-proxy?url=<encoded_url>');
-  console.log('  POST /api/download-image (body: { url })');
+  console.log('  POST /api/download-image (body: { url, source, apiKey })');
   console.log('  POST /api/freesound (body: { query, customApiKey? })');
 });

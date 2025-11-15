@@ -18,10 +18,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { url } = req.body;
+    const { url, source, apiKey } = req.body;
 
-    if (!url || typeof url !== 'string') {
-      res.status(400).json({ error: 'Missing or invalid url parameter' });
+    if (!url || typeof url !== 'string' || !source || !apiKey) {
+      res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
       return;
     }
 
@@ -45,11 +45,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log(`Image download proxy: Downloading image from ${targetUrl}`);
 
+    let authHeader = {};
+    if (source === 'unsplash') {
+        authHeader = { 'Authorization': `Client-ID ${apiKey}` };
+    } else if (source === 'pexels') {
+        authHeader = { 'Authorization': apiKey };
+    }
+
     // Fetch the image file
     const response = await fetch(targetUrl, {
       method: 'GET',
       headers: {
         'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+        ...authHeader
       },
     });
 

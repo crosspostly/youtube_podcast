@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY || '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6GkC';
 const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -33,6 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const response = await fetch(searchUrl, {
       method: 'GET',
+      signal: AbortSignal.timeout(15000), // Add 15s timeout
       headers: {
         'Authorization': `Token ${apiKey}`,
         'Content-Type': 'application/json',

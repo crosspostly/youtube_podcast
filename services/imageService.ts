@@ -75,7 +75,7 @@ export const regenerateSingleImage = async (
             
             if (photos.length > 0) {
                 log({ type: 'response', message: `✅ Изображение найдено на ${photos[0].source}` });
-                const base64 = await downloadStockPhoto(photos[0], log);
+                const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
                 return {
                     url: base64,
                     photographer: photos[0].photographer,
@@ -96,12 +96,13 @@ export const regenerateSingleImage = async (
         const ai = getAiClient(apiKeys.gemini, log);
         
         const generateCall = () => ai.models.generateContent({
-            model: 'imagen-3.0-generate-001',
+            model: 'imagen-4.0-generate-001',
             contents: { parts: [{ text: fullPrompt }] },
             config: { responseModalities: [Modality.IMAGE] },
         });
 
-        const response = await withImageQueueAndRetries(generateCall, log, { retries: 2 });
+        // FIX: Explicitly type the response to help TypeScript's inference.
+        const response: GenerateContentResponse = await withImageQueueAndRetries(generateCall, log, { retries: 2 });
         
         const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
         if (part?.inlineData) {
@@ -140,7 +141,7 @@ export const regenerateSingleImage = async (
             
             if (photos.length > 0) {
                 log({ type: 'response', message: '✅ Изображение найдено на стоковом сервисе (fallback)' });
-                const base64 = await downloadStockPhoto(photos[0], log);
+                const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
                 return {
                     url: base64,
                     photographer: photos[0].photographer,
