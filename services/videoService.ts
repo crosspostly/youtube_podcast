@@ -8,52 +8,40 @@ import { generateSrtFile } from './srtService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
-// All FFmpeg components must be from the @ffmpeg/core package for compatibility
 const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.js';
 const FFMPEG_WASM_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
 const FFMPEG_WORKER_URL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
 
 let ffmpeg: FFmpeg | null = null;
+let isCancellationRequested = false;
 
 // Fallback placeholder base64 for broken images
-const FALLBACK_PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAyNCIgaGVpZ2h0PSI1NzYiIHZpZXdCb3g9IjAgMCAxMDI0IDU3NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMjQiIGhlaWdodD0iNTc2IiBmaWxsPSIjMzMzMzMzIi8+Cjx0ZXh0IHg9IjUxMiIgeT0iMjg4IiBmb250LWZhbWlseT0iSW50ZXIsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjI0IiBmaWxsPSIjOTk5OTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iPkltYWdlIFVudmFpbGFibGU8L3RleHQ+Cjwvc3ZnPg==';
+const FALLBACK_PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTI4MCIgaGVpZ2h0PSI3MjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEyODAiIGhlaWdodD0iNzIwIiBmaWxsPSIjMzc0MTUxIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSI0MCIgZmlsbD0iI2RlZGVkZSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkltYWdlIFVubmF2YWlsYWJsZTwvdGV4dD48L3N2Zz4=';
 
-// Image URL validation function
-async function validateImageUrl(url: string): Promise<boolean> {
-    try {
-        if (url.startsWith('data:')) {
-            return true;
-        }
-        
-        const response = await fetch(url, { 
-            method: 'HEAD',
-            mode: 'no-cors' 
-        });
-        return true;
-    } catch (error) {
+export const cancelFfmpeg = () => {
+    isCancellationRequested = true;
+    if (ffmpeg) {
         try {
-            const response = await fetch(url, { method: 'GET' });
-            return response.ok;
-        } catch {
-            return false;
+            ffmpeg.terminate();
+        } catch (e) {
+            console.warn("Could not terminate FFmpeg, it might have already finished.", e);
         }
     }
-}
+};
 
-// Image loading with CORS handling and timeout
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         
         const timeout = setTimeout(() => {
-            reject(new Error(`Image load timeout: ${src.substring(0, 100)}...`));
-        }, 10000); // 10 second timeout
+            reject(new Error(`Image load timeout (10s): ${src.substring(0, 100)}...`));
+        }, 10000);
         
         img.onload = () => {
             clearTimeout(timeout);
             if (img.naturalWidth === 0 || img.naturalHeight === 0) {
-                reject(new Error(`Invalid image dimensions: ${src.substring(0, 100)}...`));
+                reject(new Error(`Invalid image dimensions (0x0): ${src.substring(0, 100)}...`));
             } else {
                 resolve(img);
             }
@@ -68,6 +56,15 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
     });
 };
 
+const formatTime = (seconds: number): string => {
+    if (isNaN(seconds) || seconds < 0) return '00:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
+};
+
+
 export const generateVideo = async (
     podcast: Podcast,
     audioBlob: Blob,
@@ -75,9 +72,10 @@ export const generateVideo = async (
     log: LogFunction,
     manualDurations?: number[]
 ): Promise<Blob> => {
+    isCancellationRequested = false;
     
     // --- 1. Initialization ---
-    onProgress(0, 'Загрузка видео-движка FFmpeg...');
+    onProgress(0, '1/5 Загрузка видео-движка...');
     log({ type: 'info', message: 'Загрузка FFmpeg...' });
     
     if (!ffmpeg) {
@@ -85,7 +83,6 @@ export const generateVideo = async (
         ffmpeg.on('log', ({ message }) => {
             log({ type: 'info', message: `[FFMPEG] ${message}` });
         });
-        
         await ffmpeg.load({
             coreURL: await toBlobURL(FFMPEG_CORE_URL, 'text/javascript'),
             wasmURL: await toBlobURL(FFMPEG_WASM_URL, 'application/wasm'),
@@ -95,246 +92,117 @@ export const generateVideo = async (
     log({ type: 'info', message: 'FFmpeg загружен.' });
     
     // --- 2. Prepare Assets & Pacing ---
-    onProgress(0.05, 'Подготовка ресурсов и анализ темпа...');
+    onProgress(0.05, '2/5 Подготовка ресурсов...');
     
-    let totalDuration: number;
-    let imagesToUse: HTMLImageElement[];
-    let imageDurations: number[];
-
     const allGeneratedImages = podcast.chapters.flatMap(c => c.generatedImages || []);
-    if (allGeneratedImages.length === 0) throw new Error("Для генерации видео нет доступных изображений.");
+    if (allGeneratedImages.length === 0) {
+        throw new Error("Для генерации видео нет доступных изображений.");
+    }
     
     log({ type: 'info', message: `Проверка доступности ${allGeneratedImages.length} изображений...` });
     
-    const safeImages = await Promise.all(
-        allGeneratedImages.map(async (image, index) => {
-            try {
-                const isValid = await validateImageUrl(image.url);
-                if (!isValid) {
-                    log({ type: 'warning', message: `Изображение ${index + 1} недоступно, используем placeholder` });
-                    return { ...image, url: FALLBACK_PLACEHOLDER_BASE64 };
-                }
-                return image;
-            } catch (error) {
-                log({ type: 'warning', message: `Ошибка проверки изображения ${index + 1}, используем placeholder` });
-                return { ...image, url: FALLBACK_PLACEHOLDER_BASE64 };
-            }
-        })
-    );
+    const loadedImageResults = await Promise.allSettled(allGeneratedImages.map(img => loadImage(img.url)));
     
-    const loadedImages = await Promise.allSettled(
-        safeImages.map(async (image, index) => {
-            try {
-                return await loadImage(image.url);
-            } catch (error) {
-                log({ type: 'warning', message: `Не удалось загрузить изображение ${index + 1}, используем placeholder` });
-                return await loadImage(FALLBACK_PLACEHOLDER_BASE64);
-            }
-        })
-    );
+    const imagesToUse: HTMLImageElement[] = [];
+    const placeholderImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
     
-    const finalImages = loadedImages.map((result, index) => {
+    loadedImageResults.forEach((result, index) => {
         if (result.status === 'fulfilled') {
-            return result.value;
+            imagesToUse.push(result.value);
         } else {
-            log({ type: 'warning', message: `Критическая ошибка загрузки изображения ${index + 1}, используем emergency placeholder` });
-            const img = new (window as any).Image();
-            img.width = 1280;
-            img.height = 720;
-            return loadImage(FALLBACK_PLACEHOLDER_BASE64);
+            log({ type: 'warning', message: `Не удалось загрузить изображение ${index + 1}, используется placeholder.`, data: result.reason });
+            imagesToUse.push(placeholderImage);
         }
     });
-    
-    const resolvedImages = await Promise.all(finalImages);
 
-    if (manualDurations && manualDurations.length === resolvedImages.length) {
+    let totalDuration: number;
+    let imageDurations: number[];
+
+    if (manualDurations && manualDurations.length === imagesToUse.length) {
         log({ type: 'info', message: `Используется ручной режим расстановки времени.` });
-        onProgress(0.1, 'Применение ручных настроек времени...');
-        imagesToUse = resolvedImages;
         imageDurations = manualDurations;
         totalDuration = imageDurations.reduce((sum, d) => sum + d, 0);
-        log({ type: 'info', message: `Ручной режим: ${imagesToUse.length} сцен, общая длительность видео ${totalDuration.toFixed(1)}с.` });
     } else {
         log({ type: 'info', message: `Используется автоматический режим расстановки времени.` });
-        onProgress(0.1, 'Анализ темпа повествования...');
-        
-        const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContextClass) {
-            throw new Error('Web Audio API не поддерживается в этом браузере');
-        }
-        
-        const audioContext = new AudioContextClass();
+        const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
         totalDuration = audioBuffer.duration;
-        
-        const MIN_IMAGE_DURATION = 4;
-        const MAX_IMAGE_DURATION = 15;
-        
-        let autoImagesToUse = [...resolvedImages];
-        let finalImageDuration = totalDuration / autoImagesToUse.length;
-
-        if (finalImageDuration > MAX_IMAGE_DURATION) {
-            const loopsNeeded = Math.ceil(finalImageDuration / MAX_IMAGE_DURATION);
-            const originalImages = [...autoImagesToUse];
-            for (let i = 1; i < loopsNeeded; i++) {
-                autoImagesToUse.push(...originalImages);
-            }
-        }
-
-        finalImageDuration = totalDuration / autoImagesToUse.length;
-        if (finalImageDuration < MIN_IMAGE_DURATION) {
-            let imagesNeeded = Math.floor(totalDuration / MIN_IMAGE_DURATION);
-            if (imagesNeeded > 0 && imagesNeeded < autoImagesToUse.length) {
-                const step = autoImagesToUse.length / imagesNeeded;
-                autoImagesToUse = Array.from({ length: imagesNeeded }, (_, i) => autoImagesToUse[Math.floor(i * step)]);
-            } else if (imagesNeeded <= 0) {
-                autoImagesToUse = [autoImagesToUse[0]];
-            }
-        }
-        
-        imagesToUse = autoImagesToUse;
-        finalImageDuration = totalDuration / imagesToUse.length;
-        imageDurations = Array(imagesToUse.length).fill(finalImageDuration);
-        log({ type: 'info', message: `Авто-режим: ${imagesToUse.length} сцен по ~${finalImageDuration.toFixed(1)}с.` });
+        imageDurations = Array(imagesToUse.length).fill(totalDuration / imagesToUse.length);
     }
 
     // --- 3. Write Assets to FFmpeg Memory ---
-    onProgress(0.15, 'Запись ресурсов в память FFmpeg...');
     await ffmpeg.writeFile('audio.wav', await fetchFile(audioBlob));
-    const srtBlob = await generateSrtFile(podcast, log);
-    await ffmpeg.writeFile('subtitles.srt', await fetchFile(srtBlob));
+    await ffmpeg.writeFile('subtitles.srt', await fetchFile(await generateSrtFile(podcast, log)));
     
     for (let i = 0; i < imagesToUse.length; i++) {
-        const image = imagesToUse[i];
         const progress = 0.15 + (i / imagesToUse.length) * 0.15;
-        onProgress(progress, `Запись изображения ${i + 1}/${imagesToUse.length}...`);
-        
-        try {
-            const canvas = (window as any).document.createElement('canvas');
-            canvas.width = (image as any).width || 1280;
-            canvas.height = (image as any).height || 720;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                throw new Error('Failed to get canvas context');
-            }
-            
-            if (!(image as any).width || !(image as any).height) {
-                log({ type: 'warning', message: `Изображение ${i + 1} имеет некорректные размеры, используем placeholder` });
-                const fallbackImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
-                ctx.drawImage(fallbackImage, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.drawImage(image, 0, 0);
-            }
-            
-            const blob = await new Promise<Blob | null>((resolve, reject) => {
-                canvas.toBlob((blob) => {
-                    if (blob) {
-                        resolve(blob);
-                    } else {
-                        reject(new Error('Failed to create blob from canvas'));
-                    }
-                }, 'image/png');
-            });
-            
-            if (blob) {
-                await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
-                log({ type: 'info', message: `Изображение ${i + 1} успешно записано в FFmpeg` });
-            } else {
-                throw new Error('Failed to create image blob');
-            }
-            
-        } catch (error) {
-            log({ type: 'error', message: `Критическая ошибка при обработке изображения ${i + 1}, используем emergency placeholder` });
-            
-            try {
-                const fallbackImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
-                const canvas = (window as any).document.createElement('canvas');
-                canvas.width = 1280;
-                canvas.height = 720;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                    ctx.drawImage(fallbackImage, 0, 0);
-                    const blob = await new Promise<Blob | null>((resolve) => {
-                        canvas.toBlob(resolve, 'image/png');
-                    });
-                    if (blob) {
-                        await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
-                        log({ type: 'info', message: `Emergency placeholder для изображения ${i + 1} успешно создан` });
-                    }
-                }
-            } catch (fallbackError) {
-                log({ type: 'error', message: `Даже emergency fallback не сработал для изображения ${i + 1}` });
-            }
-        }
+        onProgress(progress, `3/5 Запись данных в память (${i + 1}/${imagesToUse.length})...`);
+        const canvas = (window as any).document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(imagesToUse[i], 0, 0, 1280, 720);
+        const blob = await new Promise<Blob|null>(resolve => canvas.toBlob(resolve, 'image/png'));
+        await ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob!));
     }
-    onProgress(0.3, 'Ресурсы записаны.');
 
-    // --- 4. Build FFmpeg Command with Complex Filter ---
-    const FPS = 30;
+    // --- 4. Build & Execute FFmpeg Command ---
     const filterComplex: string[] = [];
     const videoStreams: string[] = [];
     const ffmpegInputArgs: string[] = [];
 
     imagesToUse.forEach((_, i) => {
-        const inputIndex = i;
-        const duration = imageDurations[i];
-        ffmpegInputArgs.push('-loop', '1', '-t', String(duration), '-i', `image-${String(i).padStart(3, '0')}.png`);
-        
-        filterComplex.push(
-            `[${inputIndex}:v] ` +
-            `scale=1280:720, ` +
-            `format=pix_fmts=yuv420p, ` +
-            `zoompan=z='min(zoom+0.001,1.1)':d=${Math.ceil(FPS * duration)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)' ` +
-            `[v${i}]`
-        );
+        ffmpegInputArgs.push('-loop', '1', '-t', String(imageDurations[i]), '-i', `image-${String(i).padStart(3, '0')}.png`);
+        filterComplex.push(`[${i}:v]scale=1280:720,format=pix_fmts=yuv420p,zoompan=z='min(zoom+0.001,1.1)':d=${Math.ceil(30 * imageDurations[i])}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'[v${i}]`);
         videoStreams.push(`[v${i}]`);
     });
 
     filterComplex.push(`${videoStreams.join('')}concat=n=${imagesToUse.length}:v=1:a=0[concatv]`);
     filterComplex.push(`[concatv]subtitles=subtitles.srt:force_style='FontName=Inter,FontSize=32,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=3,Outline=4,Shadow=2'[outv]`);
     
-    const finalFilterComplex = filterComplex.join(';');
-
     const ffmpegArgs = [
-        ...ffmpegInputArgs,
-        '-i', 'audio.wav',
-        '-filter_complex', finalFilterComplex,
-        '-map', '[outv]',
-        '-map', `${imagesToUse.length}:a`,
+        ...ffmpegInputArgs, '-i', 'audio.wav',
+        '-filter_complex', filterComplex.join(';'),
+        '-map', '[outv]', '-map', `${imagesToUse.length}:a`,
         '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k',
-        '-shortest',
+        '-c:a', 'aac', '-b:a', '192k', '-shortest',
         'output.mp4'
     ];
 
-    // --- 5. Execute FFmpeg ---
-    onProgress(0.35, 'Запуск видео-рендеринга...');
-    log({ type: 'request', message: 'Запуск команды FFmpeg', data: ffmpegArgs.join(' ') });
-    
+    onProgress(0.35, '4/5 Рендеринг видео...');
     ffmpeg.on('progress', ({ progress, time }) => {
-        const ffmpegProgress = time / totalDuration;
-        onProgress(0.35 + (ffmpegProgress * 0.6), `Компиляция видео... ${Math.round(ffmpegProgress * 100)}%`);
+        if (isCancellationRequested) return;
+        const currentProgress = Math.min(1, Math.max(0, progress));
+        const processedTime = time / 1000000; // time is in microseconds
+        onProgress(
+            0.35 + (currentProgress * 0.6),
+            `4/5 Рендеринг видео... ${Math.round(currentProgress * 100)}% (${formatTime(processedTime)} / ${formatTime(totalDuration)})`
+        );
     });
 
-    await ffmpeg.exec(ffmpegArgs);
-    
-    log({ type: 'info', message: 'Команда FFmpeg завершена.' });
-    onProgress(0.95, 'Финальная обработка...');
+    try {
+        await ffmpeg.exec(ffmpegArgs);
+    } catch(error: any) {
+        if (isCancellationRequested) {
+            log({type: 'info', message: 'Генерация видео отменена пользователем.'});
+            throw new Error('cancelled'); // Specific error for cancellation
+        }
+        throw error; // Re-throw other errors
+    }
 
-    // --- 6. Retrieve & Return Video ---
+    // --- 5. Retrieve & Cleanup ---
+    onProgress(0.95, '5/5 Финальная обработка...');
     const data = await ffmpeg.readFile('output.mp4');
-    const videoBlob = new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
-
-    // --- 7. Cleanup ---
-    log({ type: 'info', message: 'Очистка временных файлов...' });
-    const deletionPromises = imagesToUse.map((_, i) => ffmpeg!.deleteFile(`image-${String(i).padStart(3, '0')}.png`));
-    deletionPromises.push(ffmpeg!.deleteFile('audio.wav'));
-    deletionPromises.push(ffmpeg!.deleteFile('subtitles.srt'));
-    deletionPromises.push(ffmpeg!.deleteFile('output.mp4'));
-    await Promise.all(deletionPromises);
-    log({ type: 'info', message: 'Очистка завершена.' });
     
-    ffmpeg.off('progress', () => {});
+    // Cleanup
+    for (let i = 0; i < imagesToUse.length; i++) {
+        await ffmpeg.deleteFile(`image-${String(i).padStart(3, '0')}.png`);
+    }
+    await ffmpeg.deleteFile('audio.wav');
+    await ffmpeg.deleteFile('subtitles.srt');
+    await ffmpeg.deleteFile('output.mp4');
+    
+    ffmpeg.off('progress', ()=>{});
     onProgress(1, 'Видео готово!');
-    return videoBlob;
+    return new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
 };
