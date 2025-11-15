@@ -4,6 +4,7 @@ import { usePodcastContext } from '../context/PodcastContext';
 import Spinner from './Spinner';
 import { ChapterIcon, RedoIcon, CombineIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PauseIcon, PlayIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, LanguageIcon, SubtitleIcon, SearchIcon, CloseIcon, VideoCameraIcon } from './Icons';
 import StockPhotoModal from './StockPhotoModal';
+import { cleanupPodcastImages } from '../utils/memoryCleanup';
 
 interface PodcastStudioProps {
     onEditThumbnail: (thumbnail: YoutubeThumbnail) => void;
