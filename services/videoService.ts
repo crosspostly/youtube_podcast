@@ -1,3 +1,5 @@
+// Enhanced video service with image protection
+
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 import type { Podcast, LogEntry } from '../types';
@@ -11,17 +13,64 @@ const FFMPEG_CORE_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/
 const FFMPEG_WASM_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.wasm';
 const FFMPEG_WORKER_URL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm/ffmpeg-core.worker.js';
 
-
 let ffmpeg: FFmpeg | null = null;
 
-// Загрузка изображения с обработкой CORS
+// Fallback placeholder base64 для битых изображений
+const FALLBACK_PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAyNCIgaGVpZ2h0PSI1NzYiIHZpZXdCb3g9IjAgMCAxMDI0IDU3NiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjEwMjQiIGhlaWdodD0iNTc2IiBmaWxsPSIjMzMzMzMzIi8+Cjx0ZXh0IHg9IjUxMiIgeT0iMjg4IiBmb250LWZhbWlseT0iSW50ZXIsIEFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjI0IiBmaWxsPSIjOTk5OTk5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iMC4zZW0iPkltYWdlIFVudmFpbGFibGU8L3RleHQ+Cjwvc3ZnPg==';
+
+// Функция валидации URL изображения
+async function validateImageUrl(url: string): Promise<boolean> {
+    try {
+        // Проверяем, что URL начинается с data: (base64) - это всегда валидно
+        if (url.startsWith('data:')) {
+            return true;
+        }
+        
+        // Для внешних URL делаем HEAD запрос
+        const response = await fetch(url, { 
+            method: 'HEAD',
+            mode: 'no-cors' // чтобы избежать CORS ошибок при проверке
+        });
+        // При no-cors мы не можем проверить статус, так что считаем успешным
+        return true;
+    } catch (error) {
+        // Если HEAD запрос не удался, пробуем GET запрос
+        try {
+            const response = await fetch(url, { method: 'GET' });
+            return response.ok;
+        } catch {
+            return false;
+        }
+    }
+}
+
+// Загрузка изображения с обработкой CORS и таймаутом
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         // FIX: Prefix `Image` with `window.` to resolve missing DOM type error.
         const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
-        img.onload = () => resolve(img);
-        img.onerror = (err) => reject(new Error(`Failed to load image: ${src.substring(0, 100)}...`));
+        
+        // Добавляем таймаут для предотвращения зависания
+        const timeout = setTimeout(() => {
+            reject(new Error(`Image load timeout: ${src.substring(0, 100)}...`));
+        }, 10000); // 10 секунд таймаут
+        
+        img.onload = () => {
+            clearTimeout(timeout);
+            // Дополнительная проверка размеров изображения
+            if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                reject(new Error(`Invalid image dimensions: ${src.substring(0, 100)}...`));
+            } else {
+                resolve(img);
+            }
+        };
+        
+        img.onerror = (err) => {
+            clearTimeout(timeout);
+            reject(new Error(`Failed to load image: ${src.substring(0, 100)}...`));
+        };
+        
         img.src = src;
     });
 };
@@ -62,13 +111,62 @@ export const generateVideo = async (
 
     const allGeneratedImages = podcast.chapters.flatMap(c => c.generatedImages || []);
     if (allGeneratedImages.length === 0) throw new Error("Для генерации видео нет доступных изображений.");
-    const loadedImages = await Promise.all(allGeneratedImages.map(image => loadImage(image.url)));
+    
+    // Валидация и безопасная загрузка изображений с fallback
+    log({ type: 'info', message: `Проверка доступности ${allGeneratedImages.length} изображений...` });
+    
+    const safeImages = await Promise.all(
+        allGeneratedImages.map(async (image, index) => {
+            try {
+                const isValid = await validateImageUrl(image.url);
+                if (!isValid) {
+                    log({ type: 'warning', message: `Изображение ${index + 1} недоступно, используем placeholder` });
+                    return { ...image, url: FALLBACK_PLACEHOLDER_BASE64 };
+                }
+                return image;
+            } catch (error) {
+                log({ type: 'warning', message: `Ошибка проверки изображения ${index + 1}, используем placeholder` });
+                return { ...image, url: FALLBACK_PLACEHOLDER_BASE64 };
+            }
+        })
+    );
+    
+    // Загружаем изображения с дополнительной защитой
+    const loadedImages = await Promise.allSettled(
+        safeImages.map(async (image, index) => {
+            try {
+                return await loadImage(image.url);
+            } catch (error) {
+                log({ type: 'warning', message: `Не удалось загрузить изображение ${index + 1}, используем placeholder` });
+                // Если загрузка не удалась, используем placeholder
+                return await loadImage(FALLBACK_PLACEHOLDER_BASE64);
+            }
+        })
+    );
+    
+    // Extract successful loads or use placeholder for failed ones
+    const finalImages = loadedImages.map((result, index) => {
+        if (result.status === 'fulfilled') {
+            return result.value;
+        } else {
+            log({ type: 'warning', message: `Критическая ошибка загрузки изображения ${index + 1}, используем emergency placeholder` });
+            // Создаем пустое изображение как последний fallback
+            const img = new (window as any).Image();
+            img.width = 1280;
+            img.height = 720;
+            // Возвращаем заглушку, которая точно сработает
+            return loadImage(FALLBACK_PLACEHOLDER_BASE64);
+        }
+    });
+    
+    // Ждем всех emergency fallback'ов
+    const resolvedImages = await Promise.all(finalImages);
 
-    if (manualDurations && manualDurations.length === loadedImages.length) {
+    if (manualDurations && manualDurations.length === resolvedImages.length) {
         // MANUAL PACING
         log({ type: 'info', message: `Используется ручной режим расстановки времени.` });
         onProgress(0.1, 'Применение ручных настроек времени...');
-        imagesToUse = loadedImages;
+        imagesToUse = resolvedImages;
         imageDurations = manualDurations;
         totalDuration = imageDurations.reduce((sum, d) => sum + d, 0);
         log({ type: 'info', message: `Ручной режим: ${imagesToUse.length} сцен, общая длительность видео ${totalDuration.toFixed(1)}с.` });
@@ -91,7 +189,7 @@ export const generateVideo = async (
         const MIN_IMAGE_DURATION = 4;
         const MAX_IMAGE_DURATION = 15;
         
-        let autoImagesToUse = [...loadedImages];
+        let autoImagesToUse = [...resolvedImages];
         let finalImageDuration = totalDuration / autoImagesToUse.length;
 
         if (finalImageDuration > MAX_IMAGE_DURATION) {
@@ -127,26 +225,76 @@ export const generateVideo = async (
     
     // STABILITY IMPROVEMENT: Write images sequentially instead of all at once.
     // This prevents a massive memory spike by not creating all image blobs concurrently.
+    // ENHANCED: Added error handling for each image to prevent video generation failure.
     for (let i = 0; i < imagesToUse.length; i++) {
         const image = imagesToUse[i];
         const progress = 0.15 + (i / imagesToUse.length) * 0.15; // This stage takes 15% of progress
         onProgress(progress, `Запись изображения ${i + 1}/${imagesToUse.length}...`);
         
-        // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
-        const canvas = (window as any).document.createElement('canvas');
-        // FIX: Cast image to `any` to access width/height properties.
-        canvas.width = (image as any).width;
-        canvas.height = (image as any).height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) continue;
-        ctx.drawImage(image, 0, 0);
-        const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
-        if (blob) {
-            await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
+        try {
+            // FIX: Prefix `document` with `window.` to resolve missing DOM type error.
+            const canvas = (window as any).document.createElement('canvas');
+            // FIX: Cast image to `any` to access width/height properties.
+            canvas.width = (image as any).width || 1280; // Fallback width
+            canvas.height = (image as any).height || 720; // Fallback height
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                throw new Error('Failed to get canvas context');
+            }
+            
+            // Проверяем, что изображение загрузилось корректно
+            if (!(image as any).width || !(image as any).height) {
+                log({ type: 'warning', message: `Изображение ${i + 1} имеет некорректные размеры, используем placeholder` });
+                const fallbackImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
+                ctx.drawImage(fallbackImage, 0, 0, canvas.width, canvas.height);
+            } else {
+                ctx.drawImage(image, 0, 0);
+            }
+            
+            const blob = await new Promise<Blob | null>((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Failed to create blob from canvas'));
+                    }
+                }, 'image/png');
+            });
+            
+            if (blob) {
+                await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
+                log({ type: 'info', message: `Изображение ${i + 1} успешно записано в FFmpeg` });
+            } else {
+                throw new Error('Failed to create image blob');
+            }
+            
+        } catch (error) {
+            log({ type: 'error', message: `Критическая ошибка при обработке изображения ${i + 1}, используем emergency placeholder` });
+            
+            // Emergency fallback: создаем placeholder программно
+            try {
+                const fallbackImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
+                const canvas = (window as any).document.createElement('canvas');
+                canvas.width = 1280;
+                canvas.height = 720;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(fallbackImage, 0, 0);
+                    const blob = await new Promise<Blob | null>((resolve) => {
+                        canvas.toBlob(resolve, 'image/png');
+                    });
+                    if (blob) {
+                        await ffmpeg!.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob));
+                        log({ type: 'info', message: `Emergency placeholder для изображения ${i + 1} успешно создан` });
+                    }
+                }
+            } catch (fallbackError) {
+                log({ type: 'error', message: `Даже emergency fallback не сработал для изображения ${i + 1}` });
+                // Продолжаем без этого изображения - FFmpeg упадет, но хотя бы попробуем
+            }
         }
     }
     onProgress(0.3, 'Ресурсы записаны.');
-
 
     // --- 4. Build FFmpeg Command with Complex Filter ---
     const FPS = 30;
