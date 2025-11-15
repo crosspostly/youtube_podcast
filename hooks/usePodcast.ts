@@ -1,4 +1,5 @@
 import { safeLower, parseErrorMessage } from '../utils/safeLower-util';
+import { cleanupPodcastImages, forceGarbageCollection } from '../utils/memoryCleanup';
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { generatePodcastBlueprint, generateNextChapterScript, generateChapterAudio, combineAndMixAudio, regenerateTextAssets, generateThumbnailDesignConcepts, convertWavToMp3, findMusicWithAi, findMusicManually } from '../services/ttsService';
@@ -414,10 +415,25 @@ export const usePodcast = (
             // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
+
+            log({ type: 'response', message: `✅ Аудио экспортировано (${format})` });
+            
+            // ✅ CLEANUP: Изображения больше не нужны после экспорта аудио
+            const cleanedMB = cleanupPodcastImages(podcast);
+            if (cleanedMB > 0) {
+                log({ 
+                    type: 'info', 
+                    message: `🧹 Очищено ${cleanedMB.toFixed(2)} МБ памяти` 
+                });
+            }
+            
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
             setError(friendlyError);
             log({type: 'error', message: `Ошибка при сборке и экспорте (${format})`, data: { friendlyMessage: friendlyError, originalError: err }});
+            
+            // ✅ CLEANUP даже при ошибке
+            cleanupPodcastImages(podcast);
         } finally {
             setLoading(false);
             setLoadingStatus([]);
@@ -478,10 +494,30 @@ export const usePodcast = (
             // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
+
+            log({ type: 'response', message: '✅ Видео успешно создано' });
+            
+            // ✅ CLEANUP: Освобождаем память после успешной генерации
+            const cleanedMB = cleanupPodcastImages(podcastToRender);
+            log({ 
+                type: 'info', 
+                message: `🧹 Очищено ${cleanedMB.toFixed(2)} МБ памяти от base64 изображений` 
+            });
+            
+            // Опционально: принудительная сборка мусора
+            forceGarbageCollection();
+            
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
             setError(friendlyError);
             log({type: 'error', message: 'Ошибка при генерации видео', data: { friendlyMessage: friendlyError, originalError: err }});
+            
+            // ✅ CLEANUP даже при ошибке
+            const cleanedMB = cleanupPodcastImages(podcastToRender);
+            log({ 
+                type: 'info', 
+                message: `🧹 Память очищена (${cleanedMB.toFixed(2)} МБ) несмотря на ошибку` 
+            });
         } finally {
             setIsGeneratingVideo(false);
         }
