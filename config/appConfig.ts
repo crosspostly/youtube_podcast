@@ -1,36 +1,32 @@
-// config/appConfig.ts
-
-import type { AppConfig, ApiRetryConfig, StockPhotoApiKeys } from '../types';
-
 // ============================================================================
-// GEMINI API KEY ИНИЦИАЛИЗАЦИЯ И ВАЛИДАЦИЯ
+// API KEYS ИЗ .env
 // ============================================================================
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || 'AIzaSyDqGdkQYGxv3fYmKVjVCH0gw1Aiq5RyqiE';
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const FREESOUND_API_KEY = import.meta.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
+const UNSPLASH_API_KEY = import.meta.env.VITE_UNSPLASH_API_KEY || process.env.UNSPLASH_API_KEY;
+const PEXELS_API_KEY = import.meta.env.VITE_PEXELS_API_KEY || process.env.PEXELS_API_KEY;
+const JAMENDO_API_KEY = import.meta.env.VITE_JAMENDO_API_KEY || process.env.JAMENDO_API_KEY;
 
 // Проверка при загрузке
 if (GEMINI_API_KEY) {
-  console.log('✅ GEMINI API KEY загружен из конфига');
+  console.log('✅ GEMINI API KEY загружен из .env');
   console.log('🔑 Первые 10 символов:', GEMINI_API_KEY.substring(0, 10) + '...');
-  console.log('🔑 Длина ключа:', GEMINI_API_KEY.length, 'символов');
-  
-  // Базовая валидация формата
-  if (!GEMINI_API_KEY.startsWith('AIzaSy')) {
-    console.warn('⚠️ ВНИМАНИЕ: Ключ не похож на Gemini API key (должен начинаться с AIzaSy)');
-  }
-  if (GEMINI_API_KEY.length < 30) {
-    console.warn('⚠️ ВНИМАНИЕ: Ключ слишком короткий (должно быть ~39 символов)');
-  }
 } else {
-  console.error('❌ GEMINI API KEY не найден! Добавь в .env файл:');
-  console.error('   VITE_GEMINI_API_KEY=your_key_here');
+  console.error('❌ GEMINI API KEY не найден в .env!');
+}
+
+if (JAMENDO_API_KEY) {
+  console.log('✅ JAMENDO API KEY загружен из .env');
+} else {
+  console.warn('⚠️ JAMENDO API KEY не найден');
 }
 
 // ============================================================================
 // API RETRY КОНФИГУРАЦИЯ
 // ============================================================================
 
-const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
+const DEFAULT_API_RETRY_CONFIG = {
     retries: 3,
     initialDelay: 5000, // 5 seconds
     maxDelay: 60000,    // 60 seconds
@@ -42,47 +38,22 @@ const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
 // ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
 // ============================================================================
 
-export const appConfig: AppConfig = {
+export const appConfig = {
     geminiApiKey: GEMINI_API_KEY,
     apiRetry: DEFAULT_API_RETRY_CONFIG
 };
 
-// ============================================================================
-// ФУНКЦИИ ОБНОВЛЕНИЯ КОНФИГУРАЦИИ
-// ============================================================================
-
-export const updateAppConfig = (updates: Partial<AppConfig>) => {
-    Object.assign(appConfig, updates);
-};
-
-export const getApiRetryConfig = (): ApiRetryConfig => {
-    return { ...appConfig.apiRetry };
-};
-
-export const updateApiRetryConfig = (updates: Partial<ApiRetryConfig>) => {
-    Object.assign(appConfig.apiRetry, updates);
-};
-
-// ============================================================================
-// ДЕФОЛТНЫЕ API КЛЮЧИ (разработчика)
-// ============================================================================
-
-export const DEFAULT_FREESOUND_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
+export const DEFAULT_FREESOUND_KEY = FREESOUND_API_KEY || '';
 
 export const DEFAULT_STOCK_PHOTO_KEYS = {
-  unsplash: 'C04GfIdNUSfivrygInhzaCQ6233tvsT5QhJ76Th6RD4',
-  pexels: 'MSK8N1uYAzU1yTNpicrZeWvKnQ1t99vTpy4YDKPHjSlHwaKbKqlFrokZ'
+  unsplash: UNSPLASH_API_KEY || '',
+  pexels: PEXELS_API_KEY || ''
 };
 
-export const getStockPhotoKeys = (userKeys?: StockPhotoApiKeys) => {
-  return {
-    unsplash: userKeys?.unsplash || DEFAULT_STOCK_PHOTO_KEYS.unsplash,
-    pexels: userKeys?.pexels || DEFAULT_STOCK_PHOTO_KEYS.pexels
-  };
+export const API_KEYS = {
+  gemini: GEMINI_API_KEY,
+  freesound: FREESOUND_API_KEY,
+  unsplash: UNSPLASH_API_KEY,
+  pexels: PEXELS_API_KEY,
+  jamendo: JAMENDO_API_KEY
 };
-
-// ============================================================================
-// ЭКСПОРТ ТИПОВ
-// ============================================================================
-
-export type { ApiRetryConfig, AppConfig };
