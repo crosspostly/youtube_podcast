@@ -335,7 +335,7 @@ export const withQueueAndRetries = async <T>(
 };
 
 // Define primary model for text generation
-const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash-lite';
+const PRIMARY_TEXT_MODEL = 'gemini-flash-lite-latest';
 
 // Wrapper for generateContent that includes retries but no OpenRouter fallback.
 export const generateContentWithFallback = async (
