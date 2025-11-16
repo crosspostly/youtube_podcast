@@ -1,20 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite';
-import path from 'path';
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
 
 export default defineConfig({
  plugins: [
    tailwindcss(),
    react(),
+   nodePolyfills(),
  ],
- resolve: {
-   alias: {
-     buffer: 'buffer',
-     process: 'process/browser',
-     stream: 'stream-browserify',
-   }
- },
  optimizeDeps: {
    esbuildOptions: {
      define: {

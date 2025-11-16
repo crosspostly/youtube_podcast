@@ -8,14 +8,8 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 // Placeholder image for fallback cases (1024x576 gray placeholder with text)
 const PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAyNCIgaGVpZ2h0PSI1NzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEwMjQiIGhlaWdodD0iNTc2IiBmaWxsPSIjMzc0MTUxIi8+CiAgPHRleHQgeD0iNTEyIiB5PSIyODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzMiIgZmlsbD0iIzlDQTNBRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+CiAgICBJbWFnZSBVbmF2YWlsYWJsZQogIDwvdGV4dD4KICA8dGV4dCB4PSI1MTIiIHk9IjMyMCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjNkI3MjgwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj4KICAgIFBsYWNlaG9sZGVyCiAgPC90ZXh0Pgo8L3N2Zz4=';
 
-// ============================================================================
-// УПРОЩЕНИЕ AI-ПРОМПТОВ ДЛЯ СТОКОВЫХ ПОИСКОВ
-// ============================================================================
-
 /**
  * Упрощает AI-промпт для поиска на стоковых сервисах
- * Убирает технические термины (cinematic, 8k, hyperrealistic)
- * Оставляет только ключевые объекты и атмосферу
  */
 const simplifyPromptForStock = async (
     aiPrompt: string, 
@@ -48,7 +42,6 @@ const simplifyPromptForStock = async (
         
     } catch (error) {
         log({ type: 'warning', message: 'Не удалось упростить промпт, используем оригинал', data: error });
-        // Fallback: убираем базовые стоп-слова вручную
         return aiPrompt
             .replace(/cinematic|hyperrealistic|8k|ultra-detailed|dramatic lighting|wide angle|lovecraftian horror/gi, '')
             .trim();
@@ -63,9 +56,8 @@ const translateToEnglish = async (
     geminiApiKey: string,
     log: LogFunction
 ): Promise<string> => {
-    // Проверяем, содержит ли только латиницу
     if (/^[a-zA-Z0-9\s,.-]+$/.test(query)) {
-        return query; // Уже на английском
+        return query;
     }
     
     try {
@@ -87,10 +79,6 @@ const translateToEnglish = async (
     }
 };
 
-// ============================================================================
-// ПОИСК НА UNSPLASH
-// ============================================================================
-
 /**
  * Поиск изображений на Unsplash
  */
@@ -99,7 +87,6 @@ const searchUnsplash = async (
     apiKey: string,
     log: LogFunction
 ): Promise<StockPhoto[]> => {
-    // Проверка блокировки ПЕРЕД запросом
     const status = getKeyStatus('unsplash');
     if (status.isBlocked) {
         const remainingTime = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
@@ -113,15 +100,10 @@ const searchUnsplash = async (
     
     const response = await fetch(
         `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape&content_filter=high`,
-        {
-            headers: {
-                'Authorization': `Client-ID ${apiKey}`
-            }
-        }
+        { headers: { 'Authorization': `Client-ID ${apiKey}` } }
     );
 
     if (!response.ok) {
-        // Обработка rate limit
         if (response.status === 429) {
             const errorMsg = 'Rate limit exceeded';
             blockKey('unsplash', errorMsg);
@@ -132,7 +114,6 @@ const searchUnsplash = async (
 
     const data = await response.json();
     
-    // Фильтруем по минимальному разрешению
     const photos = data.results
         .filter((photo: any) => photo.width >= MIN_WIDTH && photo.height >= MIN_HEIGHT)
         .map((photo: any) => ({
@@ -151,10 +132,6 @@ const searchUnsplash = async (
     return photos;
 };
 
-// ============================================================================
-// ПОИСК НА PEXELS
-// ============================================================================
-
 /**
  * Поиск изображений на Pexels
  */
@@ -163,7 +140,6 @@ const searchPexels = async (
     apiKey: string,
     log: LogFunction
 ): Promise<StockPhoto[]> => {
-    // Проверка блокировки ПЕРЕД запросом
     const status = getKeyStatus('pexels');
     if (status.isBlocked) {
         const remainingTime = Math.ceil((status.blockedUntil! - Date.now()) / 60000);
@@ -177,15 +153,10 @@ const searchPexels = async (
     
     const response = await fetch(
         `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`,
-        {
-            headers: {
-                'Authorization': apiKey
-            }
-        }
+        { headers: { 'Authorization': apiKey } }
     );
 
     if (!response.ok) {
-        // Обработка rate limit
         if (response.status === 429) {
             const errorMsg = 'Rate limit exceeded';
             blockKey('pexels', errorMsg);
@@ -196,7 +167,6 @@ const searchPexels = async (
 
     const data = await response.json();
     
-    // Фильтруем по минимальному разрешению
     const photos = data.photos
         .filter((photo: any) => photo.width >= MIN_WIDTH && photo.height >= MIN_HEIGHT)
         .map((photo: any) => ({
@@ -215,43 +185,27 @@ const searchPexels = async (
     return photos;
 };
 
-// ============================================================================
-// ОБРАБОТКА ИЗОБРАЖЕНИЙ
-// ============================================================================
-
 /**
  * Обрезает и масштабирует изображение до 16:9 (1024x576)
  */
 const cropToAspectRatio = async (imageUrl: string, log: LogFunction): Promise<string> => {
     return new Promise((resolve, reject) => {
-        // FIX: Cannot find name 'Image'.
         const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         
-        // Timeout 5 секунд для предотвращения зависания
-        const timeout = setTimeout(() => {
-            reject(new Error('Image load timeout (5s)'));
-        }, 5000);
+        const timeout = setTimeout(() => reject(new Error('Image load timeout (5s)')), 5000);
         
         img.onload = () => {
             clearTimeout(timeout);
-            
-            // FIX: Cannot find name 'document'.
             const canvas = (window as any).document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            
-            if (!ctx) {
-                reject(new Error('Failed to get canvas context'));
-                return;
-            }
+            if (!ctx) return reject(new Error('Failed to get canvas context'));
             
             const targetWidth = 1024;
             const targetHeight = 576; // 16:9
-            
             canvas.width = targetWidth;
             canvas.height = targetHeight;
             
-            // Center crop
             const scale = Math.max(targetWidth / img.width, targetHeight / img.height);
             const scaledWidth = img.width * scale;
             const scaledHeight = img.height * scale;
@@ -286,147 +240,68 @@ export const downloadStockPhoto = async (photo: StockPhoto, apiKeys: StockPhotoA
         const finalKeys = getStockPhotoKeys(apiKeys);
         const apiKey = photo.source === 'unsplash' ? finalKeys.unsplash : finalKeys.pexels;
         
-        // Запрос к proxy endpoint
         const response = await fetch('/api/download-image', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                url: photo.downloadUrl,
-                source: photo.source,
-                apiKey: apiKey
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: photo.downloadUrl, source: photo.source, apiKey: apiKey })
         });
 
-        if (!response.ok) {
-            throw new Error(`Proxy endpoint error: ${response.status}`);
-        }
-
+        if (!response.ok) throw new Error(`Proxy endpoint error: ${response.status}`);
         const { base64 } = await response.json();
+        if (!base64) throw new Error('No base64 data received from proxy');
         
-        if (!base64) {
-            throw new Error('No base64 data received from proxy');
-        }
-        
-        // Обрезаем до 16:9
         const croppedBase64 = await cropToAspectRatio(base64, log);
         
         log({ type: 'response', message: `✅ Фото скачано и обработано через proxy` });
         return croppedBase64;
         
     } catch (error) {
-        log({ 
-            type: 'error', 
-            message: '❌ Не удалось скачать фото, используем placeholder', 
-            data: error 
-        });
-        
-        // FALLBACK: Возвращаем placeholder
+        log({ type: 'error', message: '❌ Не удалось скачать фото, используем placeholder', data: error });
         return PLACEHOLDER_BASE64;
     }
 };
-
-// ============================================================================
-// ГЛАВНАЯ ФУНКЦИЯ ПОИСКА
-// ============================================================================
 
 /**
  * Умный поиск стоковых фото с fallback между сервисами
  */
 export const searchStockPhotos = async (
     rawPrompt: string,
-    userApiKeys: StockPhotoApiKeys,  // Пользовательские ключи
+    userApiKeys: StockPhotoApiKeys,
     geminiApiKey: string,
     preferredService: 'unsplash' | 'pexels' | 'auto',
     log: LogFunction
 ): Promise<StockPhoto[]> => {
     try {
-        // ШАГ 0: Получить финальные ключи (пользовательские ИЛИ дефолтные)
         const { getStockPhotoKeys } = await import('../config/appConfig');
         const finalKeys = getStockPhotoKeys(userApiKeys);
         
-        log({ 
-          type: 'info', 
-          message: `Используются ключи: Unsplash=${finalKeys.unsplash ? '✅' : '❌'}, Pexels=${finalKeys.pexels ? '✅' : '❌'}` 
-        });
+        log({ type: 'info', message: `Используются ключи: Unsplash=${finalKeys.unsplash ? '✅' : '❌'}, Pexels=${finalKeys.pexels ? '✅' : '❌'}` });
         
-        // Шаг 1: Упростить промпт для стоков
         const simplifiedPrompt = await simplifyPromptForStock(rawPrompt, geminiApiKey, log);
-        
-        // Шаг 2: Перевести на английский (если нужно)
         const finalQuery = await translateToEnglish(simplifiedPrompt, geminiApiKey, log);
         
-        // Шаг 3: Поиск на выбранном сервисе с fallback
+        const servicesToTry: ('unsplash' | 'pexels')[] = [];
+        if (preferredService === 'unsplash') {
+            if (finalKeys.unsplash) servicesToTry.push('unsplash');
+            if (finalKeys.pexels) servicesToTry.push('pexels');
+        } else if (preferredService === 'pexels') {
+            if (finalKeys.pexels) servicesToTry.push('pexels');
+            if (finalKeys.unsplash) servicesToTry.push('unsplash');
+        } else { // auto
+            if (finalKeys.unsplash) servicesToTry.push('unsplash');
+            if (finalKeys.pexels) servicesToTry.push('pexels');
+        }
         
-        // ПРИОРИТЕТ 1: UNSPLASH
-        if (preferredService === 'unsplash' && finalKeys.unsplash) {
+        for (const service of servicesToTry) {
             try {
-                log({ type: 'info', message: '🔍 Поиск на Unsplash (приоритетный сервис)' });
-                const photos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
+                log({ type: 'info', message: `🔍 Поиск на ${service}...` });
+                const photos = service === 'unsplash' 
+                    ? await searchUnsplash(finalQuery, finalKeys.unsplash!, log)
+                    : await searchPexels(finalQuery, finalKeys.pexels!, log);
                 if (photos.length > 0) return photos;
-                
-                // Fallback на Pexels
-                if (finalKeys.pexels) {
-                    log({ type: 'warning', message: '⚠️ Unsplash не нашёл результатов, fallback на Pexels...' });
-                    const pexelsPhotos = await searchPexels(finalQuery, finalKeys.pexels, log);
-                    if (pexelsPhotos.length > 0) return pexelsPhotos;
-                }
+                log({ type: 'warning', message: `⚠️ ${service} не нашёл результатов.` });
             } catch (error) {
-                log({ type: 'warning', message: '❌ Unsplash error, trying Pexels...', data: error });
-                if (finalKeys.pexels) {
-                    const pexelsPhotos = await searchPexels(finalQuery, finalKeys.pexels, log);
-                    if (pexelsPhotos.length > 0) return pexelsPhotos;
-                }
-            }
-        } 
-        
-        // ПРИОРИТЕТ 2: PEXELS
-        else if (preferredService === 'pexels' && finalKeys.pexels) {
-            try {
-                log({ type: 'info', message: '🔍 Поиск на Pexels (приоритетный сервис)' });
-                const photos = await searchPexels(finalQuery, finalKeys.pexels, log);
-                if (photos.length > 0) return photos;
-                
-                // Fallback на Unsplash
-                if (finalKeys.unsplash) {
-                    log({ type: 'warning', message: '⚠️ Pexels не нашёл результатов, fallback на Unsplash...' });
-                    const unsplashPhotos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
-                    if (unsplashPhotos.length > 0) return unsplashPhotos;
-                }
-            } catch (error) {
-                log({ type: 'warning', message: '❌ Pexels error, trying Unsplash...', data: error });
-                if (finalKeys.unsplash) {
-                    const unsplashPhotos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
-                    if (unsplashPhotos.length > 0) return unsplashPhotos;
-                }
-            }
-        } 
-        
-        // РЕЖИМ AUTO: Пробуем оба (по умолчанию Unsplash первым)
-        else {
-            log({ type: 'info', message: '🔍 Режим AUTO: пробуем оба сервиса' });
-            
-            // Сначала Unsplash (по умолчанию)
-            if (finalKeys.unsplash) {
-                try {
-                    log({ type: 'info', message: '🔍 Попытка 1: Unsplash' });
-                    const photos = await searchUnsplash(finalQuery, finalKeys.unsplash, log);
-                    if (photos.length > 0) return photos;
-                } catch (error) {
-                    log({ type: 'warning', message: '❌ Unsplash failed in AUTO mode', data: error });
-                }
-            }
-            
-            // Затем Pexels
-            if (finalKeys.pexels) {
-                try {
-                    log({ type: 'info', message: '🔍 Попытка 2: Pexels' });
-                    const photos = await searchPexels(finalQuery, finalKeys.pexels, log);
-                    if (photos.length > 0) return photos;
-                } catch (error) {
-                    log({ type: 'warning', message: '❌ Pexels failed in AUTO mode', data: error });
-                }
+                log({ type: 'warning', message: `❌ Ошибка ${service}, пробуем следующий сервис...`, data: error });
             }
         }
         

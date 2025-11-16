@@ -1,14 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { Buffer } from 'buffer';
-import process from 'process';
 import App from './App';
 import './style.css';
 
-// Polyfills для FFmpeg и других библиотек
-(window as any).Buffer = Buffer;
-(window as any).process = process;
-(window as any).global = globalThis;
+// Polyfills are now handled by vite-plugin-node-polyfills
 
 const rootElement = (window as any).document.getElementById('root');
 if (!rootElement) {
