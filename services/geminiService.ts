@@ -221,7 +221,7 @@ export const withRetries = async <T>(
             consecutive429Count = 0;
             return await fn();
         } catch (error: any) {
-            const errorMessage = safeLower(error?.message || '');
+            const errorMessage = safeLower(error?.message);
             const status = error?.status || error?.response?.status;
 
             const isRetryable =
