@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Stream the audio data
     const audioBuffer = await response.arrayBuffer();
-    res.status(200).send(new Uint8Array(audioBuffer));
+    res.status(200).send(Buffer.from(audioBuffer));
 
     console.log(`Audio proxy: Successfully streamed ${audioBuffer.byteLength} bytes from ${targetUrl}`);
 
