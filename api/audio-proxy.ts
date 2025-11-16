@@ -1,6 +1,3 @@
-// FIX: Declare Buffer to work around missing node types, which are not available in the environment.
-declare const Buffer: any;
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -81,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Stream the audio data
     const audioBuffer = await response.arrayBuffer();
-    res.status(200).send(Buffer.from(audioBuffer));
+    res.status(200).send(new Uint8Array(audioBuffer));
 
     console.log(`Audio proxy: Successfully streamed ${audioBuffer.byteLength} bytes from ${targetUrl}`);
 

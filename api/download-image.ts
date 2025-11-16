@@ -1,7 +1,15 @@
-// FIX: Declare Buffer to work around missing node types, which are not available in the environment.
-declare const Buffer: any;
-
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+// Helper to convert ArrayBuffer to Base64 string
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -79,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Convert to ArrayBuffer and then to base64
     const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const base64 = arrayBufferToBase64(arrayBuffer);
     
     // Return base64 with Data URL scheme
     const dataUrl = `data:${contentType};base64,${base64}`;
