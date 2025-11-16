@@ -4,15 +4,15 @@ import type { Podcast, Chapter, Source, LogEntry, ScriptLine, Character, Thumbna
 import { withQueueAndRetries, generateContentWithFallback, withRetries, RetryConfig } from './geminiService';
 import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
-import { API_KEYS } from '../config/appConfig';
+import { appConfig, API_KEYS } from '../config/appConfig';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; freesound?: string; };
 
 const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {
-  const apiKey = customApiKey?.trim() || process.env.API_KEY;
+  const apiKey = customApiKey?.trim() || appConfig.geminiApiKey;
   if (!apiKey) {
-    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
+    const errorMsg = "❌ Gemini API ключ не настроен. Добавьте ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
@@ -327,8 +327,8 @@ export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<
     return new Blob(mp3Data, { type: 'audio/mp3' });
 };
 
-// Jamendo Client ID for demo purposes. In a real app, this should be a user-provided key.
-const JAMENDO_CLIENT_ID = API_KEYS.jamendo || import.meta.env.VITE_JAMENDO_API_KEY || process.env.JAMENDO_API_KEY || 'a2d33306';
+// Jamendo Client ID from API_KEYS configuration
+const JAMENDO_CLIENT_ID = API_KEYS.jamendo;
 
 export const findMusicManually = async (keywords: string, log: LogFunction): Promise<MusicTrack[]> => {
     if (!JAMENDO_CLIENT_ID) {

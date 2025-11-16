@@ -5,6 +5,7 @@ import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, I
 import { drawCanvas } from './canvasUtils';
 import { withRetries, LogFunction, RetryConfig, withQueueAndRetries } from './geminiService';
 import { searchStockPhotos, downloadStockPhoto } from './stockPhotoService';
+import { appConfig } from '../config/appConfig';
 
 type ApiKeys = { 
   gemini: string; 
@@ -57,9 +58,9 @@ export const resetGeminiCircuitBreaker = () => {
 // --- END: Circuit Breaker ---
 
 const getAiClient = (apiKey: string | undefined, log: LogFunction) => {
-  const finalApiKey = apiKey || process.env.API_KEY;
+  const finalApiKey = apiKey || appConfig.geminiApiKey;
   if (!finalApiKey) {
-    const errorMsg = "Ключ API Gemini не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
+    const errorMsg = "❌ Gemini API ключ не настроен. Добавьте ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
