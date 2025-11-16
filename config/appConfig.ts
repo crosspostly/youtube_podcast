@@ -23,10 +23,12 @@ if (JAMENDO_API_KEY) {
 }
 
 // ============================================================================
-// API RETRY КОНФИГУРАЦИЯ
+// ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
 // ============================================================================
 
-const DEFAULT_API_RETRY_CONFIG = {
+import { ApiRetryConfig, AppConfig } from '../types';
+
+const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
     retries: 3,
     initialDelay: 5000, // 5 seconds
     maxDelay: 60000,    // 60 seconds
@@ -34,13 +36,25 @@ const DEFAULT_API_RETRY_CONFIG = {
     jitterFactor: 0.4   // 40% jitter
 };
 
-// ============================================================================
-// ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
-// ============================================================================
-
-export const appConfig = {
+export const appConfig: AppConfig = {
     geminiApiKey: GEMINI_API_KEY,
     apiRetry: DEFAULT_API_RETRY_CONFIG
+};
+
+// ============================================================================
+// ФУНКЦИИ УПРАВЛЕНИЯ КОНФИГУРАЦИЕЙ (ОБЯЗАТЕЛЬНО ЭКСПОРТИРОВАТЬ!)
+// ============================================================================
+
+export const updateAppConfig = (updates: Partial<AppConfig>) => {
+    Object.assign(appConfig, updates);
+};
+
+export const getApiRetryConfig = (): ApiRetryConfig => {
+    return { ...appConfig.apiRetry };
+};
+
+export const updateApiRetryConfig = (updates: Partial<ApiRetryConfig>) => {
+    Object.assign(appConfig.apiRetry, updates);
 };
 
 export const DEFAULT_FREESOUND_KEY = FREESOUND_API_KEY || '';
@@ -50,6 +64,13 @@ export const DEFAULT_STOCK_PHOTO_KEYS = {
   pexels: PEXELS_API_KEY || ''
 };
 
+export const getStockPhotoKeys = (userKeys?: StockPhotoApiKeys) => {
+  return {
+    unsplash: userKeys?.unsplash || DEFAULT_STOCK_PHOTO_KEYS.unsplash,
+    pexels: userKeys?.pexels || DEFAULT_STOCK_PHOTO_KEYS.pexels
+  };
+};
+
 export const API_KEYS = {
   gemini: GEMINI_API_KEY,
   freesound: FREESOUND_API_KEY,
@@ -57,3 +78,9 @@ export const API_KEYS = {
   pexels: PEXELS_API_KEY,
   jamendo: JAMENDO_API_KEY
 };
+
+// ============================================================================
+// ЭКСПОРТ ТИПОВ
+// ============================================================================
+
+export type { ApiRetryConfig, AppConfig, StockPhotoApiKeys } from '../types';

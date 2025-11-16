@@ -10,11 +10,11 @@ export default defineConfig(({ mode }) => {
       react(),
     ],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-      'process.env.FREESOUND_API_KEY': JSON.stringify(env.FREESOUND_API_KEY),
-      'process.env.UNSPLASH_API_KEY': JSON.stringify(env.UNSPLASH_API_KEY),
-      'process.env.PEXELS_API_KEY': JSON.stringify(env.PEXELS_API_KEY),
-      'process.env.JAMENDO_API_KEY': JSON.stringify(env.JAMENDO_API_KEY),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || ''),
+      'process.env.FREESOUND_API_KEY': JSON.stringify(env.VITE_FREESOUND_API_KEY || env.FREESOUND_API_KEY || ''),
+      'process.env.UNSPLASH_API_KEY': JSON.stringify(env.VITE_UNSPLASH_API_KEY || env.UNSPLASH_API_KEY || ''),
+      'process.env.PEXELS_API_KEY': JSON.stringify(env.VITE_PEXELS_API_KEY || env.PEXELS_API_KEY || ''),
+      'process.env.JAMENDO_API_KEY': JSON.stringify(env.VITE_JAMENDO_API_KEY || env.JAMENDO_API_KEY || ''),
     },
     server: {
       proxy: {

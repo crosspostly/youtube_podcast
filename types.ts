@@ -201,7 +201,16 @@ export interface StockPhotoKeyStatus {
     lastError?: string;
 }
 
+export interface ApiRetryConfig {
+    retries: number;
+    initialDelay: number;  // in milliseconds
+    maxDelay: number;      // in milliseconds
+    exponentialBase: number;
+    jitterFactor: number;  // 0-1, percentage of jitter
+}
+
 // Global application configuration
 export interface AppConfig {
+  geminiApiKey?: string;
   apiRetry: ApiRetryConfig;
 }
