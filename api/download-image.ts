@@ -52,43 +52,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         authHeader = { 'Authorization': apiKey };
     }
 
-    // Fetch the image file
-    const response = await fetch(targetUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
-        ...authHeader
-      },
-    });
+    let lastError: any;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+            const response = await fetch(targetUrl, {
+              method: 'GET',
+              headers: {
+                'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+                ...authHeader
+              },
+            });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Image download proxy error: ${response.statusText}`, errorText);
-      res.status(response.status).json({
-        error: `Failed to fetch image: ${response.statusText}`,
-        details: errorText,
-      });
-      return;
+            if (!response.ok) {
+                // Don't retry on client-side errors (4xx)
+                if (response.status >= 400 && response.status < 500) {
+                     const errorText = await response.text();
+                     console.error(`Image download proxy error: ${response.statusText}`, errorText);
+                     return res.status(response.status).json({
+                       error: `Failed to fetch image: ${response.statusText}`,
+                       details: errorText,
+                     });
+                }
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            const contentType = response.headers.get('content-type') || 'image/jpeg';
+            const arrayBuffer = await response.arrayBuffer();
+            const base64 = Buffer.from(arrayBuffer).toString('base64');
+            const dataUrl = `data:${contentType};base64,${base64}`;
+
+            console.log(`Image download proxy: Successfully downloaded ${arrayBuffer.byteLength} bytes from ${targetUrl}`);
+            return res.status(200).json({ base64: dataUrl });
+
+        } catch (error) {
+            lastError = error;
+            console.warn(`Attempt ${attempt} failed for ${targetUrl}:`, error);
+            if (attempt < 3) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+        }
     }
-
-    // Get content type from response or default to image/jpeg
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
     
-    // Convert to ArrayBuffer and then to base64
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    
-    // Return base64 with Data URL scheme
-    const dataUrl = `data:${contentType};base64,${base64}`;
-
-    console.log(`Image download proxy: Successfully downloaded ${arrayBuffer.byteLength} bytes from ${targetUrl}`);
-
-    res.status(200).json({ 
-      base64: dataUrl
-    });
+    // If all retries failed
+    throw lastError;
 
   } catch (error) {
-    console.error('Image download proxy error:', error);
+    console.error('Image download proxy error after all retries:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error',

@@ -31,7 +31,6 @@ export const cancelFfmpeg = () => {
 
 const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
-        // FIX: Cannot find name 'Image'. Use (window as any).Image.
         const img = new (window as any).Image();
         img.crossOrigin = 'anonymous';
         
@@ -125,7 +124,6 @@ export const generateVideo = async (
         totalDuration = imageDurations.reduce((sum, d) => sum + d, 0);
     } else {
         log({ type: 'info', message: `Используется автоматический режим расстановки времени.` });
-        // FIX: Property 'AudioContext' does not exist on type 'Window'. Cast to any.
         const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
         totalDuration = audioBuffer.duration;
@@ -139,7 +137,6 @@ export const generateVideo = async (
     for (let i = 0; i < imagesToUse.length; i++) {
         const progress = 0.15 + (i / imagesToUse.length) * 0.15;
         onProgress(progress, `3/5 Запись данных в память (${i + 1}/${imagesToUse.length})...`);
-        // FIX: Cannot find name 'document'. Use (window as any).document.
         const canvas = (window as any).document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;

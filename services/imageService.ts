@@ -1,7 +1,7 @@
 // services/imageService.ts (ПРАВИЛЬНАЯ ВЕРСЯ БЕЗ КОНФЛИКТОВ)
 
 import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
-import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage } from '../types';
+import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, ImageMode, GeneratedImage, ApiKeys as AllApiKeys } from '../types';
 import { drawCanvas } from './canvasUtils';
 import { withRetries, LogFunction, RetryConfig, withQueueAndRetries } from './geminiService';
 import { searchStockPhotos, downloadStockPhoto } from './stockPhotoService';
@@ -76,7 +76,7 @@ const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting,
 export const regenerateSingleImage = async (
     prompt: string, 
     log: LogFunction, 
-    apiKeys: ApiKeys, 
+    apiKeys: AllApiKeys, 
     imageMode: ImageMode = 'generate',
     stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage> => {
@@ -157,7 +157,7 @@ export const regenerateSingleImage = async (
         const photos = await searchStockPhotos(
             prompt,
             { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
-            apiKeys.gemini,
+            apiKeys.gemini || '', 
             preferredStockService,
             log
         );
@@ -188,7 +188,7 @@ export const generateStyleImages = async (
     prompts: string[], 
     imageCount: number, 
     log: LogFunction, 
-    apiKeys: ApiKeys, 
+    apiKeys: AllApiKeys, 
     imageMode: ImageMode = 'generate',
     stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage[]> => {
@@ -230,7 +230,7 @@ export const generateStyleImages = async (
 export const generateMoreImages = async (
     prompts: string[], 
     log: LogFunction, 
-    apiKeys: ApiKeys, 
+    apiKeys: AllApiKeys, 
     imageMode: ImageMode = 'generate',
     stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
 ): Promise<GeneratedImage[]> => {
@@ -291,7 +291,7 @@ export const generateYoutubeThumbnails = async (
     
     await new Promise((resolve, reject) => {
         img.onload = resolve;
-        img.onerror = (e) => {
+        img.onerror = (e: any) => {
             log({type: 'error', message: "Не удалось загрузить базовое изображение для Canvas.", data: e});
             reject(new Error("Не удалось загрузить базовое изображение для обложки."));
         };

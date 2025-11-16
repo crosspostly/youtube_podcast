@@ -61,10 +61,15 @@ export async function exportProjectToLocalCLI(podcast: Podcast): Promise<string>
       throw new Error(`Глава "${chapter.title}" не имеет аудио`);
     }
     
+    const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+    const arrayBuffer = await chapter.audioBlob.arrayBuffer();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const duration = audioBuffer.duration;
+
     const chapterData: any = {
       id: chapter.id,
       title: chapter.title,
-      duration: chapter.duration || 60, // Default duration if not set
+      duration: duration || 60, // Default duration if not set
       speechAudio: await blobToBase64(chapter.audioBlob),
       musicVolume: chapter.backgroundMusicVolume || 0.3,
       image: chapter.generatedImages?.[0]?.url || '',

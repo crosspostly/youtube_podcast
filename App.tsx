@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Podcast, YoutubeThumbnail, LogEntry, ImageMode, StockPhotoPreference } from './types';
+import type { Podcast, YoutubeThumbnail, LogEntry, ImageMode, StockPhotoPreference, ApiKeys } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import TestingPanel from './components/TestingPanel';
 import SfxTest from './components/SfxTest';
@@ -12,7 +12,7 @@ import ProjectSetup from './components/ProjectSetup';
 import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
 import VideoTestPanel from './components/VideoTestPanel';
-import { getApiRetryConfig, updateApiRetryConfig, type ApiRetryConfig } from './config/appConfig';
+import { getApiRetryConfig, updateApiRetryConfig, type ApiRetryConfig, API_KEYS } from './config/appConfig';
 import { appConfig } from './config/appConfig';
 import { validateGeminiKey } from './services/geminiService';
 
@@ -119,35 +119,17 @@ const AppUI: React.FC<{
 const App: React.FC = () => {
     const [isLogVisible, setIsLogVisible] = useState(false);
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-    const [apiKeys, setApiKeys] = useState({ 
+    const [apiKeys, setApiKeys] = useState<ApiKeys>({ 
         gemini: '', 
         freesound: '', 
         unsplash: '',
-        pexels: ''
+        pexels: '',
+        jamendo: API_KEYS.jamendo || ''
     });
     const [defaultFont, setDefaultFont] = useState('Impact');
     const [imageMode, setImageMode] = useState<ImageMode>('generate');
     const [stockPhotoPreference, setStockPhotoPreference] = useState<StockPhotoPreference>('unsplash');
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(getApiRetryConfig());
-
-    // ✅ ДОБАВИТЬ СЮДА ПРОВЕРКУ КЛЮЧА:
-    useEffect(() => {
-        console.log('🚀 Приложение запущено');
-        
-        if (appConfig.geminiApiKey) {
-            console.log('🔑 Gemini API ключ найден в конфиге');
-            
-            validateGeminiKey(appConfig.geminiApiKey).then(isValid => {
-                if (isValid) {
-                    console.log('✅ Ключ валидный и работает');
-                } else {
-                    console.warn('⚠️ Ключ невалидный');
-                }
-            });
-        } else {
-            console.warn('⚠️ Gemini API ключ не настроен');
-        }
-    }, []);
 
     useEffect(() => {
         try {
@@ -196,12 +178,7 @@ const App: React.FC = () => {
     }, []);
 
     const handleSaveApiKeys = (data: { 
-        keys: { 
-            gemini: string; 
-            freesound: string; 
-            unsplash: string; 
-            pexels: string;
-        }; 
+        keys: ApiKeys; 
         defaultFont: string; 
         imageMode: ImageMode; 
         retryConfig: ApiRetryConfig;

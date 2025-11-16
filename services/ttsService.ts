@@ -5,6 +5,7 @@ import { withQueueAndRetries, generateContentWithFallback, withRetries, RetryCon
 import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
 import { appConfig, API_KEYS } from '../config/appConfig';
+import { createWavBlob } from '../utils/audioUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; freesound?: string; };
@@ -52,7 +53,8 @@ export const previewVoice = async (voiceId: string, languageCode: string, log: L
         throw new Error("No audio data returned from TTS API");
     }
     const audioBytes = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
-    return new Blob([audioBytes], { type: 'audio/wav' });
+    // Create a valid WAV blob with the correct header for the raw PCM data.
+    return createWavBlob(audioBytes, 24000, 1);
 };
 
 export const generatePodcastBlueprint = async (topic: string, knowledgeBase: string, creativeFreedom: boolean, language: string, duration: number, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number) => {
@@ -179,7 +181,8 @@ export const generateChapterAudio = async (script: ScriptLine[], narrationMode: 
     const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!audioData) throw new Error("No audio data returned from TTS API");
     const audioBytes = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
-    return new Blob([audioBytes], { type: 'audio/wav' });
+    // Create a valid WAV blob with the correct header for the raw PCM data.
+    return createWavBlob(audioBytes, 24000, 1);
 };
 
 export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
@@ -332,7 +335,7 @@ const JAMENDO_CLIENT_ID = API_KEYS.jamendo;
 
 export const findMusicManually = async (keywords: string, log: LogFunction): Promise<MusicTrack[]> => {
     if (!JAMENDO_CLIENT_ID) {
-        log({type: 'error', message: 'Jamendo Client ID не настроен. Поиск музыки невозможен.'});
+        log({type: 'warning', message: 'Jamendo Client ID не настроен. Поиск музыки будет пропущен.'});
         return [];
     }
     const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${JAMENDO_CLIENT_ID}&format=json&tags=${encodeURIComponent(keywords)}&limit=10&order=popularity_week`;
@@ -348,6 +351,9 @@ export const findMusicManually = async (keywords: string, log: LogFunction): Pro
 };
 
 export const findMusicWithAi = async (scriptText: string, log: LogFunction, apiKeys: ApiKeys): Promise<MusicTrack[]> => {
+    if (!JAMENDO_CLIENT_ID) {
+        return []; // Silently skip if no key, findMusicManually will log the warning.
+    }
     const prompt = `
         Analyze the mood, tempo, and theme of the following text.
         Generate 3 diverse sets of search tags for finding background music on a service like Jamendo.

@@ -2,31 +2,19 @@
 // API KEYS ИЗ .env
 // ============================================================================
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-const FREESOUND_API_KEY = import.meta.env.VITE_FREESOUND_API_KEY || process.env.FREESOUND_API_KEY;
-const UNSPLASH_API_KEY = import.meta.env.VITE_UNSPLASH_API_KEY || process.env.UNSPLASH_API_KEY;
-const PEXELS_API_KEY = import.meta.env.VITE_PEXELS_API_KEY || process.env.PEXELS_API_KEY;
-const JAMENDO_API_KEY = import.meta.env.VITE_JAMENDO_API_KEY || process.env.JAMENDO_API_KEY;
+// Use `process.env` consistently, as defined in vite.config.ts
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY;
+const UNSPLASH_API_KEY = process.env.UNSPLASH_API_KEY;
+const PEXELS_API_KEY = process.env.PEXELS_API_KEY;
+const JAMENDO_API_KEY = process.env.JAMENDO_API_KEY;
 
-// Проверка при загрузке
-if (GEMINI_API_KEY) {
-  console.log('✅ GEMINI API KEY загружен из .env');
-  console.log('🔑 Первые 10 символов:', GEMINI_API_KEY.substring(0, 10) + '...');
-} else {
-  console.error('❌ GEMINI API KEY не найден в .env!');
-}
-
-if (JAMENDO_API_KEY) {
-  console.log('✅ JAMENDO API KEY загружен из .env');
-} else {
-  console.warn('⚠️ JAMENDO API KEY не найден');
-}
 
 // ============================================================================
 // ГЛОБАЛЬНАЯ КОНФИГУРАЦИЯ ПРИЛОЖЕНИЯ
 // ============================================================================
 
-import { ApiRetryConfig, AppConfig } from '../types';
+import { ApiRetryConfig, AppConfig, StockPhotoApiKeys } from '../types';
 
 const DEFAULT_API_RETRY_CONFIG: ApiRetryConfig = {
     retries: 3,

@@ -1,37 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
-import type { ImageMode, StockPhotoPreference, ApiRetryConfig } from '../types';
+import type { ImageMode, StockPhotoPreference, ApiRetryConfig, ApiKeys } from '../types';
 import { getKeyStatus, unblockKey } from '../utils/stockPhotoKeyManager';
 import { getGeminiImageStatus, resetGeminiCircuitBreaker, COOL_DOWN_PERIOD_MS } from '../services/imageService';
 
 interface ApiKeyModalProps {
     onClose: () => void;
     onSave: (data: { 
-        keys: { 
-            gemini: string; 
-            freesound: string;
-            unsplash: string;
-            pexels: string;
-        };
+        keys: ApiKeys;
         defaultFont: string;
         imageMode: ImageMode;
         retryConfig: ApiRetryConfig;
         stockPhotoPreference: StockPhotoPreference;
     }) => void;
-    currentKeys: { 
-        gemini: string; 
-        freesound: string;
-        unsplash: string;
-        pexels: string;
-    };
+    currentKeys: ApiKeys;
     currentFont: string;
     currentImageMode: ImageMode;
     currentRetryConfig: ApiRetryConfig;
     currentStockPhotoPreference: StockPhotoPreference;
 }
 
-type Tab = 'gemini' | 'sfx' | 'stocks' | 'style' | 'retry';
+type Tab = 'gemini' | 'sfx' | 'stocks' | 'style' | 'retry' | 'music';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ 
     onClose, 
@@ -42,10 +32,11 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     currentRetryConfig, 
     currentStockPhotoPreference 
 }) => {
-    const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
-    const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound);
+    const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini || '');
+    const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound || '');
     const [unsplashApiKey, setUnsplashApiKey] = useState(currentKeys.unsplash || '');
     const [pexelsApiKey, setPexelsApiKey] = useState(currentKeys.pexels || '');
+    const [jamendoApiKey, setJamendoApiKey] = useState(currentKeys.jamendo || '');
     const [defaultFont, setDefaultFont] = useState(currentFont);
     const [imageMode, setImageMode] = useState<ImageMode>(currentImageMode);
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(currentRetryConfig);
@@ -67,7 +58,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                 gemini: geminiApiKey, 
                 freesound: freesoundApiKey,
                 unsplash: unsplashApiKey,
-                pexels: pexelsApiKey
+                pexels: pexelsApiKey,
+                jamendo: jamendoApiKey
             },
             defaultFont,
             imageMode,
@@ -102,6 +94,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                 <div className="flex border-b border-slate-700 px-4">
                     <TabButton tabId="gemini" label="Google Gemini" />
                     <TabButton tabId="sfx" label="Freesound" />
+                    <TabButton tabId="music" label="Музыка" />
                     <TabButton tabId="stocks" label="Стоковые фото" />
                     <TabButton tabId="style" label="Стиль" />
                     <TabButton tabId="retry" label="API Retries" />
@@ -139,6 +132,25 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                              <p className="text-sm text-slate-400 mb-4">Ключ для поиска звуковых эффектов (SFX).</p>
                              <label className="block text-sm font-medium text-slate-300 mb-1">Freesound API Key</label>
                              <input type="password" value={freesoundApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFreesoundApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                             {!freesoundApiKey && (
+                                <p className="text-xs text-yellow-400 mt-2">
+                                    Ключ не указан. Поиск звуковых эффектов будет использовать ключ по умолчанию с ограниченными лимитами.
+                                </p>
+                             )}
+                        </div>
+                    )}
+                    
+                    {activeTab === 'music' && (
+                        <div>
+                             <h3 className="text-lg font-semibold text-white mb-2">Jamendo API</h3>
+                             <p className="text-sm text-slate-400 mb-4">Client ID для поиска фоновой музыки.</p>
+                             <label className="block text-sm font-medium text-slate-300 mb-1">Jamendo Client ID</label>
+                             <input type="password" value={jamendoApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setJamendoApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                             {!jamendoApiKey && (
+                                <p className="text-xs text-yellow-400 mt-2">
+                                    Ключ не указан. Подбор фоновой музыки будет пропущен.
+                                </p>
+                             )}
                         </div>
                     )}
 
@@ -154,6 +166,11 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                  <label className="block text-sm font-medium text-slate-300 mb-1">Pexels API Key</label>
                                  <input type="password" value={pexelsApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPexelsApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
+                            {!unsplashApiKey && !pexelsApiKey && (
+                                <p className="text-xs text-yellow-400 mt-2">
+                                    Ключи не указаны. Резервный поиск стоковых фото будет недоступен.
+                                </p>
+                            )}
                             <div className="border-t border-slate-700 pt-4">
                                 <label className="block text-sm font-medium text-slate-300 mb-1">Предпочтительный сервис</label>
                                 <select value={stockPhotoPreference} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStockPhotoPreference((e.target as any).value as StockPhotoPreference)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">

@@ -142,7 +142,8 @@ API keys are required for the application to function correctly. Using your own 
 | Service        | Status        | Purpose                                            |
 | -------------- | ------------- | -------------------------------------------------- |
 | **Google Gemini**  | **Required**    | All AI features (text, audio, image generation)    |
-| **Freesound**    | **Required**    | Searching for sound effects (SFX)                  |
+| **Freesound**    | *Recommended* | Searching for sound effects (SFX)                  |
+| **Jamendo**      | *Recommended* | Searching for royalty-free music                   |
 | **Unsplash**     | *Recommended* | High-quality stock photo fallback for images       |
 | **Pexels**       | *Recommended* | Alternative stock photo fallback for images        |
 
@@ -153,12 +154,17 @@ API keys are required for the application to function correctly. Using your own 
         1. Go to your [API credentials page](https://freesound.org/home/app_new/) on Freesound and log in.
         2. Create a new OAuth2 credential.
         3. Your API Key is the **Client Secret**.
-    - **Unsplash & Pexels:** Get keys from their respective developer portals.
+    - **Jamendo, Unsplash & Pexels:** Get keys from their respective developer portals.
 
 2.  **Enter Keys in the UI:**
     - Click the **Settings (key) icon** in the top-right corner of the application.
-    - Go to the respective tabs (`Google Gemini`, `Freesound`, `Стоковые фото`) and enter your keys.
+    - Go to the respective tabs (`Google Gemini`, `Freesound`, `Музыка`, `Стоковые фото`) and enter your keys.
     - All settings are saved securely in your browser's `localStorage`.
+
+### Behavior Without Optional Keys
+- **Freesound:** If no key is provided, the app will use a shared default key with very strict rate limits.
+- **Jamendo:** If no key is provided, background music generation will be skipped.
+- **Unsplash/Pexels:** If keys are not provided, the fallback to stock photos (if AI image generation fails) will not be available.
 
 ---
 

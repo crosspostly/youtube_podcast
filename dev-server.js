@@ -88,14 +88,14 @@ app.get('/api/audio-proxy', async (req, res) => {
 app.post('/api/freesound', async (req, res) => {
   res.setHeader('X-Dev-Proxy-Invoked', 'true');
   try {
-    const { query } = req.body;
+    const { query, customApiKey } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
-
-    const apiKey = DEFAULT_FREESOUND_KEY;
-    console.log("Dev Server: Using hardcoded default Freesound API key.");
+    
+    const apiKey = customApiKey?.trim() || DEFAULT_FREESOUND_KEY;
+    console.log(`Dev Server: Using Freesound API key (custom: ${!!customApiKey?.trim()}).`);
 
     if (!apiKey) {
       const errorMessage = "Freesound API key is not configured.";
@@ -168,7 +168,6 @@ app.post('/api/download-image', async (req, res) => {
         authHeader = { 'Authorization': apiKey };
     }
 
-    // ✅ RETRY LOGIC WITH INCREASED TIMEOUT
     let lastError;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -187,12 +186,16 @@ app.post('/api/download-image', async (req, res) => {
         clearTimeout(timeout);
 
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Image download error: ${response.statusText}`, errorText);
-          return res.status(response.status).json({
-            error: `Failed to fetch: ${response.statusText}`,
-            details: errorText,
-          });
+          // Don't retry on client-side errors (4xx)
+          if (response.status >= 400 && response.status < 500) {
+              const errorText = await response.text();
+              console.error(`Image download proxy error: ${response.statusText}`, errorText);
+              return res.status(response.status).json({
+                error: `Failed to fetch image: ${response.statusText}`,
+                details: errorText,
+              });
+          }
+          throw new Error(`Server error: ${response.status}`);
         }
 
         const contentType = response.headers.get('content-type') || 'image/jpeg';
@@ -201,33 +204,32 @@ app.post('/api/download-image', async (req, res) => {
         const dataUrl = `data:${contentType};base64,${base64}`;
 
         console.log(`Image downloaded: ${arrayBuffer.byteLength} bytes`);
-
         return res.status(200).json({ base64: dataUrl });
 
       } catch (error) {
         lastError = error;
         console.error(`Image download attempt ${attempt}/3 failed:`, error.message);
-        
         if (attempt < 3) {
           await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
         }
       }
     }
 
-    console.error('Image download failed after retries:', lastError);
-    res.status(500).json({
-      error: 'Internal Server Error',
+    console.error('Image download failed after all retries:', lastError);
+    return res.status(500).json({
+      error: 'Internal Server Error after retries',
       message: lastError instanceof Error ? lastError.message : 'Unknown error',
     });
 
   } catch (error) {
-    console.error('Image download proxy error:', error);
+    console.error('Image download proxy uncaught error:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });
+
 
 app.post('/api/export-project', async (req, res) => {
   try {
@@ -436,7 +438,7 @@ app.listen(PORT, () => {
   console.log('Available endpoints:');
   console.log('  GET /api/audio-proxy?url=<encoded_url>');
   console.log('  POST /api/download-image (body: { url, source, apiKey })');
-  console.log('  POST /api/freesound (body: { query })');
+  console.log('  POST /api/freesound (body: { query, customApiKey? })');
   console.log('  POST /api/export-project (body: { projectId, metadata, chapters, settings })');
   console.log('  GET /api/test-gemini?key=<your_api_key>');
 });

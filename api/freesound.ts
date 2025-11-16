@@ -23,15 +23,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { query } = req.body;
+    const { query, customApiKey } = req.body;
 
     if (!query) {
       res.status(400).json({ error: 'Missing query parameter' });
       return;
     }
 
-    const apiKey = DEFAULT_FREESOUND_KEY;
-    console.log("Vercel Proxy: Using hardcoded default Freesound API key.");
+    const apiKey = customApiKey?.trim() || DEFAULT_FREESOUND_KEY;
+    console.log(`Vercel Proxy: Using Freesound API key (custom: ${!!customApiKey?.trim()}).`);
     
     if (!apiKey) {
       const errorMessage = "Freesound API key is not configured. The default key is missing.";

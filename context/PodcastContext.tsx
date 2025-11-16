@@ -1,30 +1,26 @@
 import React, { createContext, useContext } from 'react';
 import { useHistory } from '../hooks/useHistory';
 import { usePodcast } from '../hooks/usePodcast';
-import type { Podcast, ImageMode, StockPhotoPreference } from '../types';
+import type { Podcast, ImageMode, StockPhotoPreference, ApiKeys } from '../types';
 
 type UseHistoryReturn = ReturnType<typeof useHistory>;
 type UsePodcastReturn = ReturnType<typeof usePodcast>;
 
-interface PodcastContextType extends UseHistoryReturn, UsePodcastReturn {
+// FIX: Cleaned up type by removing redundant properties (`warning`, `startAutomatedProject`)
+// that are already inherited from `UsePodcastReturn`. This makes the type definition
+// accurate and prevents mismatches between the type and the actual context value.
+type PodcastContextType = UseHistoryReturn & Omit<UsePodcastReturn, 'setPodcast'> & {
     setPodcast: (podcast: Podcast | null) => void;
-    apiKeys: { gemini: string; freesound: string; unsplash?: string; pexels?: string; };
-    defaultFont: string; // Expose defaultFont in the context
+    apiKeys: ApiKeys;
+    defaultFont: string;
     imageMode: ImageMode;
-    warning: string | null;
-    startAutomatedProject: (topic: string) => Promise<void>;
-}
+};
 
 const PodcastContext = createContext<PodcastContextType | undefined>(undefined);
 
 interface PodcastProviderProps {
     children: React.ReactNode;
-    apiKeys: { 
-        gemini: string; 
-        freesound: string;
-        unsplash?: string;
-        pexels?: string;
-    };
+    apiKeys: ApiKeys;
     defaultFont: string;
     imageMode: ImageMode;
     stockPhotoPreference?: StockPhotoPreference;
@@ -54,7 +50,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         imageMode,
     };
 
-    return <PodcastContext.Provider value={value as PodcastContextType}>{children}</PodcastContext.Provider>;
+    return <PodcastContext.Provider value={value as any}>{children}</PodcastContext.Provider>;
 };
 
 export const usePodcastContext = () => {

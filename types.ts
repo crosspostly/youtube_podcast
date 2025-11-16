@@ -123,6 +123,7 @@ export interface ApiKeys {
   freesound?: string;
   unsplash?: string;
   pexels?: string;
+  jamendo?: string;
 }
 
 export interface Podcast {
@@ -157,12 +158,13 @@ export interface Podcast {
 }
 
 // Configuration interface for API retry behavior
+// Merged the two declarations into one.
 export interface ApiRetryConfig {
   retries?: number;
-  initialDelay?: number;
-  maxDelay?: number;
+  initialDelay?: number; // in milliseconds
+  maxDelay?: number; // in milliseconds
   exponentialBase?: number;
-  jitterFactor?: number;
+  jitterFactor?: number; // 0-1, percentage of jitter
 }
 
 export interface StockPhoto {
@@ -199,14 +201,6 @@ export interface StockPhotoKeyStatus {
     isBlocked: boolean;
     blockedUntil?: number;  // timestamp
     lastError?: string;
-}
-
-export interface ApiRetryConfig {
-    retries: number;
-    initialDelay: number;  // in milliseconds
-    maxDelay: number;      // in milliseconds
-    exponentialBase: number;
-    jitterFactor: number;  // 0-1, percentage of jitter
 }
 
 // Global application configuration
