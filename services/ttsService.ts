@@ -54,8 +54,7 @@ const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChanne
     return new Blob([view], { type: 'audio/wav' });
 };
 
-// FIX: Cannot find name 'AudioBuffer'.
-const audioBufferToWavBlob = (buffer: any): Blob => {
+const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
     const format = 1; // PCM
@@ -103,8 +102,7 @@ const audioBufferToWavBlob = (buffer: any): Blob => {
 };
 
 export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
-    // FIX: Property 'AudioContext' does not exist on type 'Window'.
-    const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
 
     // Create a new array containing only chapters with audio blobs.
     // This makes indexing straightforward and robust, fixing bugs with partial generation.
@@ -122,8 +120,7 @@ export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Pr
     const sampleRate = chapterAudioBuffers[0].sampleRate;
     const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
 
-    // FIX: Cannot find name 'OfflineAudioContext'.
-    const offlineContext = new (window as any).OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
+    const offlineContext = new OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
     let speechTimeCursor = 0;
     // Layer 1: Speech and Music - Iterate over the clean list of chapters with audio.

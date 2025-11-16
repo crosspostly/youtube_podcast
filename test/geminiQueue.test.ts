@@ -44,7 +44,6 @@ export const testGeminiQueue = async () => {
         // Test 2: Queue with custom API call
         console.log('\nTest 2: Queue with custom API call...');
         
-        // FIX: Added missing arguments to `withQueueAndRetries` to match its definition.
         const customResult = await withQueueAndRetries(async () => {
             // This would be a custom Gemini API call
             // For testing, we'll simulate a delay

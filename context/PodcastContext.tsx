@@ -43,7 +43,6 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         ...historyHook,
         ...podcastHook,
         setPodcast: (podcast: Podcast | null) => {
-            // FIX: The usePodcast hook returns `setPodcastState` as `setPodcast`.
             podcastHook.setPodcast(podcast);
             if(podcast) {
                 historyHook.updateHistoryWithPodcast(podcast);

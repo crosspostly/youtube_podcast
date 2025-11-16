@@ -241,6 +241,10 @@ export const usePodcast = (
                         updateChapterState(chapterId, 'script_generating');
                         log({ type: 'info', message: `Генерация сценария для главы ${i + 1}...` });
 
+                        if (!podcastStateForLoop) {
+                           throw new Error("Состояние подкаста потеряно перед генерацией сценария.");
+                        }
+
                         const chapterData = await generateNextChapterScript(podcastStateForLoop.topic, podcastStateForLoop.selectedTitle, podcastStateForLoop.characters, podcastStateForLoop.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
                         
                         setPodcast(p => {
@@ -429,15 +433,12 @@ export const usePodcast = (
             }
 
             const url = URL.createObjectURL(finalBlob);
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            const a = (window as any).document.createElement('a');
+            const a = document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.${extension}`;
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.appendChild(a);
+            document.body.appendChild(a);
             a.click();
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
-            (window as any).document.body.removeChild(a);
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             log({ type: 'response', message: `✅ Аудио экспортировано (${format})` });
@@ -462,12 +463,12 @@ export const usePodcast = (
         try {
             const srtBlob = await generateSrtFile(podcast, log);
             const url = URL.createObjectURL(srtBlob);
-            const a = (window as any).document.createElement('a');
+            const a = document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.srt`;
-            (window as any).document.body.appendChild(a);
+            document.body.appendChild(a);
             a.click();
-            (window as any).document.body.removeChild(a);
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
@@ -495,12 +496,12 @@ export const usePodcast = (
             );
 
             const url = URL.createObjectURL(videoBlob);
-            const a = (window as any).document.createElement('a');
+            const a = document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.mp4`;
-            (window as any).document.body.appendChild(a);
+            document.body.appendChild(a);
             a.click();
-            (window as any).document.body.removeChild(a);
+            document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             log({ type: 'response', message: '✅ Видео успешно создано' });
@@ -624,7 +625,7 @@ export const usePodcast = (
 
     const regenerateProject = () => {
         if (!podcast) return;
-        if ((window as any).confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
+        if (confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
             startNewProject(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, podcast.totalDurationMinutes, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, podcast.initialImageCount);
         }
     };

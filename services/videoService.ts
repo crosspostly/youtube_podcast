@@ -8,9 +8,9 @@ import { generateSrtFile } from './srtService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ProgressCallback = (progress: number, message: string) => void;
 
-const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js';
-const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.worker.js';
+const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.js';
+const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.wasm';
+const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.worker.js';
 
 let ffmpeg: FFmpeg | null = null;
 let isCancellationRequested = false;
@@ -29,10 +29,9 @@ export const cancelFfmpeg = () => {
     }
 };
 
-// FIX: Cannot find name 'HTMLImageElement'. Changed return type to 'any'.
-const loadImage = (src: string): Promise<any> => {
+const loadImage = (src: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
-        const img = new (window as any).Image();
+        const img = new Image();
         img.crossOrigin = 'anonymous';
         
         const timeout = setTimeout(() => {
@@ -104,8 +103,7 @@ export const generateVideo = async (
     
     const loadedImageResults = await Promise.allSettled(allGeneratedImages.map(img => loadImage(img.url)));
     
-    // FIX: Cannot find name 'HTMLImageElement'. Changed array type to 'any[]'.
-    const imagesToUse: any[] = [];
+    const imagesToUse: HTMLImageElement[] = [];
     const placeholderImage = await loadImage(FALLBACK_PLACEHOLDER_BASE64);
     
     loadedImageResults.forEach((result, index) => {
@@ -126,7 +124,7 @@ export const generateVideo = async (
         totalDuration = imageDurations.reduce((sum, d) => sum + d, 0);
     } else {
         log({ type: 'info', message: `Используется автоматический режим расстановки времени.` });
-        const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const audioBuffer = await audioContext.decodeAudioData(await audioBlob.arrayBuffer());
         totalDuration = audioBuffer.duration;
         imageDurations = Array(imagesToUse.length).fill(totalDuration / imagesToUse.length);
@@ -139,11 +137,11 @@ export const generateVideo = async (
     for (let i = 0; i < imagesToUse.length; i++) {
         const progress = 0.15 + (i / imagesToUse.length) * 0.15;
         onProgress(progress, `3/5 Запись данных в память (${i + 1}/${imagesToUse.length})...`);
-        const canvas = (window as any).document.createElement('canvas');
+        const canvas = document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
         const ctx = canvas.getContext('2d');
-        ctx.drawImage(imagesToUse[i], 0, 0, 1280, 720);
+        ctx!.drawImage(imagesToUse[i], 0, 0, 1280, 720);
         const blob = await new Promise<Blob|null>(resolve => canvas.toBlob(resolve, 'image/png'));
         await ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(blob!));
     }

@@ -14,32 +14,26 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
     const [searchTerm, setSearchTerm] = useState(value);
     const [suggestions, setSuggestions] = useState<string[]>([]);
     const [isOpen, setIsOpen] = useState(false);
-    // FIX: Cannot find name 'HTMLDivElement'. Changed ref type to 'any'.
-    const wrapperRef = useRef<any>(null);
+    const wrapperRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         setSearchTerm(value); // Sync with external changes
     }, [value]);
 
     useEffect(() => {
-        // FIX: Cannot find name 'MouseEvent'. Changed event type to 'any'.
-        const handleClickOutside = (event: any) => {
-            // FIX: Property 'contains' does not exist on type 'HTMLDivElement'. Cannot find name 'Node'.
-            if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target as any)) {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
         };
-        // FIX: Cannot find name 'document'.
-        (window as any).document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            // FIX: Cannot find name 'document'.
-            (window as any).document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
-    // FIX: Cannot find name 'HTMLInputElement'. Changed event type to 'any'.
-    const handleInputChange = (e: any) => {
-        const newSearchTerm = e.currentTarget.value;
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newSearchTerm = e.target.value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {
             const filtered = GOOGLE_FONTS.filter(font =>

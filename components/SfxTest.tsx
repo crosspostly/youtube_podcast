@@ -16,8 +16,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
     const [results, setResults] = useState<SoundEffect[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
-    // FIX: Cannot find name 'HTMLAudioElement'. Changed ref type to 'any'.
-    const audioRef = useRef<any>(null);
+    const audioRef = useRef<HTMLAudioElement>(null);
     const { log: contextLog, apiKeys } = usePodcastContext();
 
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
@@ -50,8 +49,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
-        // FIX: Cast audio ref to any to access properties in a missing DOM lib environment.
-        const audio = audioRef.current as any;
+        const audio = audioRef.current;
         const isCurrentlyPlaying = !audio.paused && audio.src.endsWith(encodeURIComponent(url));
 
         if (isCurrentlyPlaying) {
@@ -75,7 +73,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
             if (playPromise !== undefined) {
                 playPromise.then(() => {
                     setPreviewingUrl(url);
-                }).catch((error: any) => {
+                }).catch((error: Error) => {
                     console.error("Audio playback failed:", error);
                     // Log CORS or other playback errors
                     log({ 
@@ -101,8 +99,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    // FIX: Cannot find name 'HTMLInputElement'. Changed event type to 'any'.
-                    onChange={(e: any) => setDescription(e.currentTarget.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

@@ -1,5 +1,3 @@
-
-
 import { useState, useCallback, useEffect } from 'react';
 import type { Podcast, LogEntry } from '../types';
 
@@ -28,31 +26,29 @@ export const useHistory = () => {
         // This function will be the one updating localStorage
         const updateLocalStorage = (newHistory: Podcast[]) => {
             const serializableHistory = newHistory.map(p => {
-                const { chapters, ...podcastRest } = p;
+                // Destructure to remove media properties.
+                const { chapters, youtubeThumbnails, thumbnailBaseImage, ...podcastRest } = p;
                 
-                // Start with a base object that excludes large or non-serializable top-level fields
                 const serializablePodcast: any = { ...podcastRest };
         
-                // Process chapters: always remove audioBlob, conditionally remove generatedImages
+                // Process chapters: ALWAYS remove audioBlob and generatedImages to prevent storage overflow.
                 serializablePodcast.chapters = chapters.map(({ audioBlob, generatedImages, ...chapterRest }) => {
-                    if (saveMediaInHistory) {
-                        return { generatedImages, ...chapterRest }; // Keep images
-                    }
-                    return chapterRest; // Discard images
+                    return chapterRest;
                 });
-        
-                // Conditionally remove top-level thumbnails
-                if (!saveMediaInHistory) {
-                    delete serializablePodcast.youtubeThumbnails;
-                }
         
                 return serializablePodcast;
             });
         
             try {
                 localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
-            } catch (e) {
+            } catch (e: any) {
                 log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
+                
+                // If quota is still exceeded after stripping media, prune the history.
+                if (e.name === 'QuotaExceededError' && newHistory.length > 1) {
+                    log({ type: 'warning', message: 'Хранилище переполнено даже без медиа. Удаление старейшего проекта из истории...' });
+                    updateLocalStorage(newHistory.slice(0, newHistory.length - 1)); // Recursive call
+                }
             }
         };
 
@@ -63,7 +59,7 @@ export const useHistory = () => {
             updateLocalStorage(newHistory);
             return newHistory;
         });
-    }, [saveMediaInHistory]);
+    }, []);
     
     const clearHistory = () => {
         setHistory([]);
