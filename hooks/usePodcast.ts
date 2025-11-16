@@ -8,6 +8,7 @@ import { generateSrtFile } from '../services/srtService';
 // Fix: Aliased imports to avoid name collision with functions inside the hook.
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
 import { generateVideo as generateVideoService, cancelFfmpeg } from '../services/videoService';
+import { exportProjectToLocalCLI } from '../services/videoExportService';
 import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, SoundEffect, ImageMode, GeneratedImage, StockPhotoPreference, ChapterStatus, ThumbnailDesignConcept } from '../types';
 import { TEST_PODCAST_BLUEPRINT } from '../services/testData';
 
@@ -699,6 +700,38 @@ export const usePodcast = (
         }
     };
 
+    const generateVideoLocally = useCallback(async () => {
+        if (!podcast) return;
+        
+        if (podcast.chapters.some(c => c.status !== 'completed' || !c.audioBlob)) {
+            setError('Все главы должны быть завершены с аудио перед созданием видео');
+            return;
+        }
+
+        setIsGeneratingVideo(true);
+        setVideoGenerationProgress({ progress: 0, message: 'Экспорт проекта...' });
+        setError(null);
+        
+        try {
+            log({ type: 'info', message: '📤 Отправка материалов на локальный сервер...' });
+            
+            const projectId = await exportProjectToLocalCLI(podcast);
+            
+            log({ type: 'info', message: `✅ Материалы отправлены. Project ID: ${projectId}` });
+            log({ type: 'info', message: '🎬 Сборка видео началась на локальном FFmpeg...' });
+            log({ type: 'info', message: '⏳ Это может занять 3-5 минут...' });
+            
+            setVideoGenerationProgress({ progress: 1, message: 'Видео создаётся на локальном сервере...' });
+            
+        } catch (err: any) {
+            const friendlyError = parseErrorMessage(err);
+            setError(friendlyError);
+            log({ type: 'error', message: 'Ошибка экспорта проекта', data: err });
+        } finally {
+            setIsGeneratingVideo(false);
+        }
+    }, [podcast, log, setError]);
+
     const cancelVideoGeneration = () => {
         cancelFfmpeg();
         setIsGeneratingVideo(false);
@@ -1252,7 +1285,7 @@ export const usePodcast = (
         regeneratingImage, generatingMoreImages,
         isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
         startNewProject, handleGenerateChapter, combineAndDownload, 
-        generateVideo: handleGenerateFullVideo, generatePartialVideo: handleGeneratePartialVideo,
+        generateVideo: handleGenerateFullVideo, generateVideoLocally, generatePartialVideo: handleGeneratePartialVideo,
         cancelVideoGeneration,
         saveThumbnail, regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateAllImages, regenerateSingleImage,
