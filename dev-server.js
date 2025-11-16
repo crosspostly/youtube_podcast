@@ -373,4 +373,83 @@ app.listen(PORT, () => {
   console.log('  POST /api/download-image (body: { url, source, apiKey })');
   console.log('  POST /api/freesound (body: { query })');
   console.log('  POST /api/export-project (body: { projectId, metadata, chapters, settings })');
+
+
+// TEST: Проверка Gemini API ключа
+app.get('/api/test-gemini', async (req, res) => {
+  try {
+    // Получить ключ из query параметра (для тестирования)
+    const apiKey = req.query.key;
+    
+    if (!apiKey) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'API ключ не передан',
+        hint: 'Добавь ?key=YOUR_API_KEY в URL'
+      });
+    }
+
+    console.log('🔑 Проверка Gemini API ключа...');
+    console.log('🔑 Первые 10 символов:', apiKey.substring(0, 10) + '...');
+
+    // Тестовый запрос к Gemini API
+    const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    
+    const response = await fetch(testUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: 'Скажи "Привет, ключ работает!"' }]
+        }]
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.candidates) {
+      const geminiResponse = data.candidates[0]?.content?.parts[0]?.text || 'OK';
+      
+      console.log('✅ Gemini API ключ работает!');
+      console.log('📝 Ответ Gemini:', geminiResponse);
+      
+      res.status(200).json({
+        success: true,
+        message: '✅ КЛЮЧ РАБОТАЕТ!',
+        apiKey: apiKey.substring(0, 10) + '...',
+        model: 'gemini-2.5-flash',
+        geminiResponse: geminiResponse
+      });
+    } else {
+      console.error('❌ Gemini API ключ НЕ работает:', data.error);
+      
+      res.status(response.status || 400).json({
+        success: false,
+        message: '❌ КЛЮЧ НЕ РАБОТАЕТ',
+        error: data.error || 'Unknown error',
+        apiKey: apiKey.substring(0, 10) + '...'
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Ошибка проверки:', error);
+    res.status(500).json({
+      success: false,
+      message: '❌ ОШИБКА ПРОВЕРКИ',
+      error: error.message
+    });
+  }
+});
+
+// Handle preflight requests
+app.options('/api/*', cors());
+
+app.listen(PORT, () => {
+  console.log(`Development API server running on http://localhost:${PORT}`);
+  console.log('Available endpoints:');
+  console.log('  GET /api/audio-proxy?url=<encoded_url>');
+  console.log('  POST /api/download-image (body: { url, source, apiKey })');
+  console.log('  POST /api/freesound (body: { query })');
+  console.log('  POST /api/export-project (body: { projectId, metadata, chapters, settings })');
+  console.log('  GET /api/test-gemini?key=<your_api_key>'); // ← НОВЫЙ
 });
