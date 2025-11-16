@@ -22,7 +22,7 @@ const AppUI: React.FC<{
     const {
         podcast, isLoading, loadingStatus, generationProgress, error, setError,
         warning, logs, editingThumbnail, setEditingThumbnail,
-        startNewProject, saveThumbnail,
+        startNewProject, saveThumbnail, startAutomatedProject
     } = usePodcastContext();
     
     const [isDesignerTestPanelVisible, setIsDesignerTestPanelVisible] = useState<boolean>(false);
@@ -102,6 +102,7 @@ const AppUI: React.FC<{
                     ) : (
                         <ProjectSetup 
                             onStartProject={startNewProject}
+                            onStartAutomatedProject={startAutomatedProject}
                             onOpenDesignerTest={() => setIsDesignerTestPanelVisible(true)}
                             onOpenMusicTest={() => setIsMusicTestPanelVisible(true)}
                             onOpenSfxTest={() => setIsSfxTestPanelVisible(true)}

@@ -89,7 +89,6 @@ const StockPhotoModal: React.FC<StockPhotoModalProps> = ({
                             <input
                                 type="text"
                                 value={searchQuery}
-                                // @FIX: Cannot find name 'HTMLInputElement'. Changed event type to 'any'.
                                 onChange={(e: any) => setSearchQuery((e.currentTarget as any).value)}
                                 onKeyPress={(e) => e.key === 'Enter' && searchPhotos()}
                                 placeholder="Поиск фотографий..."

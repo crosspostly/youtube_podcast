@@ -55,22 +55,15 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
         const audio = audioRef.current as any;
-        // @FIX: Property 'paused' does not exist on type 'HTMLAudioElement'.
-        // @FIX: Property 'src' does not exist on type 'HTMLAudioElement'.
         const isCurrentlyPlaying = !audio.paused && audio.src === url;
 
         if (isCurrentlyPlaying) {
-            // @FIX: Property 'pause' does not exist on type 'HTMLAudioElement'.
             audio.pause();
             setPreviewingUrl(null);
         } else {
-            // @FIX: Property 'pause' does not exist on type 'HTMLAudioElement'.
             audio.pause();
-            // @FIX: Property 'src' does not exist on type 'HTMLAudioElement'.
             audio.src = url;
-            // @FIX: Property 'volume' does not exist on type 'HTMLAudioElement'.
             audio.volume = 0.1;
-            // @FIX: Property 'play' does not exist on type 'HTMLAudioElement'.
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
@@ -95,7 +88,6 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
                 <input
                     type="text"
                     value={topic}
-                    // @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'.
                     onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTopic((e.target as any).value)}
                     placeholder="Введите тему для подбора музыки..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"

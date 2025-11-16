@@ -22,22 +22,17 @@ const FontAutocompleteInput: React.FC<FontAutocompleteInputProps> = ({ value, on
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            // @FIX: Property 'contains' does not exist on type 'HTMLDivElement'.
-            // @FIX: Cannot find name 'Node'.
             if (wrapperRef.current && !(wrapperRef.current as any).contains(event.target as any)) {
                 setIsOpen(false);
             }
         };
-        // @FIX: Cannot find name 'document'.
         (window as any).document.addEventListener('mousedown', handleClickOutside);
         return () => {
-            // @FIX: Cannot find name 'document'.
             (window as any).document.removeEventListener('mousedown', handleClickOutside);
         };
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        // @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'.
         const newSearchTerm = (e.target as any).value;
         setSearchTerm(newSearchTerm);
         if (newSearchTerm.length > 1) {

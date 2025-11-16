@@ -12,6 +12,7 @@ interface PodcastContextType extends UseHistoryReturn, UsePodcastReturn {
     defaultFont: string; // Expose defaultFont in the context
     imageMode: ImageMode;
     warning: string | null;
+    startAutomatedProject: (topic: string) => Promise<void>;
 }
 
 const PodcastContext = createContext<PodcastContextType | undefined>(undefined);

@@ -4,7 +4,6 @@ import type { TextOptions } from '../types';
 const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
-    // @FIX: Cannot find name 'document'.
     if (!fontFamily || (window as any).document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
@@ -14,17 +13,13 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
-        // @FIX: Cannot find name 'document'.
         if (!(window as any).document.querySelector(`link[href="${fontUrl}"]`)) {
-            // @FIX: Cannot find name 'document'.
             const link = (window as any).document.createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
-            // @FIX: Cannot find name 'document'.
             (window as any).document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            // @FIX: Cannot find name 'document'.
             await (window as any).document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
@@ -35,7 +30,6 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 };
 
 
-// @FIX: Cannot find name 'CanvasRenderingContext2D'.
 const wrapText = (context: any, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
     if (words.length === 0) return [];
@@ -59,7 +53,6 @@ const wrapText = (context: any, text: string, maxWidth: number): string[] => {
 
 
 export const drawCanvas = async (
-  // @FIX: Cannot find name 'CanvasRenderingContext2D'.
   context: any,
   baseImage: any,
   options: TextOptions

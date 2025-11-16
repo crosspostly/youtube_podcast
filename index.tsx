@@ -10,7 +10,6 @@ import './style.css';
 (window as any).process = process;
 (window as any).global = globalThis;
 
-// @FIX: Cannot find name 'document'. Access it via `window` as DOM types are not available.
 const rootElement = (window as any).document.getElementById('root');
 if (!rootElement) {
   throw new Error("Could not find root element to mount to");

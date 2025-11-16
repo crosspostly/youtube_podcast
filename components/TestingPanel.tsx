@@ -31,7 +31,6 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
     // Preload the placeholder image
     useEffect(() => {
-        // @FIX: Cannot find name 'Image'.
         const img = new (window as any).Image();
         img.crossOrigin = "anonymous";
         img.src = PLACEHOLDER_IMAGE_URL;
@@ -49,7 +48,6 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
 
     const runDesignerTest = async () => {
         if (!imageRef.current) {
-            // @FIX: Cannot find name 'alert'.
             (window as any).alert("Тестовое изображение еще не загружено. Пожалуйста, подождите.");
             return;
         }
@@ -69,7 +67,6 @@ const TestingPanel: React.FC<TestingPanelProps> = ({ onClose }) => {
             try {
                 const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys);
                 
-                // @FIX: Cannot find name 'document'.
                 const canvas = (window as any).document.createElement('canvas');
                 canvas.width = 1280;
                 canvas.height = 720;

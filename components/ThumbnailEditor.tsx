@@ -37,7 +37,6 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
 
     const redrawCanvas = useCallback(() => {
         if (!canvasRef.current || !imageRef.current || isFontLoading) return;
-        // @FIX: Property 'getContext' does not exist on type 'HTMLCanvasElement'.
         const ctx = (canvasRef.current as any).getContext('2d');
         if (ctx) {
             drawCanvas(ctx, imageRef.current, options);
@@ -45,7 +44,6 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
     }, [options, isFontLoading]);
 
     useEffect(() => {
-        // @FIX: Cannot find name 'Image'.
         const img = new (window as any).Image();
         img.crossOrigin = "anonymous";
         img.src = baseImageSrc;
@@ -70,9 +68,7 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
     const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        // @FIX: Property 'getBoundingClientRect' does not exist on type 'HTMLCanvasElement'.
         const rect = (canvas as any).getBoundingClientRect();
-        // @FIX: Property 'width'/'height' does not exist on type 'HTMLCanvasElement'.
         const x = (e.clientX - rect.left) * ((canvas as any).width / rect.width);
         const y = (e.clientY - rect.top) * ((canvas as any).height / rect.height);
         setIsDragging(true);
@@ -83,9 +79,7 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
         if (!isDragging) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
-        // @FIX: Property 'getBoundingClientRect' does not exist on type 'HTMLCanvasElement'.
         const rect = (canvas as any).getBoundingClientRect();
-        // @FIX: Property 'width'/'height' does not exist on type 'HTMLCanvasElement'.
         const x = (e.clientX - rect.left) * ((canvas as any).width / rect.width);
         const y = (e.clientY - rect.top) * ((canvas as any).height / rect.height);
         handleOptionChange('position', { x: x - dragStart.x, y: y - dragStart.y });
@@ -100,7 +94,6 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
         onSave({
             ...thumbnail,
             options,
-            // @FIX: Property 'toDataURL' does not exist on type 'HTMLCanvasElement'.
             dataUrl: (canvas as any).toDataURL('image/png'),
         });
     };
@@ -114,7 +107,6 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Текст</label>
-                            {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLTextAreaElement'. */}
                             <textarea value={options.text} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleOptionChange('text', (e.target as any).value)} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1" rows={3}/>
                         </div>
                         <div>
@@ -127,20 +119,16 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                         <div className="flex items-center gap-4">
                            <div className="flex-1">
                                 <label className="block text-sm font-medium text-slate-300">Размер</label>
-                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                 <input type="range" min="30" max="200" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number((e.target as any).value))} className="w-full mt-1"/>
                             </div>
-                             {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                              <input type="number" value={options.fontSize} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fontSize', Number((e.target as any).value))} className="w-20 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"/>
                         </div>
                         <div className="flex items-center gap-4">
                              <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                             {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                              <input type="color" value={options.fillStyle} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('fillStyle', (e.target as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-300">Выравнивание</label>
-                            {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLSelectElement'. */}
                             <select value={options.textAlign} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleOptionChange('textAlign', (e.target as any).value as TextOptions['textAlign'])} className="w-full bg-slate-800 border border-slate-600 rounded-md p-2 text-white mt-1">
                                 <option value="left">По левому краю</option>
                                 <option value="center">По центру</option>
@@ -152,12 +140,10 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Обводка</h4>
                              <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                  <input type="color" value={options.strokeColor || '#000000'} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeColor', (e.target as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                              </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Толщина: {options.strokeWidth || 0}px</label>
-                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                 <input type="range" min="0" max="30" value={options.strokeWidth || 0} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleOptionChange('strokeWidth', Number((e.target as any).value))} className="w-full mt-1"/>
                             </div>
                         </div>
@@ -166,22 +152,18 @@ const ThumbnailEditor: React.FC<ThumbnailEditorProps> = ({ thumbnail, baseImageS
                             <h4 className="text-lg font-semibold text-white mb-2">Тень</h4>
                             <div className="flex items-center gap-4 mb-2">
                                  <label className="block text-sm font-medium text-slate-300">Цвет</label>
-                                 {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                  <input type="color" value={options.shadow.color} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('color', (e.target as any).value)} className="w-10 h-10 bg-transparent border-none rounded"/>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Размытие: {options.shadow.blur}px</label>
-                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                 <input type="range" min="0" max="50" value={options.shadow.blur} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('blur', Number((e.target as any).value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение X: {options.shadow.offsetX}px</label>
-                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                 <input type="range" min="-20" max="20" value={options.shadow.offsetX} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetX', Number((e.target as any).value))} className="w-full mt-1"/>
                             </div>
                              <div>
                                 <label className="block text-sm font-medium text-slate-300">Смещение Y: {options.shadow.offsetY}px</label>
-                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
                                 <input type="range" min="-20" max="20" value={options.shadow.offsetY} onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleShadowChange('offsetY', Number((e.target as any).value))} className="w-full mt-1"/>
                             </div>
                         </div>

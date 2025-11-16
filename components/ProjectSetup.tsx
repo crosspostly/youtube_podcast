@@ -19,6 +19,7 @@ interface ProjectSetupProps {
         monologueVoice: string, 
         initialImageCount: number
     ) => void;
+    onStartAutomatedProject: (topic: string) => void;
     onOpenDesignerTest: () => void;
     onOpenMusicTest: () => void;
     onOpenSfxTest: () => void;
@@ -81,7 +82,7 @@ const VOICES: Voice[] = [
 ];
 
 
-const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesignerTest, onOpenMusicTest, onOpenSfxTest, onOpenVideoTest }) => {
+const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onStartAutomatedProject, onOpenDesignerTest, onOpenMusicTest, onOpenSfxTest, onOpenVideoTest }) => {
     const {
         isLoading, log, setError,
         history, setPodcast: setPodcastInHistory, clearHistory,
@@ -108,6 +109,8 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const [langSearchTerm, setLangSearchTerm] = useState('');
     const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
     const langDropdownRef = useRef<any>(null);
+    
+    const [automatedTopic, setAutomatedTopic] = useState<string>('');
 
     const filteredLanguages = useMemo(() => 
         languages.filter(l => safeIncludes(l.name, langSearchTerm)),
@@ -195,7 +198,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
             log({ type: 'info', message: `Голос ${voiceId} не найден в кэше. Генерация...` });
             const selectedLanguageCode = languages.find(l => l.name === language)?.code || 'ru';
-            // FIX: Pass apiKeys to previewVoice call
             const generatedBlob = await previewVoice(voiceId, selectedLanguageCode, log, apiKeys);
             
             await saveVoiceToCache(voiceId, generatedBlob);
@@ -213,9 +215,38 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         onStartProject(projectTitleInput, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, narrationMode, characterVoices, monologueVoice, initialImageCount);
     };
 
+    const handleStartAutomatedProject = () => {
+        onStartAutomatedProject(automatedTopic);
+    }
+
     return (
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
             <audio ref={audioRef} className="hidden" />
+
+            <div className="w-full bg-slate-900/60 border border-cyan-500/30 rounded-2xl p-6 mb-8 shadow-2xl shadow-cyan-500/10 backdrop-blur-lg">
+                <h3 className="text-2xl font-bold text-white mb-4">🚀 Автоматический режим (1-Клик)</h3>
+                <p className="text-slate-400 mb-4 text-sm">
+                    Введите тему, и система автоматически создаст полноценное видео, обложку, субтитры и метаданные с оптимальными настройками.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                    <input 
+                        type="text" 
+                        value={automatedTopic} 
+                        onChange={(e) => setAutomatedTopic((e.currentTarget as any).value)} 
+                        placeholder="Например: 'Загадка Бермудского треугольника'" 
+                        className="flex-grow bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500" 
+                    />
+                     <button onClick={handleStartAutomatedProject} disabled={isLoading || !automatedTopic} className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-lg font-bold rounded-lg hover:from-cyan-400 hover:to-blue-500 transition-all shadow-lg shadow-cyan-500/20 hover:shadow-blue-500/30 disabled:from-slate-600 disabled:to-slate-700 disabled:shadow-none disabled:cursor-not-allowed flex-shrink-0">
+                        Создать Видео за 1 Клик
+                    </button>
+                </div>
+            </div>
+
+             <div className="text-center my-8 text-slate-400 font-semibold">
+                ИЛИ НАСТРОЙТЕ ПРОЕКТ ВРУЧНУЮ
+            </div>
+
+
             <p className="text-center text-lg text-slate-400 mb-6">Введите название будущего подкаста/видео, соберите базу знаний и настройте параметры генерации.</p>
             <div className="w-full flex flex-col sm:flex-row gap-2 mb-8">
                 <input 
