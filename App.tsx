@@ -13,7 +13,8 @@ import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
 import VideoTestPanel from './components/VideoTestPanel';
 import { getApiRetryConfig, updateApiRetryConfig, type ApiRetryConfig } from './config/appConfig';
-
+import { appConfig } from './config/appConfig';
+import { validateGeminiKey } from './services/geminiService';
 
 const AppUI: React.FC<{
     isLogVisible: boolean;
@@ -129,38 +130,52 @@ const App: React.FC = () => {
     const [stockPhotoPreference, setStockPhotoPreference] = useState<StockPhotoPreference>('unsplash');
     const [retryConfig, setRetryConfig] = useState<ApiRetryConfig>(getApiRetryConfig());
 
+    // ✅ ДОБАВИТЬ СЮДА ПРОВЕРКУ КЛЮЧА:
+    useEffect(() => {
+        console.log('🚀 Приложение запущено');
+        
+        if (appConfig.geminiApiKey) {
+            console.log('🔑 Gemini API ключ найден в конфиге');
+            
+            validateGeminiKey(appConfig.geminiApiKey).then(isValid => {
+                if (isValid) {
+                    console.log('✅ Ключ валидный и работает');
+                } else {
+                    console.warn('⚠️ Ключ невалидный');
+                }
+            });
+        } else {
+            console.warn('⚠️ Gemini API ключ не настроен');
+        }
+    }, []);
+
     useEffect(() => {
         try {
             const storedKeys = localStorage.getItem('apiKeys');
             if (storedKeys && storedKeys !== 'undefined') {
                 try {
                     const parsedKeys = JSON.parse(storedKeys);
-                    // Migration: Remove openRouter key if it exists
                     if (parsedKeys.openRouter !== undefined) {
                         delete parsedKeys.openRouter;
                         localStorage.setItem('apiKeys', JSON.stringify(parsedKeys));
                     }
-                    // Merge with default to ensure all keys exist
                     setApiKeys(prevKeys => ({
                         ...prevKeys,
                         ...parsedKeys
                     }));
                 } catch (e) {
                     console.error('Failed to parse API keys:', e);
-                    // Очистить некорректные данные
                     localStorage.removeItem('apiKeys');
                 }
             }
             const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
             
-            // Load image mode from localStorage
             const storedImageMode = localStorage.getItem('imageMode');
             if (storedImageMode && storedImageMode !== 'undefined') {
                 setImageMode(storedImageMode as ImageMode);
             }
             
-            // Load retry config from localStorage
             const storedRetryConfig = localStorage.getItem('apiRetryConfig');
             if (storedRetryConfig && storedRetryConfig !== 'undefined') {
                 try {
@@ -173,7 +188,6 @@ const App: React.FC = () => {
                 }
             }
             
-            // Load stock photo preference from localStorage
             const storedPreference = localStorage.getItem('stockPhotoPreference');
             if (storedPreference && storedPreference !== 'undefined') {
                 setStockPhotoPreference(storedPreference as StockPhotoPreference);

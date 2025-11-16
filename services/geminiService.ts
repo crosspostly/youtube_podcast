@@ -1,14 +1,51 @@
-
+// services/geminiService.ts
 
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { safeLower } from '../utils/safeLower-util';
 import { getApiRetryConfig } from '../config/appConfig';
+import { appConfig } from '../config/appConfig';
 
-// This service is self-contained and doesn't import from other local files
-// to be easily reusable.
-export type LogFunction = (entry: { type: 'info' | 'error' | 'request' | 'response' | 'warning'; message: string; data?: any; showToUser?: boolean; }) => void;
+// ============================================================================
+// ВАЛИДАЦИЯ GEMINI API КЛЮЧА
+// ============================================================================
 
-// Queue implementation for API requests
+export async function validateGeminiKey(apiKey: string): Promise<boolean> {
+  try {
+    console.log('🔍 Проверка Gemini API ключа...');
+    
+    if (!apiKey || !apiKey.startsWith('AIzaSy') || apiKey.length < 30) {
+      console.error('❌ Неправильный формат ключа');
+      return false;
+    }
+
+    // ✅ ПРАВИЛЬНЫЙ СПОСОБ
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: 'Скажи "OK"'
+    });
+    
+    const text = response.text || '';
+    console.log('✅ Ключ работает! Ответ:', text);
+    return true;
+    
+  } catch (error: any) {
+    console.error('❌ Ключ не работает:', error.message);
+    return false;
+  }
+}
+
+// ============================================================================
+// ТИПЫ И ИНТЕРФЕЙСЫ
+// ============================================================================
+
+export type LogFunction = (entry: { 
+  type: 'info' | 'error' | 'request' | 'response' | 'warning'; 
+  message: string; 
+  data?: any; 
+  showToUser?: boolean; 
+}) => void;
+
 interface QueueItem {
     id: string;
     execute: () => Promise<any>;
@@ -17,15 +54,27 @@ interface QueueItem {
     timestamp: number;
 }
 
+export interface RetryConfig {
+    retries?: number;
+    initialDelay?: number;
+    maxDelay?: number;
+    exponentialBase?: number;
+    jitterFactor?: number;
+}
+
+// ============================================================================
+// API REQUEST QUEUE
+// ============================================================================
+
 export class ApiRequestQueue {
     private queue: QueueItem[] = [];
     private isProcessing = false;
     private lastRequestTime = 0;
     private readonly minDelayBetweenRequests: number;
-    private readonly maxConcurrentRequests = 1; // Only 1 request at a time
+    private readonly maxConcurrentRequests = 1;
     private currentRequests = 0;
     private log: LogFunction;
-    private pendingRequests = new Set<string>(); // Track pending requests to prevent duplicates
+    private pendingRequests = new Set<string>();
 
     constructor(log: LogFunction, minDelayBetweenRequests = 1500) {
         this.log = log;
@@ -33,7 +82,6 @@ export class ApiRequestQueue {
     }
 
     async add<T>(executeFn: () => Promise<T>, requestKey?: string): Promise<T> {
-        // Check for duplicate requests
         if (requestKey && this.pendingRequests.has(requestKey)) {
             const warningMsg = `Duplicate request in queue for key "${requestKey}". Skipping.`;
             this.log({ type: 'warning', message: warningMsg });
@@ -49,7 +97,6 @@ export class ApiRequestQueue {
                 timestamp: Date.now()
             };
 
-            // Track this request if it has a key
             if (requestKey) {
                 this.pendingRequests.add(requestKey);
                 
@@ -102,7 +149,7 @@ export class ApiRequestQueue {
                 this.log({ 
                     type: 'info', 
                     message: `Ожидание ${waitSeconds}с перед следующим запросом...`,
-                    showToUser: waitSeconds > 5 // Only show long waits to user
+                    showToUser: waitSeconds > 5
                 });
                 await this.delay(delayNeeded);
             }
@@ -145,7 +192,10 @@ export class ApiRequestQueue {
     }
 }
 
-// Store for named queues
+// ============================================================================
+// QUEUES STORAGE
+// ============================================================================
+
 const queues = new Map<string, ApiRequestQueue>();
 
 const getNamedQueue = (name: string, log: LogFunction, minDelay: number): ApiRequestQueue => {
@@ -156,30 +206,29 @@ const getNamedQueue = (name: string, log: LogFunction, minDelay: number): ApiReq
     return queues.get(name)!;
 };
 
+// ============================================================================
+// AI CLIENT
+// ============================================================================
 
-// Centralized client creation.
 const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
-  const apiKey = customApiKey?.trim() || process.env.API_KEY;
+  const apiKey = customApiKey?.trim() || appConfig.geminiApiKey;
+  
   if (!apiKey) {
-    const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
+    const errorMsg = "Ключ API не настроен. Добавьте ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
+  
+  console.log('🔑 Используется ключ:', apiKey.substring(0, 10) + '...');
   return new GoogleGenAI({ apiKey });
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Configuration interface for retry behavior
-export interface RetryConfig {
-    retries?: number;
-    initialDelay?: number;
-    maxDelay?: number;
-    exponentialBase?: number;
-    jitterFactor?: number;
-}
+// ============================================================================
+// RETRY CONFIGURATION
+// ============================================================================
 
-// Default retry configuration (now uses global config as base)
 const getRetryConfig = (userConfig: RetryConfig = {}): Required<RetryConfig> => {
     const globalConfig = getApiRetryConfig();
     return { 
@@ -193,8 +242,10 @@ const getRetryConfig = (userConfig: RetryConfig = {}): Required<RetryConfig> => 
     };
 };
 
-// Generic retry wrapper for any async function.
-// It specifically checks for temporary, retryable errors like overload or rate limits.
+// ============================================================================
+// RETRY WRAPPER
+// ============================================================================
+
 export const withRetries = async <T>(
     fn: () => Promise<T>, 
     log: LogFunction, 
@@ -209,7 +260,7 @@ export const withRetries = async <T>(
     } = getRetryConfig(config);
     
     let attempt = 1;
-    let currentDelay = Math.max(initialDelay, 2000); // Use a more robust initial delay
+    let currentDelay = Math.max(initialDelay, 2000);
     let consecutive429Count = 0;
 
     while (attempt <= retries) {
@@ -227,9 +278,9 @@ export const withRetries = async <T>(
             const status = error?.status || error?.response?.status;
 
             const isRetryable =
-                status === 429 || // Too Many Requests
-                status === 503 || // Service Unavailable
-                status === 504 || // Gateway Timeout
+                status === 429 ||
+                status === 503 ||
+                status === 504 ||
                 errorMessage.includes('overloaded') ||
                 errorMessage.includes('rate limit') ||
                 errorMessage.includes('timed out') ||
@@ -284,7 +335,7 @@ export const withRetries = async <T>(
 
                 await delay(delayWithJitter);
                 attempt++;
-                currentDelay = Math.min(currentDelay * exponentialBase, maxDelay); // Exponential backoff with cap
+                currentDelay = Math.min(currentDelay * exponentialBase, maxDelay);
             } else {
                 let finalErrorMessage: string;
                 
@@ -324,6 +375,10 @@ export const withRetries = async <T>(
     throw new Error("Exhausted all retries. This should not be reached.");
 };
 
+// ============================================================================
+// QUEUE + RETRIES WRAPPER
+// ============================================================================
+
 export const withQueueAndRetries = async <T>(
     fn: () => Promise<T>, 
     log: LogFunction, 
@@ -336,19 +391,33 @@ export const withQueueAndRetries = async <T>(
     return await queue.add(() => withRetries(fn, log, config), requestKey);
 };
 
-// Define primary model for text generation
-const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash-lite';
-// Wrapper for generateContent that includes retries but no OpenRouter fallback.
+// ============================================================================
+// PRIMARY MODEL
+// ============================================================================
+
+const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
+
+// ============================================================================
+// GENERATE CONTENT WITH FALLBACK
+// ============================================================================
+
 export const generateContentWithFallback = async (
     params: { contents: any; config?: any; }, 
     log: LogFunction,
     apiKeys: { gemini?: string; }
 ): Promise<GenerateContentResponse> => {
     
-    const attemptGeneration = (model: string) => {
+    const attemptGeneration = async (model: string) => {
         log({ type: 'request', message: `Attempting generation with model: ${model}`, data: { contents: params.contents } });
+        
         const ai = getAiClient(apiKeys.gemini, log);
-        return ai.models.generateContent({ model, ...params });
+        
+        // ✅ ПРАВИЛЬНЫЙ СПОСОБ
+        return await ai.models.generateContent({
+            model: model,
+            contents: params.contents,
+            ...params.config
+        });
     };
 
     try {
@@ -356,9 +425,9 @@ export const generateContentWithFallback = async (
         return await withQueueAndRetries(
             () => attemptGeneration(PRIMARY_TEXT_MODEL),
             log,
-            {}, // retry config
-            'text', // queue name
-            1500,   // delay
+            {},
+            'text',
+            1500,
             requestKey
         );
     } catch (primaryError) {
