@@ -1,0 +1,26 @@
+{
+  "projectId": "test-project-123",
+  "metadata": {
+    "title": "Тестовый проект",
+    "description": "Тестовое описание",
+    "language": "ru"
+  },
+  "settings": {
+    "resolution": "1920x1080",
+    "fps": 30,
+    "quality": "medium"
+  },
+  "chapters": [
+    {
+      "id": "chapter-1",
+      "title": "Глава 1",
+      "duration": 10,
+      "files": {
+        "speech": "audio/chapter-1-speech.mp3",
+        "image": "images/chapter-1.jpg"
+      },
+      "musicVolume": 0.3,
+      "sfx": []
+    }
+  ]
+}

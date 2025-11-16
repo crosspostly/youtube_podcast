@@ -49,7 +49,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         isRegeneratingText, isRegeneratingAudio,
         regeneratingImage, generatingMoreImages,
         isConvertingToMp3, isGeneratingSrt, isGeneratingVideo, videoGenerationProgress,
-        handleGenerateChapter, combineAndDownload, generateVideo, generatePartialVideo,
+        handleGenerateChapter, combineAndDownload, generateVideo, generateVideoLocally, generatePartialVideo,
         regenerateProject, regenerateText,
         regenerateChapterImages, regenerateAllAudio, regenerateAllImages, regenerateSingleImage,
         generateMoreImages, handleTitleSelection, setGlobalMusicVolume, setChapterMusicVolume,
@@ -721,6 +721,14 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         className="flex flex-col items-center justify-center gap-2 p-4 bg-purple-800/60 rounded-lg hover:bg-purple-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-purple-300">
                         {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
                         <span className="font-semibold text-sm">Создать Видео</span>
+                    </button>
+                    <button 
+                        onClick={generateVideoLocally} 
+                        disabled={!allChaptersDone || isGeneratingVideo} 
+                        className="flex flex-col items-center justify-center gap-2 p-4 bg-green-800/60 rounded-lg hover:bg-green-700/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-green-300"
+                        title="Создать видео через локальный FFmpeg (стабильнее)">
+                        {isGeneratingVideo ? <Spinner className="w-6 h-6"/> : <VideoCameraIcon />}
+                        <span className="font-semibold text-sm">Локальный FFmpeg</span>
                     </button>
                      <button 
                         onClick={() => generatePartialVideo()}
