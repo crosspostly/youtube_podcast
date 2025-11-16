@@ -6,6 +6,7 @@ import { parseGeminiJsonResponse } from './aiUtils';
 import { findSfxForScript } from './sfxService';
 import { appConfig, API_KEYS } from '../config/appConfig';
 import { createWavBlob } from '../utils/audioUtils';
+import { prompts } from './prompts';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; freesound?: string; };
@@ -58,7 +59,6 @@ export const previewVoice = async (voiceId: string, languageCode: string, log: L
 };
 
 export const generatePodcastBlueprint = async (topic: string, knowledgeBase: string, creativeFreedom: boolean, language: string, duration: number, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number) => {
-    const totalChapters = Math.max(1, Math.ceil(duration / 7));
     const style = creativeFreedom ? 'a captivating narrative story in the style of Stephen King or H.P. Lovecraft, using facts as inspiration' : 'a factual, documentary-style report';
     const characterPrompt = narrationMode === 'dialogue'
         ? `
@@ -78,35 +78,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBase: str
         ? 'Base your answer on Google Search results.'
         : 'Base your answer exclusively on the provided knowledge base.';
 
-    const prompt = `
-      Create a detailed plan for a ${duration}-minute YouTube podcast about "${topic}".
-      The output must be a single valid JSON object in \`\`\`json ... \`\`\`.
-      The language for all generated text must be: ${language}.
-      The podcast should be in the style of ${style}.
-      ${sourceInstruction}
-
-      The JSON must have this structure:
-      {
-        "youtubeTitleOptions": ["Clickable Title 1", "SEO-Friendly Title 2", "Intriguing Title 3"],
-        "description": "A 2-3 paragraph SEO-optimized description for the YouTube video.",
-        "seoKeywords": ["keyword1", "keyword2", "keyword3"],
-        ${characterPrompt}
-        "chapters": [
-          {
-            "title": "Title of Chapter 1",
-            "script": [
-              { "speaker": "CharacterName", "text": "The first line of dialogue or narration." },
-              { "speaker": "SFX", "text": "Sound of wind and rain", "searchTags": "wind, rain, storm" }
-            ],
-            "imagePrompts": [
-              "A detailed, cinematic prompt for an AI image generator for the first scene.",
-              "A detailed prompt for the second scene.",
-              "A detailed prompt for the third scene."
-            ]
-          }
-        ]
-      }
-    `;
+    const prompt = prompts.youtubeBlueprint(topic, duration, style, characterPrompt, sourceInstruction, language);
 
     const response = await generateContentWithFallback({
         contents: `${prompt}\n\nKnowledge Base:\n${knowledgeBase}`,
@@ -117,33 +89,14 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBase: str
 };
 
 export const generateNextChapterScript = async (topic: string, mainTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, duration: number, knowledgeBase: string, creativeFreedom: boolean, language: string, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys) => {
+    const totalChapters = Math.max(1, Math.ceil(duration / 7));
+    const isFinalChapter = (chapterIndex + 1) >= totalChapters;
     const style = creativeFreedom ? 'a captivating narrative story' : 'a factual, documentary-style report';
     const useGoogleSearch = !knowledgeBase.trim();
     const sourceInstruction = useGoogleSearch ? 'Base your answer on Google Search results.' : 'Base your answer on the provided knowledge base.';
     const context = previousChapters.map((c, i) => `Chapter ${i + 1}: ${c.title}\nSummary: ${c.script.map(s => s.text).join(' ').substring(0, 150)}...`).join('\n\n');
 
-    const prompt = `
-      You are writing a multi-part podcast about "${topic}". The main title is "${mainTitle}".
-      You have already written ${previousChapters.length} chapters.
-      Context of previous chapters:\n${context}\n
-      Now, write the script for Chapter ${chapterIndex + 1}. Continue the story logically.
-      The style is: ${style}. The language is: ${language}.
-      ${sourceInstruction}
-      
-      The output must be a single valid JSON object in \`\`\`json ... \`\`\` with this structure:
-      {
-        "title": "Title of Chapter ${chapterIndex + 1}",
-        "script": [
-          { "speaker": "${narrationMode === 'dialogue' ? 'Narrator or Expert' : 'Narrator'}", "text": "Line of dialogue." },
-          { "speaker": "SFX", "text": "Description of a sound effect", "searchTags": "relevant, search, tags" }
-        ],
-        "imagePrompts": [
-          "Detailed AI image prompt for scene 1.",
-          "Detailed AI image prompt for scene 2.",
-          "Detailed AI image prompt for scene 3."
-        ]
-      }
-    `;
+    const prompt = prompts.nextChapter(topic, mainTitle, context, chapterIndex, style, sourceInstruction, language, isFinalChapter);
 
     const response = await generateContentWithFallback({
         contents: `${prompt}\n\nKnowledge Base:\n${knowledgeBase}`,
@@ -320,24 +273,7 @@ export const regenerateTextAssets = async (topic: string, knowledgeBase: string,
 };
 
 export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<ThumbnailDesignConcept[]> => {
-    const prompt = `
-        Create 4 diverse, high-CTR YouTube thumbnail design concepts for a video about "${topic}". The language is ${language}.
-        Inspired by top creators like MrBeast, Vox, and popular documentary channels.
-        Return a single valid JSON array in \`\`\`json ... \`\`\`.
-        Each object must have this structure:
-        {
-          "name": "Style Name (e.g., 'MrBeast High Contrast')",
-          "fontFamily": "A suitable font from Google Fonts (e.g., 'Impact', 'Bebas Neue')",
-          "fontSize": 120,
-          "textColor": "#FFFF00",
-          "shadowColor": "rgba(0,0,0,0.8)",
-          "overlayOpacity": 0.3,
-          "strokeColor": "#000000",
-          "strokeWidth": 15,
-          "gradientColors": ["#FFFF00", "#FFD700"],
-          "textTransform": "uppercase"
-        }
-    `;
+    const prompt = prompts.thumbnailDesigns(topic, language);
     const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
     return await parseGeminiJsonResponse(response.text, log, apiKeys);
 };
@@ -384,16 +320,7 @@ export const findMusicWithAi = async (scriptText: string, log: LogFunction, apiK
     if (!JAMENDO_CLIENT_ID) {
         return []; // Silently skip if no key, findMusicManually will log the warning.
     }
-    const prompt = `
-        Analyze the mood, tempo, and theme of the following text.
-        Generate 3 diverse sets of search tags for finding background music on a service like Jamendo.
-        Each set should be a few keywords. Focus on instrument, mood, and genre.
-        
-        Text: "${scriptText.substring(0, 1000)}..."
-        
-        Return a single valid JSON object in \`\`\`json ... \`\`\`.
-        { "tag_sets": [ "tagset 1", "tagset 2", "tagset 3" ] }
-    `;
+    const prompt = prompts.musicTags(scriptText);
     try {
         const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
         const data = await parseGeminiJsonResponse(response.text, log, apiKeys);

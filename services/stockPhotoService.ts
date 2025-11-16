@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai';
 import type { StockPhoto, StockPhotoApiKeys, GeneratedImage } from '../types';
 import type { LogEntry } from '../types';
 import { blockKey, getKeyStatus } from '../utils/stockPhotoKeyManager';
+import { prompts } from './prompts';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -22,18 +23,7 @@ const simplifyPromptForStock = async (
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: {
-                parts: [{
-                    text: `Simplify this AI image generation prompt for stock photo search.
-                           Remove technical terms: cinematic, hyperrealistic, 8k, ultra-detailed, dramatic lighting, etc.
-                           Keep only: main objects, atmosphere, colors.
-                           Output only the simplified query, nothing else.
-                           
-                           AI Prompt: "${aiPrompt}"
-                           
-                           Simplified query:`
-                }]
-            }
+            contents: { parts: [{ text: prompts.simplifyForStock(aiPrompt) }] }
         });
         
         const simplified = response.text.trim();
@@ -66,7 +56,7 @@ const translateToEnglish = async (
         const ai = new GoogleGenAI({ apiKey: geminiApiKey });
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: { parts: [{ text: `Translate to English (output only translation): "${query}"` }] }
+            contents: { parts: [{ text: prompts.translateToEnglish(query) }] }
         });
         
         const translated = response.text.trim();

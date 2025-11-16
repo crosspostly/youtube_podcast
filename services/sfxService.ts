@@ -1,6 +1,7 @@
 import { generateContentWithFallback, withRetries, RetryConfig } from './geminiService';
 import { parseGeminiJsonResponse } from './aiUtils';
 import type { SoundEffect, LogEntry, ScriptLine } from '../types';
+import { prompts } from './prompts';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; freesound?: string; };
@@ -122,8 +123,7 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction, a
         log({ type: 'warning', message: `${linesWithoutTags.length} SFX не имеют встроенных тегов, используем batch-генерацию как fallback...` });
         
         const sfxDescriptions = linesWithoutTags.map(({ line }) => line.text);
-        
-        const prompt = `For each of the following ${sfxDescriptions.length} sound effect descriptions, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.\n\nDescriptions:\n${sfxDescriptions.map((d, i) => `${i + 1}. "${d}"`).join('\n')}\n\nReturn the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.\n\n**JSON Structure:**\n{\n  "keywords": [\n    "keywords for description 1",\n    "keywords for description 2",\n    ...\n  ]\n}`;
+        const prompt = prompts.batchSfxKeywords(sfxDescriptions);
 
         try {
             const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
@@ -168,16 +168,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction, apiKe
     
     log({ type: 'request', message: `Запрос ключевых слов для SFX: "${sanitizedDescription}"` });
 
-    const prompt = `For the following sound effect description, generate a simple, effective search query of 2-3 English keywords for a sound library like Freesound.org.
-    
-    Description: "${sanitizedDescription}"
-    
-    Return ONLY the comma-separated keywords.
-    
-    Example for "A heavy wooden door creaking open": 
-    door, wood, creak
-    
-    Keywords:`;
+    const prompt = prompts.sfxKeywords(sanitizedDescription);
 
     try {
         const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);

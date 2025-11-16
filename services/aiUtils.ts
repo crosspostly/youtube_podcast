@@ -1,5 +1,6 @@
 import { generateContentWithFallback } from './geminiService';
 import type { LogEntry } from '../types';
+import { prompts } from './prompts';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; };
@@ -15,10 +16,7 @@ export const parseGeminiJsonResponse = async (rawText: string, log: LogFunction,
     } catch (jsonError) {
         log({ type: 'error', message: 'Не удалось распарсить JSON, попытка исправления с помощью ИИ...', data: { error: jsonError, text: jsonText } });
         
-        const correctionPrompt = `The following text is a malformed JSON response from an API. Please correct any syntax errors (like trailing commas, missing brackets, or unescaped quotes) and return ONLY the valid JSON object. Do not include any explanatory text or markdown formatting like \`\`\`json.
-
-        Malformed JSON:
-        ${jsonText}`;
+        const correctionPrompt = prompts.jsonCorrection(jsonText);
 
         try {
             const correctionResponse = await generateContentWithFallback({ contents: correctionPrompt }, log, apiKeys);
