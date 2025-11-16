@@ -26,4 +26,3 @@ dist-ssr
 public/ffmpeg-core.wasm
 you.zip
 .env
-services.zip
