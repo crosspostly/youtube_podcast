@@ -11,7 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@ffmpeg/ffmpeg": "0.12.15",
+    "@ffmpeg/ffmpeg": "0.12.10",
     "@ffmpeg/util": "0.12.1",
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.17",
