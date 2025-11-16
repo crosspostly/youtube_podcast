@@ -78,9 +78,13 @@ export async function exportProjectToLocalCLI(podcast: Podcast): Promise<string>
     
     // Музыка
     if (chapter.backgroundMusic?.audio) {
-      // Для музыки у нас есть URL, нужно скачать и конвертировать
+      // Для музыки у нас есть URL, нужно скачать и конвертировать через прокси
       try {
-        const musicResponse = await fetch(chapter.backgroundMusic.audio);
+        const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(chapter.backgroundMusic.audio)}`;
+        const musicResponse = await fetch(proxyUrl);
+        if (!musicResponse.ok) {
+            throw new Error(`Failed to fetch music via proxy: ${musicResponse.statusText}`);
+        }
         const musicBlob = await musicResponse.blob();
         chapterData.musicAudio = await blobToBase64(musicBlob);
       } catch (error) {

@@ -27,6 +27,7 @@ Go from a single topic to a complete, downloadable video package with one button
 - [Technology Stack](#-technology-stack)
 - [Getting Started](#-getting-started)
 - [Configuration](#-configuration)
+- [Local Development Features](#-local-development-features)
 - [Roadmap & Future Enhancements](#-roadmap--future-enhancements)
 - [Development & Contribution](#-development--contribution)
 - [Troubleshooting & FAQ](#-troubleshooting--faq)
@@ -168,13 +169,35 @@ API keys are required for the application to function correctly. Using your own 
 
 ---
 
+## 🎬 Local Development Features
+
+### Local Video Generation
+
+For improved performance and stability, especially for longer videos, you can use a locally installed version of FFmpeg to render the video.
+
+#### Prerequisites
+- **FFmpeg:** You must have FFmpeg installed on your system and accessible via your system's `PATH`.
+  - You can download it from [ffmpeg.org](https://ffmpeg.org/download.html).
+  - On macOS with Homebrew: `brew install ffmpeg`
+  - On Windows with Chocolatey: `choco install ffmpeg`
+  - On Debian/Ubuntu: `sudo apt update && sudo apt install ffmpeg`
+
+#### How It Works
+1. Click the **"Локальный FFmpeg"** button in the Podcast Studio.
+2. The browser will package your project (audio, images, metadata) and send it to your local development server (`dev-server.js`).
+3. The server saves these assets to a temporary `projects/` directory.
+4. It then runs a Node.js script (`cli/build.js`) which uses your local `ffmpeg` to build the video in the background.
+5. The final video will appear in the `output/` directory in the project's root. You will see progress logs in your terminal where you ran `npm run dev:full`.
+
+---
+
 ## 🗺️ Roadmap & Future Enhancements
 
 This project has a solid foundation, but there are several key architectural improvements planned to further enhance performance and user experience.
 
-### Phase 1: UI & Performance Decoupling
-- **Move FFmpeg to a Web Worker:** Isolate the entire video rendering process in a background thread. This will prevent the UI from freezing during intensive operations, ensuring the application remains responsive at all times.
-- **Implement AbortController for Cancellation:** Add a robust cancellation mechanism to safely terminate the FFmpeg process if the user decides to cancel video generation.
+### Phase 1: UI & Performance Decoupling (Completed)
+- ✅ **FFmpeg in Web Worker:** The entire video rendering process is now isolated in a background thread. This prevents the UI from freezing during intensive operations, ensuring the application remains responsive at all times.
+- ✅ **Robust Cancellation:** A cancellation mechanism has been implemented to safely terminate the FFmpeg process if the user decides to cancel video generation.
 
 ### Phase 2: Advanced Caching & Memory Management
 - **Progressive WASM Loading:** Implement caching for heavy `.wasm` files using a Service Worker. This will dramatically speed up subsequent video renders by eliminating the need to re-download the FFmpeg core.

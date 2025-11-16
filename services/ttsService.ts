@@ -154,17 +154,47 @@ export const generateNextChapterScript = async (topic: string, mainTitle: string
 };
 
 export const generateChapterAudio = async (script: ScriptLine[], narrationMode: NarrationMode, characterVoices: { [key: string]: string }, monologueVoice: string, log: LogFunction, apiKeys: ApiKeys): Promise<Blob> => {
-    const fullText = script.map(line => `${line.speaker}: ${line.text}`).join('\n');
+    // Filter out SFX lines to prevent them from being read aloud.
+    const ttsScript = script.filter(line => line.speaker.toUpperCase() !== 'SFX');
+    
+    if (ttsScript.length === 0) {
+        log({ type: 'warning', message: 'No text to speak in this chapter, generating silence.' });
+        // Return a short silent audio blob to avoid breaking downstream processes
+        const silentAudioBytes = new Uint8Array(24000 * 2 * 1 * 0.1); // 0.1 second of silence
+        return createWavBlob(silentAudioBytes, 24000, 1);
+    }
+    
+    const fullText = ttsScript.map(line => `${line.speaker}: ${line.text}`).join('\n');
     log({ type: 'request', message: 'Запрос на генерацию аудио для главы...' });
     const ai = getTtsAiClient(apiKeys.gemini, log);
     
     let speechConfig;
     if (narrationMode === 'dialogue') {
-        const speakerConfigs = Object.entries(characterVoices).map(([speaker, voiceName]) => ({
-            speaker,
-            voiceConfig: { prebuiltVoiceConfig: { voiceName } }
-        }));
-        speechConfig = { multiSpeakerVoiceConfig: { speakerVoiceConfigs: speakerConfigs } };
+        const uniqueSpeakersInScript = [...new Set(ttsScript.map(line => line.speaker))];
+        
+        const speakerConfigs = uniqueSpeakersInScript
+            .map(speaker => {
+                const voiceName = characterVoices[speaker];
+                if (!voiceName) {
+                    log({ type: 'warning', message: `No voice assigned for speaker "${speaker}" in this chapter. It will be skipped in multi-speaker mode.` });
+                    return null;
+                }
+                return {
+                    speaker,
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+                };
+            })
+            .filter((config): config is NonNullable<typeof config> => config !== null);
+
+        // API requires exactly 2 voices for multi-speaker mode.
+        if (speakerConfigs.length === 2) {
+            speechConfig = { multiSpeakerVoiceConfig: { speakerVoiceConfigs: speakerConfigs } };
+        } else {
+            log({ type: 'warning', message: `Dialogue mode requires 2 unique speakers with assigned voices in the script, but found ${speakerConfigs.length}. Falling back to single-speaker synthesis.` });
+            // Fallback to the first available character voice or the default monologue voice
+            const fallbackVoice = Object.values(characterVoices)[0] || monologueVoice;
+            speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: fallbackVoice } } };
+        }
     } else {
         speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } } };
     }

@@ -18,6 +18,22 @@ app.use(express.json({ limit: '500mb' }));
 
 const DEFAULT_FREESOUND_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
 
+let ffmpegAvailable = false;
+
+async function checkFfmpeg() {
+  try {
+    await execPromise('ffmpeg -version');
+    console.log('✅ FFmpeg is installed and available in PATH.');
+    return true;
+  } catch (error) {
+    console.error('❌ FFmpeg not found. The "Local FFmpeg" video generation feature will not work.');
+    console.error('   Please install FFmpeg and ensure it is in your system\'s PATH.');
+    console.error('   For download instructions, see: https://ffmpeg.org/download.html');
+    return false;
+  }
+}
+
+
 // ============================================================================
 // API ROUTES
 // ============================================================================
@@ -232,6 +248,14 @@ app.post('/api/download-image', async (req, res) => {
 
 
 app.post('/api/export-project', async (req, res) => {
+  if (!ffmpegAvailable) {
+    console.error('❌ FFmpeg not available, cannot build video.');
+    return res.status(500).json({
+      error: 'FFmpeg not found',
+      message: 'FFmpeg is not installed or not in your system\'s PATH. Local video generation is disabled.'
+    });
+  }
+    
   try {
     const { projectId, metadata, chapters, settings } = req.body;
     
@@ -254,7 +278,7 @@ app.post('/api/export-project', async (req, res) => {
     
     for (const [index, chapter] of chapters.entries()) {
       
-      const chapterManifest = {
+      const chapterManifest: any = {
         id: chapter.id,
         title: chapter.title,
         duration: chapter.duration,
@@ -313,17 +337,27 @@ app.post('/api/export-project', async (req, res) => {
     console.log(`🎬 Запуск: ${cliCommand}`);
     
     execPromise(cliCommand)
-      .then(() => console.log(`✅ Видео готово: ${projectId}`))
-      .catch((err) => console.error(`❌ Ошибка сборки:`, err));
+      .then(({ stdout, stderr }) => {
+        if (stderr) {
+            console.error(`[FFMPEG STDERR for ${projectId}]:\n${stderr}`);
+        }
+        console.log(`✅ Video generation complete for project: ${projectId}`);
+        console.log(`   Output should be in the 'output' directory.`);
+        console.log(`[FFMPEG STDOUT for ${projectId}]:\n${stdout}`);
+      })
+      .catch((err) => {
+        console.error(`❌ FAILED to build video for project: ${projectId}`);
+        console.error('Error details:', err);
+      });
     
     res.status(200).json({
       success: true,
       projectId,
-      message: 'Проект сохранён, сборка началась'
+      message: 'Проект сохранён, сборка началась. Следите за прогрессом в консоли сервера.'
     });
     
   } catch (error) {
-    console.error('Ошибка:', error);
+    console.error('Ошибка в эндпоинте /api/export-project:', error);
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error'
@@ -433,12 +467,15 @@ async function saveBase64ToFile(base64Data, filePath) {
 
 app.options('/api/*', cors());
 
-app.listen(PORT, () => {
-  console.log(`Development API server running on http://localhost:${PORT}`);
-  console.log('Available endpoints:');
-  console.log('  GET /api/audio-proxy?url=<encoded_url>');
-  console.log('  POST /api/download-image (body: { url, source, apiKey })');
-  console.log('  POST /api/freesound (body: { query, customApiKey? })');
-  console.log('  POST /api/export-project (body: { projectId, metadata, chapters, settings })');
-  console.log('  GET /api/test-gemini?key=<your_api_key>');
+checkFfmpeg().then(available => {
+  ffmpegAvailable = available;
+  app.listen(PORT, () => {
+    console.log(`Development API server running on http://localhost:${PORT}`);
+    console.log('Available endpoints:');
+    console.log('  GET /api/audio-proxy?url=<encoded_url>');
+    console.log('  POST /api/download-image (body: { url, source, apiKey })');
+    console.log('  POST /api/freesound (body: { query, customApiKey? })');
+    console.log('  POST /api/export-project (body: { projectId, metadata, chapters, settings })');
+    console.log('  GET /api/test-gemini?key=<your_api_key>');
+  });
 });

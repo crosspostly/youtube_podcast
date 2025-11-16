@@ -8,6 +8,7 @@ export interface LogEntry {
   type: 'info' | 'error' | 'request' | 'response' | 'warning';
   message: string;
   data?: any;
+  showToUser?: boolean;
 }
 
 export interface SoundEffect {
