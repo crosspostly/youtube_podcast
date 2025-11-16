@@ -138,7 +138,11 @@ export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Pr
 
         if (chapter.backgroundMusic) {
              try {
-                const musicResponse = await fetch(chapter.backgroundMusic.audio);
+                const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(chapter.backgroundMusic.audio)}`;
+                log({ type: 'info', message: `Fetching music via proxy: ${proxyUrl}` });
+                const musicResponse = await fetch(proxyUrl);
+                if (!musicResponse.ok) throw new Error(`Proxy request failed: ${musicResponse.statusText}`);
+
                 const musicArrayBuffer = await musicResponse.arrayBuffer();
                 const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
 

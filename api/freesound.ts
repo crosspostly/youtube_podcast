@@ -21,36 +21,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { query, customApiKey } = req.body;
+    const { query } = req.body;
 
     if (!query) {
       res.status(400).json({ error: 'Missing query parameter' });
       return;
     }
 
-    let apiKey: string | undefined;
-
-    // 1. Prioritize user-provided key
-    if (customApiKey && typeof customApiKey === 'string' && customApiKey.trim() !== '') {
-        apiKey = customApiKey.trim();
-        console.log("Vercel Proxy: Using custom Freesound API key from request body.");
-    }
-    // 2. Fallback to environment variable (for Vercel deployment)
-    else if (process.env.FREESOUND_API_KEY) {
-        apiKey = process.env.FREESOUND_API_KEY;
-        console.log("Vercel Proxy: Using Freesound API key from environment variable.");
-    }
-    // 3. Fallback to hardcoded default key
-    else {
-        apiKey = DEFAULT_FREESOUND_KEY;
-        console.log("Vercel Proxy: Using default Freesound API key.");
-    }
-
+    const apiKey = DEFAULT_FREESOUND_KEY;
+    console.log("Vercel Proxy: Using hardcoded default Freesound API key.");
+    
     if (!apiKey) {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings, configure a Vercel environment variable, or set a default key.";
+      const errorMessage = "Freesound API key is not configured. The default key is missing in appConfig.";
       console.error(errorMessage);
-      return res.status(401).json({
-        error: "Unauthorized",
+      return res.status(500).json({
+        error: "Internal Server Error",
         details: errorMessage,
       });
     }

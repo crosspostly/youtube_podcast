@@ -1,5 +1,5 @@
-// FIX: Add reference to node types to fix "Cannot find name 'Buffer'" error.
-/// <reference types="node" />
+// FIX: Declare Buffer to work around missing node types, which are not available in the environment.
+declare const Buffer: any;
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 

@@ -87,35 +87,20 @@ app.post('/api/freesound', async (req, res) => {
   // Add a header to indicate this proxy was invoked
   res.setHeader('X-Dev-Proxy-Invoked', 'true');
   try {
-    const { query, customApiKey } = req.body;
+    const { query } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: 'Missing query parameter' });
     }
 
-    let apiKey;
-
-    // 1. Prioritize user-provided key
-    if (customApiKey && typeof customApiKey === 'string' && customApiKey.trim() !== '') {
-        apiKey = customApiKey.trim();
-        console.log("Dev Server: Using custom Freesound API key from request body.");
-    }
-    // 2. Fallback to environment variable (for local dev)
-    else if (process.env.FREESOUND_API_KEY) {
-        apiKey = process.env.FREESOUND_API_KEY;
-        console.log("Dev Server: Using Freesound API key from environment variable.");
-    }
-    // 3. Fallback to hardcoded default key
-    else {
-        apiKey = DEFAULT_FREESOUND_KEY;
-        console.log("Dev Server: Using default Freesound API key.");
-    }
+    const apiKey = DEFAULT_FREESOUND_KEY;
+    console.log("Dev Server: Using hardcoded default Freesound API key.");
 
     if (!apiKey) {
-      const errorMessage = "Freesound API key is not configured. Please add it in the settings, configure a .env file, or ensure a default key is available.";
+      const errorMessage = "Freesound API key is not configured. A default key must be hardcoded in dev-server.js.";
       console.error(errorMessage);
-      return res.status(401).json({
-        error: "Unauthorized",
+      return res.status(500).json({
+        error: "Internal Server Error",
         details: errorMessage,
       });
     }
@@ -235,5 +220,5 @@ app.listen(PORT, () => {
   console.log('Available endpoints:');
   console.log('  GET /api/audio-proxy?url=<encoded_url>');
   console.log('  POST /api/download-image (body: { url, source, apiKey })');
-  console.log('  POST /api/freesound (body: { query, customApiKey? })');
+  console.log('  POST /api/freesound (body: { query })');
 });
