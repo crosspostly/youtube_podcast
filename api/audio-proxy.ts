@@ -1,5 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
+// FIX: Declare Buffer for TypeScript since @types/node is not available.
+// This is safe because this serverless function runs in a Node.js environment.
+declare const Buffer: any;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');

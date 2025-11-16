@@ -3,7 +3,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '');
+  // FIX: Cast `process` to `any` to access `cwd` without Node types.
+  const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [
       tailwindcss(),

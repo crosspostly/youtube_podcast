@@ -26,6 +26,7 @@ interface ExportPayload {
     fps: 30;
     quality: 'fast' | 'medium' | 'slow';
   };
+  srtData?: string; // For subtitles
 }
 
 async function blobToBase64(blob: Blob): Promise<string> {
@@ -37,7 +38,7 @@ async function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
-export async function exportProjectToLocalCLI(podcast: Podcast): Promise<string> {
+export async function exportProjectToLocalCLI(podcast: Podcast, srtBlob: Blob): Promise<string> {
   
   const payload: ExportPayload = {
     projectId: `project-${Date.now()}`,
@@ -51,7 +52,8 @@ export async function exportProjectToLocalCLI(podcast: Podcast): Promise<string>
       resolution: '1920x1080',
       fps: 30,
       quality: 'medium'
-    }
+    },
+    srtData: await blobToBase64(srtBlob)
   };
   
   // Конвертировать все медиафайлы в Base64

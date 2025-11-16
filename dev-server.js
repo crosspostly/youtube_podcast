@@ -85,7 +85,7 @@ app.get('/api/audio-proxy', async (req, res) => {
     if (contentLength) {
       res.setHeader('Content-Length', contentLength);
     }
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
 
     const audioBuffer = await response.arrayBuffer();
     res.status(200).send(Buffer.from(audioBuffer));
@@ -257,7 +257,7 @@ app.post('/api/export-project', async (req, res) => {
   }
     
   try {
-    const { projectId, metadata, chapters, settings } = req.body;
+    const { projectId, metadata, chapters, settings, srtData } = req.body;
     
     if (!projectId || !chapters || chapters.length === 0) {
       return res.status(400).json({ error: 'Invalid payload' });
@@ -324,6 +324,13 @@ app.post('/api/export-project', async (req, res) => {
       }
       
       manifest.chapters.push(chapterManifest);
+    }
+
+    if (srtData) {
+      const srtContent = Buffer.from(srtData.split(',')[1], 'base64').toString('utf8');
+      await fs.writeFile(path.join(projectDir, 'subtitles.srt'), srtContent, 'utf-8');
+      manifest.srtFile = 'subtitles.srt';
+      console.log(`📝 Субтитры сохранены: subtitles.srt`);
     }
     
     await fs.writeFile(

@@ -6,6 +6,10 @@ import { promisify } from 'util';
 
 const execPromise = promisify(exec);
 
+// FIX: Declare Buffer for TypeScript since @types/node is not available.
+// This is safe because this serverless function runs in a Node.js environment.
+declare const Buffer: any;
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   
   if (req.method !== 'POST') {
@@ -13,7 +17,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   
   try {
-    const { projectId, metadata, chapters, settings } = req.body;
+    const { projectId, metadata, chapters, settings, srtData } = req.body;
     
     if (!projectId || !chapters || chapters.length === 0) {
       return res.status(400).json({ error: 'Invalid payload' });
@@ -22,12 +26,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`📦 Получен проект: ${projectId}`);
     
     // 1. Создать директорию
-    const projectDir = path.resolve(`./projects/${projectId}`);
+    const projectDir = path.resolve(`/tmp/projects/${projectId}`); // Use /tmp on Vercel
     await fs.mkdir(`${projectDir}/audio`, { recursive: true });
     await fs.mkdir(`${projectDir}/images`, { recursive: true });
     
     // 2. Сохранить метаданные
-    const manifest = {
+    const manifest: any = {
       projectId,
       metadata,
       settings,
@@ -89,7 +93,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       manifest.chapters.push(chapterManifest);
     }
     
-    // 4. Сохранить manifest.json
+    // 4. Сохранить файл субтитров
+    if (srtData) {
+        const srtContent = Buffer.from(srtData.split(',')[1], 'base64').toString('utf8');
+        await fs.writeFile(path.join(projectDir, 'subtitles.srt'), srtContent, 'utf-8');
+        manifest.srtFile = 'subtitles.srt';
+        console.log(`📝 Субтитры сохранены: subtitles.srt`);
+    }
+
+    // 5. Сохранить manifest.json
     await fs.writeFile(
       path.join(projectDir, 'manifest.json'),
       JSON.stringify(manifest, null, 2)
@@ -97,20 +109,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`✅ Проект сохранён: ${projectDir}`);
     
-    // 5. Запустить CLI для сборки видео (в фоне)
-    const cliCommand = `node cli/build.js "${projectDir}"`;
-    console.log(`🎬 Запуск: ${cliCommand}`);
+    // Note: Vercel serverless functions do not support spawning long-running child processes like ffmpeg.
+    // This endpoint now only prepares the project files. The build step would need a different architecture on Vercel (e.g., a separate build service).
     
-    // Запускаем CLI в фоне, не дожидаясь завершения
-    execPromise(cliCommand)
-      .then(() => console.log(`✅ Видео готово: ${projectId}`))
-      .catch((err) => console.error(`❌ Ошибка сборки:`, err));
-    
-    // 6. Вернуть ответ сразу
+    // 6. Вернуть ответ
     res.status(200).json({
       success: true,
       projectId,
-      message: 'Проект сохранён, сборка началась'
+      message: 'Проект успешно сохранён на сервере для последующей обработки.'
     });
     
   } catch (error) {

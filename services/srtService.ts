@@ -1,3 +1,6 @@
+
+
+
 import type { Podcast, LogEntry } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
@@ -11,34 +14,81 @@ const formatSrtTime = (seconds: number): string => {
 };
 
 export const generateSrtFile = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
-    log({ type: 'info', message: 'Начало быстрой генерации SRT-субтитров.' });
+    log({ type: 'info', message: 'Начало генерации точных SRT-субтитров.' });
     let srtContent = '';
     let currentTime = 0;
     let subtitleIndex = 1;
 
-    // Average characters per second for speech. This is an estimate.
-    const CHARS_PER_SECOND = 15;
-    
-    const allLines = podcast.chapters.flatMap(c => c.script.filter(s => s.speaker.toUpperCase() !== 'SFX'));
+    // The AudioContext can be created once and reused.
+    // FIX: Cast window to `any` to access AudioContext/webkitAudioContext without
+    // relying on DOM typings being present in the TS configuration.
+    const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
 
-    for (const line of allLines) {
-        if (!line.text.trim()) continue;
+    const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.audioBlob);
 
-        // Estimate duration based on text length. Minimum 1 second.
-        const duration = Math.max(1.5, line.text.length / CHARS_PER_SECOND);
-
-        const startTime = formatSrtTime(currentTime);
-        const endTime = formatSrtTime(currentTime + duration);
-        
-        srtContent += `${subtitleIndex}\n`;
-        srtContent += `${startTime} --> ${endTime}\n`;
-        srtContent += `${line.text}\n\n`;
-
-        currentTime += duration;
-        subtitleIndex++;
+    if (completedChapters.length === 0) {
+        log({ type: 'warning', message: 'Нет завершенных глав для создания субтитров.' });
+        return new Blob(['Нет данных для генерации субтитров.'], { type: 'text/plain;charset=utf-8' });
     }
-    
-    log({ type: 'info', message: 'Генерация SRT-субтитров завершена.' });
+
+    for (const chapter of completedChapters) {
+        const scriptLines = chapter.script.filter(s => s.speaker.toUpperCase() !== 'SFX' && s.text.trim());
+        if (!chapter.audioBlob) {
+            continue;
+        }
+
+        try {
+            const arrayBuffer = await chapter.audioBlob.arrayBuffer();
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const chapterDuration = audioBuffer.duration;
+
+            if (scriptLines.length === 0) {
+                // Chapter has audio but no lines, just advance time
+                currentTime += chapterDuration;
+                continue;
+            }
+
+            const totalChars = scriptLines.reduce((sum, line) => sum + line.text.length, 0);
+
+            if (totalChars === 0) {
+                currentTime += chapterDuration; // just advance time
+                continue;
+            }
+
+            let chapterTimeOffset = 0;
+            for (const line of scriptLines) {
+                // Distribute duration proportionally based on character length
+                const lineDuration = (line.text.length / totalChars) * chapterDuration;
+                if (lineDuration < 0.5) { // Ensure a minimum display time
+                    chapterTimeOffset += lineDuration;
+                    continue; // Skip very short lines if they'd be unreadable
+                }
+
+
+                const startTime = formatSrtTime(currentTime + chapterTimeOffset);
+                const endTime = formatSrtTime(currentTime + chapterTimeOffset + lineDuration);
+                
+                srtContent += `${subtitleIndex}\n`;
+                srtContent += `${startTime} --> ${endTime}\n`;
+                srtContent += `${line.text}\n\n`;
+                
+                chapterTimeOffset += lineDuration;
+                subtitleIndex++;
+            }
+
+            // Advance currentTime by the actual duration of the chapter audio
+            currentTime += chapterDuration;
+
+        } catch (error) {
+            log({ type: 'error', message: `Ошибка декодирования аудио для главы "${chapter.title}", глава будет пропущена в субтитрах.`, data: error });
+        }
+    }
+
+    if (!srtContent) {
+        srtContent = 'Не удалось сгенерировать субтитры. Возможно, аудиофайлы глав повреждены или отсутствуют.';
+    }
+
+    log({ type: 'info', message: 'Генерация точных SRT-субтитров завершена.' });
     // Use UTF-8 BOM for better compatibility with video players
     const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
     return new Blob([bom, srtContent], { type: 'text/plain;charset=utf-8' });

@@ -1,3 +1,5 @@
+
+
 // ffmpeg.worker.ts
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
@@ -89,7 +91,10 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
     });
 
     filterComplex.push(`${videoStreams.join('')}concat=n=${imageUrls.length}:v=1:a=0[concatv]`);
-    filterComplex.push(`[concatv]subtitles=subtitles.srt:force_style='FontName=Inter,FontSize=32,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=3,Outline=4,Shadow=2'[outv]`);
+    
+    // Improved subtitle styling for maximum readability
+    const subtitleStyle = "'FontName=Inter,FontSize=32,PrimaryColour=&HFFFFFF&,OutlineColour=&H000000&,BorderStyle=1,Outline=4,Shadow=2'";
+    filterComplex.push(`[concatv]subtitles=subtitles.srt:force_style=${subtitleStyle}[outv]`);
     
     const ffmpegArgs = [
         ...ffmpegInputArgs, '-i', 'audio.wav',

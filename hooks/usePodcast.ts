@@ -608,8 +608,11 @@ export const usePodcast = (
         setVideoGenerationProgress({ progress: 0, message: 'Экспорт проекта...' });
         setError(null);
         try {
+            log({ type: 'info', message: '📤 Создание SRT файла для локальной сборки...' });
+            const srtBlob = await generateSrtFile(podcast, log);
+
             log({ type: 'info', message: '📤 Отправка материалов на локальный сервер...' });
-            const projectId = await exportProjectToLocalCLI(podcast);
+            const projectId = await exportProjectToLocalCLI(podcast, srtBlob);
             log({ type: 'info', message: `✅ Материалы отправлены. Project ID: ${projectId}` });
             log({ type: 'info', message: `🎬 Сборка видео началась на локальном FFmpeg...` });
             log({ type: 'info', message: `⏳ Это может занять 3-5 минут...` });
