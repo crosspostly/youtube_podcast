@@ -137,7 +137,7 @@ export interface Podcast {
   sources: Source[];
   chapters: Chapter[];
   youtubeThumbnails?: YoutubeThumbnail[];
-  selectedThumbnail?: YoutubeThumbnail; // Add field for selected thumbnail
+  selectedThumbnail?: YoutubeThumbnail;
   designConcepts?: ThumbnailDesignConcept[];
   knowledgeBaseText?: string;
   creativeFreedom: boolean;

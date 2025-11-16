@@ -653,19 +653,16 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                         {chapter.generatedImages.map((imgSrc, index) => (
                                             <div key={index}>
                                                 <div className="group relative cursor-pointer">
-                                                    {/* FIX: Changed `imgSrc` to `imgSrc.url` as `imgSrc` is an object. */}
                                                     <img src={imgSrc.url} alt={`Generated background ${index + 1}`} className={`rounded-lg w-full aspect-video object-cover transition-all border-4 border-transparent`} />
                                                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
                                                         <button onClick={(e) => { e.stopPropagation(); regenerateSingleImage(chapter.id, index); }} disabled={regeneratingImage !== null} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30 disabled:opacity-50" title="Пересоздать"><RedoIcon /></button>
                                                         <button onClick={(e) => { e.stopPropagation(); setThumbnailBaseImage(imgSrc); }} className="p-2 bg-white/20 rounded-full text-white hover:bg-white/30" title="Сделать фоном для обложки"><ImageIcon /></button>
-                                                        {/* FIX: Changed `imgSrc` to `imgSrc.url` for the download link. */}
                                                         <a href={imgSrc.url} download={`image_ch${chapterIndex+1}_${index + 1}.jpeg`} onClick={e => e.stopPropagation()} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700" title="Скачать"><DownloadIcon /></a>
                                                     </div>
                                                     {regeneratingImage?.chapterId === chapter.id && regeneratingImage?.index === index && (
                                                     <div className="absolute inset-0 bg-slate-900/80 rounded-lg flex items-center justify-center"><Spinner /></div>
                                                     )}
                                                 </div>
-                                                {/* FIX: Simplified check for photographer info. */}
                                                 {imgSrc.photographer && (
                                                     <div className="text-xs text-slate-400 text-center mt-2">
                                                         Photo by <a href={imgSrc.photographerUrl} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300">{imgSrc.photographer}</a> on <span className="text-slate-500">{imgSrc.source}</span>
@@ -792,16 +789,39 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                             
                             {/* Thumbnail Grid */}
                             <div>
-                                <h4 className="font-semibold text-lg text-slate-200 mb-4">Варианты обложек от AI-дизайнера</h4>
+                                <h4 className="font-semibold text-lg text-slate-200 mb-4">Выберите обложку</h4>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                                     {podcast.youtubeThumbnails.map((thumb) => (
                                         <div key={thumb.styleName} className="group relative">
                                             <p className="text-center font-semibold text-slate-300 mb-2">{thumb.styleName}</p>
-                                            <img src={thumb.dataUrl} alt={`YouTube Thumbnail - ${thumb.styleName}`} className="rounded-lg border-2 border-cyan-500/50" />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
-                                                <button onClick={() => onEditThumbnail(thumb)} className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-sm font-bold rounded-lg hover:bg-white/30 backdrop-blur-sm"><EditIcon className="w-4 h-4"/> Редактировать</button>
-                                                <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white text-sm font-bold rounded-lg hover:bg-cyan-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
-                                            </div>
+                                            <label className="cursor-pointer">
+                                                <input
+                                                    type="radio"
+                                                    name="thumbnail-selection"
+                                                    value={thumb.styleName}
+                                                    checked={podcast.selectedThumbnail?.styleName === thumb.styleName}
+                                                    onChange={() => handleThumbnailSelection(thumb)}
+                                                    className="sr-only"
+                                                />
+                                                <img 
+                                                    src={thumb.dataUrl} 
+                                                    alt={`YouTube Thumbnail - ${thumb.styleName}`} 
+                                                    className={`rounded-lg border-4 transition-all ${
+                                                        podcast.selectedThumbnail?.styleName === thumb.styleName 
+                                                        ? 'border-cyan-500 shadow-lg shadow-cyan-500/30' 
+                                                        : 'border-transparent group-hover:border-slate-600'
+                                                    }`} 
+                                                />
+                                                {podcast.selectedThumbnail?.styleName === thumb.styleName && (
+                                                    <div className="absolute top-2 right-2 p-1.5 bg-cyan-500 rounded-full text-white pointer-events-none">
+                                                        <CheckIcon className="w-4 h-4" />
+                                                    </div>
+                                                )}
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                                    <button onClick={() => onEditThumbnail(thumb)} className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white text-sm font-bold rounded-lg hover:bg-white/30 backdrop-blur-sm"><EditIcon className="w-4 h-4"/> Редактировать</button>
+                                                    <a href={thumb.dataUrl} download={`thumbnail_${thumb.styleName.replace(/\s/g, '_')}_${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_')}.png`} className="flex items-center gap-2 px-4 py-2 bg-cyan-600 text-white text-sm font-bold rounded-lg hover:bg-cyan-700"><DownloadIcon className="w-4 h-4"/> Скачать</a>
+                                                </div>
+                                            </label>
                                         </div>
                                     ))}
                                 </div>

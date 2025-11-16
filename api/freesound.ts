@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { DEFAULT_FREESOUND_KEY } from '../config/appConfig';
+
+// The default Freesound key is now self-contained to prevent build issues on Vercel.
+const DEFAULT_FREESOUND_KEY = '4E54XDGL5Pc3V72TQfSo83WZMb600FE2k9gPf6Gk';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -32,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log("Vercel Proxy: Using hardcoded default Freesound API key.");
     
     if (!apiKey) {
-      const errorMessage = "Freesound API key is not configured. The default key is missing in appConfig.";
+      const errorMessage = "Freesound API key is not configured. The default key is missing.";
       console.error(errorMessage);
       return res.status(500).json({
         error: "Internal Server Error",

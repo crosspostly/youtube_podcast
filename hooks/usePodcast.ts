@@ -163,7 +163,6 @@ export const usePodcast = (
     const startNewProject = useCallback(async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, totalDurationMinutes: number, narrationMode: NarrationMode, characterVoicePrefs: { [key: string]: string }, monologueVoice: string, initialImageCount: number) => {
         if (!topic.trim()) { setError('Введите название проекта.'); return; }
         
-        // --- Start of Synchronous Part ---
         setIsLoading(true);
         setError(null);
         setWarning(null);
@@ -208,8 +207,6 @@ export const usePodcast = (
             if (blueprint.characters.length > 0 && characterVoicePrefs.character1) finalCharacterVoices[blueprint.characters[0].name] = characterVoicePrefs.character1;
             if (blueprint.characters.length > 1 && characterVoicePrefs.character2) finalCharacterVoices[blueprint.characters[1].name] = characterVoicePrefs.character2;
 
-            // FIX: Explicitly cast the status to ChapterStatus to resolve a type inference issue where
-            // TypeScript incorrectly widens the type to 'string' when overriding a property from a spread object.
             const chapters: Chapter[] = [
                 { id: crypto.randomUUID(), ...blueprint.chapters[0], status: 'script_completed' as ChapterStatus },
                 ...Array.from({ length: totalChapters - 1 }, (_, i) => ({
@@ -226,30 +223,33 @@ export const usePodcast = (
             updateStatus('Подготовка студии...', 'in_progress');
             setPodcast(initialPodcast);
             setGenerationProgress(100);
-            setIsLoading(false); // Switch to Studio UI immediately
+            setIsLoading(false);
 
-            // --- Start of Asynchronous Background Part ---
             (async () => {
                 log({ type: 'info', message: 'Начало фоновой генерации остальных глав и ассетов.' });
 
-                // 1. Generate remaining scripts sequentially
+                let podcastStateForLoop = initialPodcast;
+
                 for (let i = 1; i < totalChapters; i++) {
                     if (isGenerationPaused) {
                         log({ type: 'info', message: 'Генерация приостановлена пользователем.' });
                         await waitIfPaused();
                         log({ type: 'info', message: 'Генерация возобновлена.' });
                     }
-                    const chapterId = initialPodcast.chapters[i].id;
+                    const chapterId = podcastStateForLoop.chapters[i].id;
                     try {
                         updateChapterState(chapterId, 'script_generating');
                         log({ type: 'info', message: `Генерация сценария для главы ${i + 1}...` });
-                        
-                        let latestStateForScriptGen: Podcast | null = null;
-                        setPodcast(p => { latestStateForScriptGen = p; return p; });
-                        if (!latestStateForScriptGen) throw new Error("Состояние подкаста потеряно перед генерацией сценария.");
 
-                        const chapterData = await generateNextChapterScript(latestStateForScriptGen.topic, latestStateForScriptGen.selectedTitle, latestStateForScriptGen.characters, latestStateForScriptGen.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
-                        updateChapterState(chapterId, 'script_completed', chapterData);
+                        const chapterData = await generateNextChapterScript(podcastStateForLoop.topic, podcastStateForLoop.selectedTitle, podcastStateForLoop.characters, podcastStateForLoop.chapters.slice(0, i), i, totalDurationMinutes, knowledgeBaseText, creativeFreedom, language, narrationMode, log, apiKeys);
+                        
+                        setPodcast(p => {
+                            if (!p) return null;
+                            const updatedChapters = p.chapters.map(c => c.id === chapterId ? { ...c, status: 'script_completed' as ChapterStatus, ...chapterData } : c);
+                            podcastStateForLoop = { ...p, chapters: updatedChapters };
+                            return podcastStateForLoop;
+                        });
+
                         log({ type: 'response', message: `Сценарий для главы ${i + 1} успешно сгенерирован.` });
                     } catch (err) {
                         const friendlyError = parseErrorMessage(err);
@@ -260,15 +260,10 @@ export const usePodcast = (
 
                 log({ type: 'info', message: 'Все сценарии сгенерированы. Начало генерации ассетов.' });
                 
-                // 2. Generate assets for all chapters with scripts
-                let podcastForAssetGen: Podcast | null = null;
-                setPodcast(p => { podcastForAssetGen = p; return p; });
-                if (!podcastForAssetGen) return;
-
-                const chaptersToProcess = podcastForAssetGen.chapters.filter(c => c.status === 'script_completed');
+                const chaptersToProcess = podcastStateForLoop.chapters.filter(c => c.status === 'script_completed');
                 const assetPromises = chaptersToProcess.map(async (chapter) => {
                     if (isGenerationPaused) { await waitIfPaused(); }
-                    const chapterIndex = podcastForAssetGen!.chapters.findIndex(c => c.id === chapter.id);
+                    const chapterIndex = podcastStateForLoop.chapters.findIndex(c => c.id === chapter.id);
                     log({ type: 'info', message: `Начало генерации ассетов для главы ${chapterIndex + 1}: "${chapter.title}"` });
                     updateChapterState(chapter.id, 'generating');
                      
@@ -297,24 +292,33 @@ export const usePodcast = (
                 });
 
                 await Promise.all(assetPromises);
-                log({ type: 'info', message: 'Генерация всех ассетов завершена. Генерация обложек...' });
                 
-                // 3. Generate thumbnails
-                try {
-                    let finalPodcastState: Podcast | null = null;
-                    setPodcast(p => { finalPodcastState = p; return p; });
-                    if (!finalPodcastState) throw new Error("Состояние подкаста потеряно перед генерацией обложек.");
+                setPodcast(finalPodcastState => {
+                    if (!finalPodcastState) {
+                        log({ type: 'error', message: 'Состояние подкаста потеряно перед генерацией обложек.' });
+                        return null;
+                    }
+                    (async () => {
+                        log({ type: 'info', message: 'Генерация всех ассетов завершена. Генерация обложек...' });
+                        try {
+                            const thumbnailBaseImage = finalPodcastState.chapters.flatMap(c => c.generatedImages || []).find(img => img.url);
+                            if (!thumbnailBaseImage) {
+                               log({ type: 'warning', message: 'Не найдено изображений для создания обложек. Пропуск.' });
+                               return;
+                            }
+                            const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys);
+                            const youtubeThumbnails = await generateYoutubeThumbnails(thumbnailBaseImage.url, finalPodcastState.selectedTitle, designConcepts, log, defaultFont);
+                            
+                            setPodcast(p => p ? { ...p, thumbnailBaseImage, designConcepts, youtubeThumbnails, selectedThumbnail: youtubeThumbnails[0] || undefined } : null);
+                            log({ type: 'response', message: 'Обложки успешно сгенерированы. Проект полностью готов.' });
+                        } catch (err) {
+                             log({ type: 'error', message: 'Ошибка при фоновой генерации обложек.', data: err });
+                        }
+                    })();
+                    return finalPodcastState;
+                });
 
-                    const thumbnailBaseImage = finalPodcastState.chapters.flatMap(c => c.generatedImages || []).find(img => img.url);
-                    const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys);
-                    const youtubeThumbnails = thumbnailBaseImage?.url ? await generateYoutubeThumbnails(thumbnailBaseImage.url, finalPodcastState.selectedTitle, designConcepts, log, defaultFont) : [];
-                    
-                    setPodcast(p => p ? { ...p, thumbnailBaseImage, designConcepts, youtubeThumbnails, selectedThumbnail: youtubeThumbnails[0] || undefined } : null);
-                    log({ type: 'response', message: 'Обложки успешно сгенерированы. Проект полностью готов.' });
-                } catch (err) {
-                     log({ type: 'error', message: 'Ошибка при фоновой генерации обложек.', data: err });
-                }
-            })(); // End of background async IIFE
+            })();
 
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
@@ -741,7 +745,7 @@ export const usePodcast = (
         
         setPodcast(p => {
             if (!p) return null;
-            // FIX: Explicitly cast status to ChapterStatus to prevent type widening to string.
+            // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
             return { ...p, chapters: p.chapters.map(c => ({ ...c, status: 'images_generating' as ChapterStatus })) };
         });
 
@@ -753,11 +757,11 @@ export const usePodcast = (
                 if (podcast.videoPacingMode === 'manual') {
                     const newDurations = Array(newImages.length).fill(60);
                 }
-                // FIX: Explicitly cast status to ChapterStatus.
+                // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
                 return { chapterId: chapter.id, status: 'completed' as ChapterStatus, generatedImages: newImages };
             } catch (err: any) {
                 log({ type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: err });
-                // FIX: Explicitly cast status to ChapterStatus.
+                // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
                 return { chapterId: chapter.id, status: 'error' as ChapterStatus, error: err.message || 'Ошибка генерации изображений' };
             }
         });
@@ -772,7 +776,7 @@ export const usePodcast = (
                     const updatedChapter = { ...chapter, status: result.status, error: result.error };
                     if (result.generatedImages) {
                         updatedChapter.generatedImages = result.generatedImages;
-                        if (podcast.videoPacingMode === 'manual') {
+                        if (p.videoPacingMode === 'manual') {
                             updatedChapter.imageDurations = Array(result.generatedImages.length).fill(60);
                         }
                     }
@@ -919,7 +923,7 @@ export const usePodcast = (
                 // Update the state immediately with the new images before proceeding
                 setPodcast(p => {
                     if (!p) return null;
-                    const chapters = p.chapters.map(c => c.id === firstChapter.id ? { ...c, generatedImages: newImages, status: 'completed' } : c);
+                    const chapters = p.chapters.map(c => c.id === firstChapter.id ? { ...c, generatedImages: newImages, status: 'completed' as ChapterStatus } : c);
                     return { ...p, chapters, thumbnailBaseImage: baseImage };
                 });
             }
@@ -1067,7 +1071,7 @@ export const usePodcast = (
 
 
     return {
-        podcast, setPodcast: setPodcastState, 
+        podcast, setPodcast, 
         isLoading, loadingStatus, generationProgress, error, setError,
         warning,
         logs, log,

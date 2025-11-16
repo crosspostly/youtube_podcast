@@ -216,7 +216,6 @@ export const generateStyleImages = async (
     
     const results = await Promise.all(imagePromises);
 
-    // FIX: Replaced .filter().map() with .reduce() to fix TypeScript error where it couldn't infer the narrowed type after filtering.
     const generatedImages = results.reduce<GeneratedImage[]>((acc, result) => {
         if (result.status === 'fulfilled') {
             acc.push(result.value);
@@ -259,7 +258,6 @@ export const generateMoreImages = async (
     
     const results = await Promise.all(imagePromises);
     
-    // FIX: Replaced .filter().map() with .reduce() to fix TypeScript error where it couldn't infer the narrowed type after filtering.
     const generatedImages = results.reduce<GeneratedImage[]>((acc, result) => {
         if (result.status === 'fulfilled') {
             acc.push(result.value);
