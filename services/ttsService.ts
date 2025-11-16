@@ -8,9 +8,8 @@ import { findSfxForScript } from './sfxService';
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 type ApiKeys = { gemini?: string; freesound?: string; };
 
-// This client is now only for the TTS-specific model which doesn't use the text fallback logic.
 const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {
-  const apiKey = customApiKey || process.env.API_KEY;
+  const apiKey = customApiKey?.trim() || process.env.API_KEY;
   if (!apiKey) {
     const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
     log({ type: 'error', message: errorMsg });
@@ -19,547 +18,358 @@ const getTtsAiClient = (customApiKey: string | undefined, log: LogFunction) => {
   return new GoogleGenAI({ apiKey });
 };
 
-// --- WAV / AUDIO UTILITIES ---
+export const googleSearchForKnowledge = async (question: string, log: LogFunction, apiKeys: ApiKeys): Promise<string> => {
+    log({ type: 'request', message: `Поиск в Google: "${question}"` });
+    const prompt = `Answer the following question based on Google Search results: "${question}". Provide a concise, factual answer.`;
+    const response = await generateContentWithFallback({
+        contents: prompt,
+        config: { tools: [{ googleSearch: {} }] }
+    }, log, apiKeys);
+    const answer = response.text;
+    log({ type: 'response', message: `Ответ Google: ${answer.substring(0, 100)}...` });
+    return answer;
+};
 
-const writeString = (view: DataView, offset: number, string: string) => {
-    for (let i = 0; i < string.length; i++) {
-        view.setUint8(offset + i, string.charCodeAt(i));
+export const previewVoice = async (voiceId: string, languageCode: string, log: LogFunction, apiKeys: ApiKeys): Promise<Blob> => {
+    log({ type: 'request', message: `Запрос предпрослушивания для голоса: ${voiceId}` });
+    const ai = getTtsAiClient(apiKeys.gemini, log);
+    const sampleText = languageCode === 'ru' ? 'Привет, это предпрослушивание моего голоса.' : 'Hello, this is a preview of my voice.';
+
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: sampleText }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: {
+                voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceId } },
+            },
+        },
+    });
+
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) {
+        throw new Error("No audio data returned from TTS API");
     }
+    const audioBytes = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
+    return new Blob([audioBytes], { type: 'audio/wav' });
 };
 
-const createWavBlobFromPcm = (pcmData: Int16Array, sampleRate: number, numChannels: number): Blob => {
-    const bitsPerSample = 16;
-    const buffer = new ArrayBuffer(44 + pcmData.byteLength);
-    const view = new DataView(buffer);
-    const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
-    const blockAlign = numChannels * (bitsPerSample / 8);
+export const generatePodcastBlueprint = async (topic: string, knowledgeBase: string, creativeFreedom: boolean, language: string, duration: number, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number) => {
+    const totalChapters = Math.max(1, Math.ceil(duration / 7));
+    const style = creativeFreedom ? 'a captivating narrative story in the style of Stephen King or H.P. Lovecraft, using facts as inspiration' : 'a factual, documentary-style report';
+    const characterPrompt = narrationMode === 'dialogue'
+        ? `
+      "characters": [
+        { "name": "Narrator", "description": "A calm, deep-voiced storyteller setting the scene." },
+        { "name": "Expert", "description": "A knowledgeable historian or specialist providing factual context." }
+      ],
+    `
+        : `
+      "characters": [
+        { "name": "Narrator", "description": "A calm, deep-voiced storyteller." }
+      ],
+    `;
 
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + pcmData.byteLength, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, byteRate, true);
-    view.setUint16(32, blockAlign, true);
-    view.setUint16(34, bitsPerSample, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, pcmData.byteLength, true);
+    const useGoogleSearch = !knowledgeBase.trim();
+    const sourceInstruction = useGoogleSearch
+        ? 'Base your answer on Google Search results.'
+        : 'Base your answer exclusively on the provided knowledge base.';
 
-    const pcmView = new Int16Array(buffer, 44);
-    pcmView.set(pcmData);
+    const prompt = `
+      Create a detailed plan for a ${duration}-minute YouTube podcast about "${topic}".
+      The output must be a single valid JSON object in \`\`\`json ... \`\`\`.
+      The language for all generated text must be: ${language}.
+      The podcast should be in the style of ${style}.
+      ${sourceInstruction}
 
-    return new Blob([view], { type: 'audio/wav' });
+      The JSON must have this structure:
+      {
+        "youtubeTitleOptions": ["Clickable Title 1", "SEO-Friendly Title 2", "Intriguing Title 3"],
+        "description": "A 2-3 paragraph SEO-optimized description for the YouTube video.",
+        "seoKeywords": ["keyword1", "keyword2", "keyword3"],
+        ${characterPrompt}
+        "chapters": [
+          {
+            "title": "Title of Chapter 1",
+            "script": [
+              { "speaker": "CharacterName", "text": "The first line of dialogue or narration." },
+              { "speaker": "SFX", "text": "Sound of wind and rain", "searchTags": "wind, rain, storm" }
+            ],
+            "imagePrompts": [
+              "A detailed, cinematic prompt for an AI image generator for the first scene.",
+              "A detailed prompt for the second scene.",
+              "A detailed prompt for the third scene."
+            ]
+          }
+        ]
+      }
+    `;
+
+    const response = await generateContentWithFallback({
+        contents: `${prompt}\n\nKnowledge Base:\n${knowledgeBase}`,
+        config: useGoogleSearch ? { tools: [{ googleSearch: {} }] } : {}
+    }, log, apiKeys);
+
+    return await parseGeminiJsonResponse(response.text, log, apiKeys);
 };
 
-const audioBufferToWavBlob = (buffer: any): Blob => {
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const format = 1; // PCM
-    const bitDepth = 16;
+export const generateNextChapterScript = async (topic: string, mainTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, duration: number, knowledgeBase: string, creativeFreedom: boolean, language: string, narrationMode: NarrationMode, log: LogFunction, apiKeys: ApiKeys) => {
+    const style = creativeFreedom ? 'a captivating narrative story' : 'a factual, documentary-style report';
+    const useGoogleSearch = !knowledgeBase.trim();
+    const sourceInstruction = useGoogleSearch ? 'Base your answer on Google Search results.' : 'Base your answer on the provided knowledge base.';
+    const context = previousChapters.map((c, i) => `Chapter ${i + 1}: ${c.title}\nSummary: ${c.script.map(s => s.text).join(' ').substring(0, 150)}...`).join('\n\n');
 
-    let result: Float32Array;
-    if (numChannels === 2) {
-        result = new Float32Array(buffer.length * 2);
-        const left = buffer.getChannelData(0);
-        const right = buffer.getChannelData(1);
-        for (let i = 0; i < buffer.length; i++) {
-            result[i * 2] = left[i];
-            result[i * 2 + 1] = right[i];
-        }
+    const prompt = `
+      You are writing a multi-part podcast about "${topic}". The main title is "${mainTitle}".
+      You have already written ${previousChapters.length} chapters.
+      Context of previous chapters:\n${context}\n
+      Now, write the script for Chapter ${chapterIndex + 1}. Continue the story logically.
+      The style is: ${style}. The language is: ${language}.
+      ${sourceInstruction}
+      
+      The output must be a single valid JSON object in \`\`\`json ... \`\`\` with this structure:
+      {
+        "title": "Title of Chapter ${chapterIndex + 1}",
+        "script": [
+          { "speaker": "${narrationMode === 'dialogue' ? 'Narrator or Expert' : 'Narrator'}", "text": "Line of dialogue." },
+          { "speaker": "SFX", "text": "Description of a sound effect", "searchTags": "relevant, search, tags" }
+        ],
+        "imagePrompts": [
+          "Detailed AI image prompt for scene 1.",
+          "Detailed AI image prompt for scene 2.",
+          "Detailed AI image prompt for scene 3."
+        ]
+      }
+    `;
+
+    const response = await generateContentWithFallback({
+        contents: `${prompt}\n\nKnowledge Base:\n${knowledgeBase}`,
+        config: useGoogleSearch ? { tools: [{ googleSearch: {} }] } : {}
+    }, log, apiKeys);
+
+    return await parseGeminiJsonResponse(response.text, log, apiKeys);
+};
+
+export const generateChapterAudio = async (script: ScriptLine[], narrationMode: NarrationMode, characterVoices: { [key: string]: string }, monologueVoice: string, log: LogFunction, apiKeys: ApiKeys): Promise<Blob> => {
+    const fullText = script.map(line => `${line.speaker}: ${line.text}`).join('\n');
+    log({ type: 'request', message: 'Запрос на генерацию аудио для главы...' });
+    const ai = getTtsAiClient(apiKeys.gemini, log);
+    
+    let speechConfig;
+    if (narrationMode === 'dialogue') {
+        const speakerConfigs = Object.entries(characterVoices).map(([speaker, voiceName]) => ({
+            speaker,
+            voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+        }));
+        speechConfig = { multiSpeakerVoiceConfig: { speakerVoiceConfigs: speakerConfigs } };
     } else {
-        result = buffer.getChannelData(0);
+        speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } } };
     }
 
-    const dataLength = result.length * (bitDepth / 8);
-    const bufferLength = 44 + dataLength;
-    const arrayBuffer = new ArrayBuffer(bufferLength);
-    const view = new DataView(arrayBuffer);
+    const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: fullText }] }],
+        config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig,
+        },
+    });
 
-    writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + dataLength, true);
-    writeString(view, 8, 'WAVE');
-    writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true);
-    view.setUint16(20, format, true);
-    view.setUint16(22, numChannels, true);
-    view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * (bitDepth / 8) * numChannels, true);
-    view.setUint16(32, numChannels * (bitDepth / 8), true);
-    view.setUint16(34, bitDepth, true);
-    writeString(view, 36, 'data');
-    view.setUint32(40, dataLength, true);
-
-    let offset = 44;
-    for (let i = 0; i < result.length; i++, offset += 2) {
-        const s = Math.max(-1, Math.min(1, result[i]));
-        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
-    }
-
-    return new Blob([view], { type: 'audio/wav' });
+    const audioData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (!audioData) throw new Error("No audio data returned from TTS API");
+    const audioBytes = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
+    return new Blob([audioBytes], { type: 'audio/wav' });
 };
 
 export const combineAndMixAudio = async (podcast: Podcast, log: LogFunction): Promise<Blob> => {
-    const audioContext = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+    // Implementation requires Web Audio API, assumed to be in a browser environment
+    const AudioContext = (window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext;
+    if (!AudioContext) throw new Error('Web Audio API not supported');
 
-    const chaptersToProcess = podcast.chapters.filter((c): c is (Chapter & { audioBlob: Blob }) => !!c.audioBlob);
-    
-    if (chaptersToProcess.length === 0) throw new Error("Нет аудиофайлов для сборки.");
+    const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.audioBlob);
+    if (completedChapters.length === 0) throw new Error('Нет завершенных глав для сборки аудио.');
 
-    const chapterAudioBuffers = await Promise.all(
-        chaptersToProcess.map(c => c.audioBlob.arrayBuffer().then(ab => audioContext.decodeAudioData(ab)))
-    );
-    
-    const totalDuration = chapterAudioBuffers.reduce((sum, buffer) => sum + buffer.duration, 0);
-    if (totalDuration === 0) throw new Error("Общая длительность аудио равна нулю.");
-    
-    const sampleRate = chapterAudioBuffers[0].sampleRate;
-    const numberOfChannels = chapterAudioBuffers[0].numberOfChannels;
+    const audioBuffers = await Promise.all(completedChapters.map(c => c.audioBlob!.arrayBuffer().then(b => new AudioContext(1, 1, 44100).decodeAudioData(b))));
+    const totalDuration = audioBuffers.reduce((sum, buffer) => sum + buffer.duration, 0);
+    const context = new AudioContext(2, Math.ceil(totalDuration * 44100), 44100);
 
-    const offlineContext = new ((window as any).OfflineAudioContext || (window as any).webkitOfflineAudioContext)(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
-
-    let speechTimeCursor = 0;
-    for (let i = 0; i < chaptersToProcess.length; i++) {
-        const chapter = chaptersToProcess[i];
-        const speechBuffer = chapterAudioBuffers[i];
+    let offset = 0;
+    for (const [index, buffer] of audioBuffers.entries()) {
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.start(offset);
         
-        const speechSource = offlineContext.createBufferSource();
-        speechSource.buffer = speechBuffer;
-        speechSource.connect(offlineContext.destination);
-        speechSource.start(speechTimeCursor);
-
+        const chapter = completedChapters[index];
+        // Handle music
         if (chapter.backgroundMusic) {
              try {
-                const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(chapter.backgroundMusic.audio)}`;
-                log({ type: 'info', message: `Fetching music via proxy: ${proxyUrl}` });
-                const musicResponse = await fetch(proxyUrl);
-                if (!musicResponse.ok) throw new Error(`Proxy request failed: ${musicResponse.statusText}`);
-
-                const musicArrayBuffer = await musicResponse.arrayBuffer();
-                const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
-
-                const musicGainNode = offlineContext.createGain();
-                const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
+                const musicUrl = `/api/audio-proxy?url=${encodeURIComponent(chapter.backgroundMusic.audio)}`;
+                const musicResponse = await fetch(musicUrl);
+                if (!musicResponse.ok) throw new Error(`Failed to fetch music: ${musicResponse.statusText}`);
+                const musicBuffer = await context.decodeAudioData(await musicResponse.arrayBuffer());
                 
-                musicGainNode.gain.value = chapterVolume;
-                musicGainNode.connect(offlineContext.destination);
+                const musicSource = context.createBufferSource();
+                musicSource.buffer = musicBuffer;
+                musicSource.loop = true;
                 
-                const crossfadeDuration = 1.5;
-                const fadeInStartTime = speechTimeCursor;
-                const fadeOutEndTime = speechTimeCursor + speechBuffer.duration;
+                const gainNode = context.createGain();
+                gainNode.gain.value = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
                 
-                if (i === 0 || chaptersToProcess[i-1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
-                    musicGainNode.gain.setValueAtTime(0, fadeInStartTime);
-                    musicGainNode.gain.linearRampToValueAtTime(chapterVolume, fadeInStartTime + crossfadeDuration);
-                }
-
-                if (i === chaptersToProcess.length - 1 || chaptersToProcess[i+1]?.backgroundMusic?.id !== chapter.backgroundMusic.id) {
-                     musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
-                     musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
-                }
-
-                let musicCursor = 0;
-                while (musicCursor < speechBuffer.duration) {
-                    const musicSource = offlineContext.createBufferSource();
-                    musicSource.buffer = musicBuffer;
-                    musicSource.connect(musicGainNode);
-                    musicSource.start(speechTimeCursor + musicCursor, 0, speechBuffer.duration - musicCursor);
-                    musicCursor += musicBuffer.duration;
-                }
-            } catch (e) { console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); }
-        }
-        speechTimeCursor += speechBuffer.duration;
-    }
-
-    let sfxTimeCursor = 0;
-    const CHARS_PER_SECOND = 15;
-
-    for (let i = 0; i < chaptersToProcess.length; i++) {
-        const chapter = chaptersToProcess[i];
-        const speechBuffer = chapterAudioBuffers[i];
-        let lineTimeCursorInChapter = 0;
-
-        for (const line of chapter.script) {
-            if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
-                try {
-                    const sfxStartTime = sfxTimeCursor + lineTimeCursorInChapter;
-                    const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(line.soundEffect.previews['preview-hq-mp3'])}`;
-                    const sfxResponse = await fetch(proxyUrl);
-                    if (!sfxResponse.ok) {
-                         log({ type: 'warning', message: `Failed to fetch SFX for "${line.text}"`, data: { status: sfxResponse.status } });
-                         continue;
-                    }
-                    
-                    const sfxArrayBuffer = await sfxResponse.arrayBuffer();
-                    const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
-                    
-                    const sfxGainNode = offlineContext.createGain();
-                    sfxGainNode.gain.value = line.soundEffectVolume ?? 0.5;
-                    sfxGainNode.connect(offlineContext.destination);
-
-                    const sfxSource = offlineContext.createBufferSource();
-                    sfxSource.buffer = sfxBuffer;
-                    sfxSource.connect(sfxGainNode);
-                    sfxSource.start(sfxStartTime);
-                } catch (e) { 
-                    log({ type: 'error', message: `Failed to process SFX: ${line.text}`, data: e });
-                }
-            } else if (line.speaker.toUpperCase() !== 'SFX') {
-                const lineDuration = Math.max(1.5, line.text.length / CHARS_PER_SECOND);
-                lineTimeCursorInChapter += lineDuration;
+                musicSource.connect(gainNode);
+                gainNode.connect(context.destination);
+                musicSource.start(offset);
+                musicSource.stop(offset + buffer.duration);
+            } catch (e) {
+                log({type: 'error', message: `Не удалось загрузить или обработать музыку для главы ${index + 1}`, data: e});
             }
         }
-        sfxTimeCursor += speechBuffer.duration;
+        
+        offset += buffer.duration;
     }
 
-    const renderedBuffer = await offlineContext.startRendering();
-    return audioBufferToWavBlob(renderedBuffer);
+    const renderedBuffer = await context.startRendering();
+    
+    // Convert to WAV
+    const channels = renderedBuffer.numberOfChannels;
+    const sampleRate = renderedBuffer.sampleRate;
+    const length = renderedBuffer.length * channels * 2;
+    const buffer = new ArrayBuffer(44 + length);
+    const view = new DataView(buffer);
+    
+    const writeString = (v: DataView, offset: number, s: string) => {
+        for (let i = 0; i < s.length; i++) {
+            v.setUint8(offset + i, s.charCodeAt(i));
+        }
+    };
+    
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + length, true);
+    writeString(view, 8, 'WAVEfmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 4, true);
+    view.setUint16(32, channels * 2, true);
+    view.setUint16(34, 16, true);
+    writeString(view, 36, 'data');
+    view.setUint32(40, length, true);
+    
+    const pcm = new Int16Array(length);
+    let offsetBytes = 44;
+    for (let i = 0; i < renderedBuffer.length; i++) {
+        for (let channel = 0; channel < channels; channel++) {
+            const val = Math.max(-1, Math.min(1, renderedBuffer.getChannelData(channel)[i]));
+            pcm[i * channels + channel] = val * 0x7FFF;
+            view.setInt16(offsetBytes, pcm[i * channels + channel], true);
+            offsetBytes += 2;
+        }
+    }
+
+    return new Blob([view], { type: 'audio/wav' });
 };
 
+export const regenerateTextAssets = async (topic: string, knowledgeBase: string, creativeFreedom: boolean, language: string, log: LogFunction, apiKeys: ApiKeys) => {
+    const style = creativeFreedom ? 'captivating and mysterious' : 'factual and clear';
+    const prompt = `
+        Regenerate text assets for a YouTube podcast about "${topic}". The style is ${style}. The language is ${language}.
+        Return a single valid JSON object in \`\`\`json ... \`\`\`.
+        {
+          "youtubeTitleOptions": ["New Title 1", "New Title 2", "New Title 3"],
+          "description": "A new, regenerated, SEO-optimized YouTube description.",
+          "seoKeywords": ["newkeyword1", "newkeyword2"]
+        }
+    `;
+    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+    return await parseGeminiJsonResponse(response.text, log, apiKeys);
+};
 
-const decodeBase64 = (base64: string) => {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
+export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction, apiKeys: ApiKeys): Promise<ThumbnailDesignConcept[]> => {
+    const prompt = `
+        Create 4 diverse, high-CTR YouTube thumbnail design concepts for a video about "${topic}". The language is ${language}.
+        Inspired by top creators like MrBeast, Vox, and popular documentary channels.
+        Return a single valid JSON array in \`\`\`json ... \`\`\`.
+        Each object must have this structure:
+        {
+          "name": "Style Name (e.g., 'MrBeast High Contrast')",
+          "fontFamily": "A suitable font from Google Fonts (e.g., 'Impact', 'Bebas Neue')",
+          "fontSize": 120,
+          "textColor": "#FFFF00",
+          "shadowColor": "rgba(0,0,0,0.8)",
+          "overlayOpacity": 0.3,
+          "strokeColor": "#000000",
+          "strokeWidth": 15,
+          "gradientColors": ["#FFFF00", "#FFD700"],
+          "textTransform": "uppercase"
+        }
+    `;
+    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+    return await parseGeminiJsonResponse(response.text, log, apiKeys);
 };
 
 export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<Blob> => {
     log({ type: 'info', message: 'Начало конвертации WAV в MP3...' });
-    try {
-        const wavData = await wavBlob.arrayBuffer();
-        const wav = lamejs.WavHeader.readHeader(new DataView(wavData));
-        const samples = new Int16Array(wavData, wav.dataOffset, wav.dataLen / 2);
-        
-        const mp3encoder = new lamejs.Mp3Encoder(wav.channels, wav.sampleRate, 128);
-        const mp3Data = [];
-        
-        const sampleBlockSize = 1152;
-        for (let i = 0; i < samples.length; i += sampleBlockSize) {
-            const sampleChunk = samples.subarray(i, i + sampleBlockSize);
-            const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
-            if (mp3buf.length > 0) {
-                mp3Data.push(new Int8Array(mp3buf));
-            }
-        }
-        
-        const mp3buf = mp3encoder.flush();
-        if (mp3buf.length > 0) {
-            mp3Data.push(new Int8Array(mp3buf));
-        }
-        
-        const mp3Blob = new Blob(mp3Data, { type: 'audio/mpeg' });
-        log({ type: 'response', message: `Конвертация в MP3 завершена. Размер: ${(mp3Blob.size / 1024).toFixed(2)} KB` });
-        return mp3Blob;
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка при конвертации в MP3', data: error });
-        throw new Error('Не удалось конвертировать аудио в MP3.');
+    const wav = new lamejs.WavHeader.readHeader(new DataView(await wavBlob.arrayBuffer()));
+    const samples = new Int16Array(await wavBlob.arrayBuffer(), wav.dataOffset, wav.dataLen / 2);
+    const mp3encoder = new lamejs.Mp3Encoder(wav.channels, wav.sampleRate, 128);
+    const mp3Data: any[] = [];
+    const sampleBlockSize = 1152;
+    for (let i = 0; i < samples.length; i += sampleBlockSize) {
+        const sampleChunk = samples.subarray(i, i + sampleBlockSize);
+        const mp3buf = mp3encoder.encodeBuffer(sampleChunk);
+        if (mp3buf.length > 0) mp3Data.push(mp3buf);
     }
+    const mp3buf = mp3encoder.flush();
+    if (mp3buf.length > 0) mp3Data.push(mp3buf);
+    log({ type: 'info', message: 'Конвертация в MP3 завершена.' });
+    return new Blob(mp3Data, { type: 'audio/mp3' });
 };
 
-// --- KNOWLEDGE BASE & SCRIPT GENERATION ---
-
-export const googleSearchForKnowledge = async (question: string, log: LogFunction, apiKeys: ApiKeys): Promise<string> => {
-    log({ type: 'request', message: `Поиск в Google: "${question}"` });
-    try {
-        const response = await generateContentWithFallback({
-            contents: question,
-            config: {
-                tools: [{ googleSearch: {} }],
-            },
-        }, log, apiKeys);
-
-        const text = response.text;
-        if (!text) throw new Error("Google Search returned an empty response.");
-        log({ type: 'response', message: 'Ответ от Google Search получен.' });
-        return text;
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка при поиске в Google.', data: error });
-        throw new Error('Не удалось получить информацию из Google Search.');
-    }
-};
-
-export const generatePodcastBlueprint = async (topic: string, knowledge: string, creative: boolean, lang: string, duration: number, mode: NarrationMode, log: LogFunction, apiKeys: ApiKeys, initialImageCount: number): Promise<Omit<Podcast, 'id' | 'topic' | 'knowledgeBaseText' | 'creativeFreedom' | 'totalDurationMinutes' | 'language' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'initialImageCount' | 'backgroundMusicVolume'>> => {
-    log({ type: 'request', message: 'Запрос на создание концепции проекта...' });
-
-    const totalChapters = Math.max(1, Math.ceil(duration / 7));
-    const characterPrompt = mode === 'dialogue'
-        ? `
-        - **characters**: An array of EXACTLY TWO characters who will discuss the topic. Give them thematic names and brief, one-sentence descriptions (e.g., "Skeptic" or "Believer").
-        - **narrationMode**: "dialogue"
-        `
-        : `
-        - **characters**: An array with ONE "Narrator" character.
-        - **narrationMode**: "monologue"
-        `;
-
-    const creativePrompt = creative
-        ? "Adopt the narrative style of a gripping, suspenseful storyteller like H.P. Lovecraft or Stephen King. Use vivid, atmospheric language. The script should be more of a dramatic story based on the facts, not a dry documentary."
-        : "Adopt the style of a clear, informative documentary narrator. Stick closely to the known facts and present them in a structured, easy-to-follow manner.";
-
-    const prompt = `
-    Based on the topic "${topic}", create a blueprint for a ${duration}-minute podcast with approximately ${totalChapters} chapters.
-    
-    **Style and Tone**: ${creativePrompt}
-    
-    **Knowledge Base (use this as the primary source of truth)**:
-    ${knowledge || "No specific knowledge base provided. Use Google Search to find information if necessary."}
-    
-    **Language**: The entire output, including all text, titles, descriptions, and prompts, must be in **${lang}**.
-    
-    **Your Task**:
-    1.  Generate a list of 5 creative, attention-grabbing titles for a YouTube video on this topic.
-    2.  Write a compelling, SEO-friendly YouTube video description (2-3 sentences).
-    3.  Provide a list of 10-15 relevant SEO keywords.
-    4.  Define the characters for the podcast.
-    5.  Write the script for the FIRST chapter ONLY. The script should be engaging and set the tone for the series. It must be an array of objects, each with a "speaker" and "text" property. Include "SFX" as a speaker for sound effects (e.g., { "speaker": "SFX", "text": "Sound of wind howling", "searchTags": "wind, howl, atmospheric" }).
-    6.  For the first chapter, create ${initialImageCount} detailed, visually striking prompts for an AI image generator like Gemini. The prompts must be in English, regardless of the output language, and should describe atmospheric scenes that match the script.
-    
-    **Output Format**:
-    Return the response as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
-    
-    **JSON Structure**:
-    {
-      "youtubeTitleOptions": ["Title 1", "Title 2", ...],
-      "description": "YouTube description...",
-      "seoKeywords": ["keyword1", "keyword2", ...],
-      ${characterPrompt},
-      "chapters": [
-        {
-          "title": "Chapter 1 Title",
-          "script": [
-            { "speaker": "CharacterName", "text": "Dialogue line 1..." },
-            { "speaker": "SFX", "text": "Description of a sound effect...", "searchTags": "relevant, english, tags" },
-            ...
-          ],
-          "imagePrompts": [
-            "English prompt for image 1...",
-            "English prompt for image 2...",
-            ...
-          ]
-        }
-      ]
-    }
-    `;
-
-    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-    const blueprint = await parseGeminiJsonResponse(response.text, log, apiKeys);
-
-    if (blueprint.chapters?.[0]?.script) {
-        blueprint.chapters[0].script = await findSfxForScript(blueprint.chapters[0].script, log, apiKeys);
-    }
-
-    log({ type: 'response', message: 'Концепция проекта успешно создана.' });
-    return blueprint;
-};
-
-export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, totalDuration: number, knowledge: string, creative: boolean, lang: string, mode: NarrationMode, log: LogFunction, apiKeys: ApiKeys): Promise<Pick<Chapter, 'title' | 'script' | 'imagePrompts'>> => {
-    log({ type: 'request', message: `Запрос на генерацию сценария для главы ${chapterIndex + 1}` });
-
-    const creativePrompt = creative
-        ? "Maintain the narrative style of a gripping, suspenseful storyteller (like Lovecraft or King). Focus on building atmosphere and drama."
-        : "Maintain the style of a clear, informative documentary. Present the next set of facts logically.";
-
-    const previousChapterSummaries = previousChapters.map((ch, i) => `Chapter ${i + 1}: ${ch.title} - ${ch.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
-
-    const prompt = `
-    You are writing a script for a podcast titled "${podcastTitle}" on the topic of "${topic}".
-    This is Chapter ${chapterIndex + 1} of a podcast that should be approximately ${totalDuration} minutes long.
-    
-    **Style and Tone**: ${creativePrompt}
-    
-    **Characters**:
-    ${characters.map(c => `- ${c.name}: ${c.description}`).join('\n')}
-    
-    **Previous Chapters Summary**:
-    ${previousChapterSummaries || "This is the first chapter after the introduction."}
-
-    **Knowledge Base (use this as the primary source of truth)**:
-    ${knowledge || "No specific knowledge base provided. Use Google Search to find information if necessary."}
-
-    **Language**: The entire output, including all text and titles, must be in **${lang}**.
-    
-    **Your Task**:
-    1.  Write a compelling title for Chapter ${chapterIndex + 1}.
-    2.  Write the script for Chapter ${chapterIndex + 1}. Continue the story from the previous chapters. It must be an array of objects with "speaker" and "text". Use the defined characters. Include "SFX" as a speaker for relevant sound effects, also providing "searchTags".
-    3.  Create 3 detailed, visually striking prompts in English for an AI image generator that match this chapter's script.
-    
-    **Output Format**:
-    Return the response as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
-    
-    **JSON Structure**:
-    {
-      "title": "Chapter ${chapterIndex + 1} Title",
-      "script": [
-        { "speaker": "CharacterName", "text": "Dialogue line..." },
-        { "speaker": "SFX", "text": "Sound effect description...", "searchTags": "relevant, english, tags" },
-        ...
-      ],
-      "imagePrompts": [
-        "English prompt for image 1...",
-        "English prompt for image 2...",
-        "English prompt for image 3..."
-      ]
-    }
-    `;
-
-    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-    const chapterData = await parseGeminiJsonResponse(response.text, log, apiKeys);
-
-    if (chapterData.script) {
-        chapterData.script = await findSfxForScript(chapterData.script, log, apiKeys);
-    }
-
-    log({ type: 'response', message: `Сценарий для главы ${chapterIndex + 1} успешно сгенерирован.` });
-    return chapterData;
-};
-
-export const regenerateTextAssets = async (topic: string, knowledge: string, creative: boolean, lang: string, log: LogFunction, apiKeys: ApiKeys): Promise<Pick<Podcast, 'youtubeTitleOptions' | 'description' | 'seoKeywords'>> => {
-    log({ type: 'request', message: `Запрос на регенерацию текстовых ассетов для темы: "${topic}"` });
-
-    const creativePrompt = creative
-        ? "Adopt the narrative style of a gripping, suspenseful storyteller like H.P. Lovecraft or Stephen King. Use vivid, atmospheric language."
-        : "Adopt the style of a clear, informative documentary narrator. Stick closely to the known facts.";
-
-    const prompt = `
-    Based on the topic "${topic}", regenerate the following text assets.
-    **Style and Tone**: ${creativePrompt}
-    **Knowledge Base**: ${knowledge || "No specific knowledge base provided."}
-    **Language**: All output text must be in **${lang}**.
-    **Your Task**:
-    1. Generate a list of 5 new, creative, attention-grabbing titles for a YouTube video.
-    2. Write a new, compelling, SEO-friendly YouTube video description (2-3 sentences).
-    3. Provide a list of 10-15 new, relevant SEO keywords.
-    **Output Format**: Return a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
-    **JSON Structure**:
-    {
-      "youtubeTitleOptions": ["New Title 1", ...],
-      "description": "New YouTube description...",
-      "seoKeywords": ["new_keyword1", ...]
-    }
-    `;
-    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-    const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
-    log({ type: 'response', message: 'Текстовые ассеты успешно регенерированы.' });
-    return data;
-};
-
-export const generateThumbnailDesignConcepts = async (topic: string, lang: string, log: LogFunction, apiKeys: ApiKeys): Promise<ThumbnailDesignConcept[]> => {
-    log({ type: 'request', message: `Запрос на создание AI-концепций дизайна обложек для темы: "${topic}"` });
-    const prompt = `
-    Create 5 distinct design concepts for a YouTube thumbnail about "${topic}". The concepts should be visually striking and tailored for high click-through rates (CTR). Consider styles like "MrBeast", "minimalist", "cinematic", "documentary", and "artistic".
-    For each concept, provide:
-    - name: A descriptive name in ${lang}.
-    - fontFamily: A suitable font from Google Fonts (e.g., "Impact", "Bebas Neue", "Montserrat ExtraBold").
-    - fontSize: A base font size (number, e.g., 90).
-    - textColor: A primary text color (hex code, e.g., "#FFFFFF").
-    - shadowColor: A contrasting shadow color (hex or rgba, e.g., "rgba(0,0,0,0.8)").
-    - overlayOpacity: A number between 0 and 1 (e.g., 0.4).
-    - textTransform: (optional) "uppercase" or "none".
-    - strokeColor: (optional) The color of the text outline (hex code).
-    - strokeWidth: (optional) The width of the text outline (number).
-    - gradientColors: (optional) An array of two hex codes for a text gradient.
-    Return a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\` with a root key "concepts".
-    `;
-    const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-    const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
-    log({ type: 'response', message: 'AI-концепции дизайна успешно созданы.' });
-    return data.concepts || [];
-};
-
-export const previewVoice = async (voiceId: string, languageCode: string, log: LogFunction, apiKeys: ApiKeys): Promise<Blob> => {
-    log({ type: 'request', message: `Previewing voice: ${voiceId}` });
-    const text = languageCode === 'ru' ? "Привет, я один из голосов, доступных для озвучки." : "Hello, I am one of the voices available for narration.";
-    const script: ScriptLine[] = [{ speaker: 'Narrator', text }];
-    const voices = { 'Narrator': voiceId };
-    return await generateChapterAudio(script, 'monologue', voices, voiceId, log, apiKeys, true);
-};
-
-export const generateChapterAudio = async (script: ScriptLine[], narrationMode: NarrationMode, characterVoices: { [key: string]: string }, monologueVoice: string, log: LogFunction, apiKeys: ApiKeys, isPreview: boolean = false): Promise<Blob> => {
-    const speechLines = script.filter(line => line.speaker.toUpperCase() !== 'SFX' && line.text.trim());
-    if (speechLines.length === 0) {
-        log({ type: 'info', message: 'В главе нет текста для озвучки, возвращаем пустой аудиофайл.' });
-        return createWavBlobFromPcm(new Int16Array(0), 24000, 1);
-    }
-
-    log({ type: 'request', message: `Запрос на генерацию аудио для ${speechLines.length} реплик.` });
-    
-    const ai = getTtsAiClient(apiKeys.gemini, log);
-    let speechConfig: any;
-    let ttsPrompt: string;
-    
-    if (narrationMode === 'monologue') {
-        speechConfig = { voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } } };
-        ttsPrompt = speechLines.map(line => line.text).join('\n');
-    } else {
-        const speakers = [...new Set(speechLines.map(line => line.speaker))];
-        speechConfig = {
-            multiSpeakerVoiceConfig: {
-                speakerVoiceConfigs: speakers.map(speaker => ({
-                    speaker: speaker,
-                    voiceConfig: { prebuiltVoiceConfig: { voiceName: characterVoices[speaker] || 'Puck' } }
-                }))
-            }
-        };
-        ttsPrompt = `TTS the following conversation:\n${speechLines.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
-    }
-
-    const ttsCall = () => ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: ttsPrompt }] }],
-        config: { responseModalities: [Modality.AUDIO], speechConfig: speechConfig },
-    });
-    
-    const retryConfig: RetryConfig = isPreview ? { retries: 1 } : { retries: 3, initialDelay: 3000 };
-    const requestKey = `tts-gen-${ttsPrompt.slice(0, 50)}`;
-
-    const response: GenerateContentResponse = await withQueueAndRetries(ttsCall, log, retryConfig, 'tts', 1000, requestKey);
-    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-    if (!base64Audio) throw new Error("TTS API не вернул аудиоданные.");
-
-    const pcmBytes = decodeBase64(base64Audio);
-    const pcmData = new Int16Array(pcmBytes.buffer);
-    
-    const wavBlob = createWavBlobFromPcm(pcmData, 24000, 1);
-    log({ type: 'response', message: `Аудио для главы успешно сгенерировано. Размер: ${(wavBlob.size / 1024).toFixed(2)} KB.` });
-    return wavBlob;
-};
-
-const JAMENDO_API_URL = 'https://api.jamendo.com/v3.0';
-const JAMENDO_CLIENT_ID = 'd2ba4033';
+// Jamendo Client ID for demo purposes. In a real app, this should be a user-provided key.
+const JAMENDO_CLIENT_ID = 'a2d33306';
 
 export const findMusicManually = async (keywords: string, log: LogFunction): Promise<MusicTrack[]> => {
-    if (!keywords.trim()) return [];
-    log({ type: 'request', message: `Ручной поиск музыки на Jamendo по запросу: "${keywords}"` });
+    if (!JAMENDO_CLIENT_ID) {
+        log({type: 'error', message: 'Jamendo Client ID не настроен. Поиск музыки невозможен.'});
+        return [];
+    }
+    const url = `https://api.jamendo.com/v3.0/tracks/?client_id=${JAMENDO_CLIENT_ID}&format=json&tags=${encodeURIComponent(keywords)}&limit=10&order=popularity_week`;
     try {
-        const response = await fetch(`${JAMENDO_API_URL}/tracks/?client_id=${JAMENDO_CLIENT_ID}&format=jsonpretty&limit=15&search=${encodeURIComponent(keywords)}&tags=background&boost=popularity_month`);
+        const response = await fetch(url);
         if (!response.ok) throw new Error(`Jamendo API error: ${response.statusText}`);
         const data = await response.json();
-        const tracks = data.results.map((track: any) => ({ id: track.id, name: track.name, artist_name: track.artist_name, audio: track.audio }));
-        log({ type: 'response', message: `Найдено ${tracks.length} треков на Jamendo.` });
-        return tracks;
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка при ручном поиске музыки на Jamendo', data: error });
-        throw new Error('Не удалось найти музыку на Jamendo.');
+        return data.results.filter((track: any) => track.audio.endsWith('.mp3'));
+    } catch (e) {
+        log({type: 'error', message: 'Ошибка при поиске музыки на Jamendo', data: e});
+        return [];
     }
 };
 
-export const findMusicWithAi = async (description: string, log: LogFunction, apiKeys: ApiKeys): Promise<MusicTrack[]> => {
-    log({ type: 'request', message: `AI-подбор музыки для описания: "${description.substring(0, 100)}..."` });
-    const prompt = `Based on the following description, generate 3-4 suitable English keywords for finding background music on a service like Jamendo. Focus on mood, genre, and instruments. Return ONLY the comma-separated keywords.\n\nDescription: "${description}"\n\nKeywords:`;
+export const findMusicWithAi = async (scriptText: string, log: LogFunction, apiKeys: ApiKeys): Promise<MusicTrack[]> => {
+    const prompt = `
+        Analyze the mood, tempo, and theme of the following text.
+        Generate 3 diverse sets of search tags for finding background music on a service like Jamendo.
+        Each set should be a few keywords. Focus on instrument, mood, and genre.
+        
+        Text: "${scriptText.substring(0, 1000)}..."
+        
+        Return a single valid JSON object in \`\`\`json ... \`\`\`.
+        { "tag_sets": [ "tagset 1", "tagset 2", "tagset 3" ] }
+    `;
     try {
-        const keywordsResponse = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
-        const keywords = keywordsResponse.text.trim();
-        log({ type: 'info', message: `ИИ предложил ключевые слова для музыки: ${keywords}` });
-        if (!keywords) return [];
-        return await findMusicManually(keywords, log);
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка в процессе AI-подбора музыки.', data: error });
-        throw new Error('Не удалось подобрать музыку с помощью ИИ.');
+        const response = await generateContentWithFallback({ contents: prompt }, log, apiKeys);
+        const data = await parseGeminiJsonResponse(response.text, log, apiKeys);
+        const tagSets = data.tag_sets as string[];
+
+        for (const tags of tagSets) {
+            log({type: 'info', message: `Поиск музыки по AI-тегам: "${tags}"`});
+            const tracks = await findMusicManually(tags, log);
+            if (tracks.length > 0) return tracks;
+        }
+        return [];
+    } catch (e) {
+        log({type: 'error', message: 'Ошибка при подборе музыки с помощью ИИ', data: e});
+        return [];
     }
 };

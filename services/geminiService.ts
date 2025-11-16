@@ -1,3 +1,5 @@
+
+
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { safeLower } from '../utils/safeLower-util';
 import { getApiRetryConfig } from '../config/appConfig';
@@ -157,7 +159,7 @@ const getNamedQueue = (name: string, log: LogFunction, minDelay: number): ApiReq
 
 // Centralized client creation.
 const getAiClient = (customApiKey: string | undefined, log: LogFunction) => {
-  const apiKey = customApiKey || process.env.API_KEY;
+  const apiKey = customApiKey?.trim() || process.env.API_KEY;
   if (!apiKey) {
     const errorMsg = "Ключ API не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
     log({ type: 'error', message: errorMsg });
