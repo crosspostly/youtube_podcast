@@ -1,7 +1,11 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { Buffer } from 'buffer';
 import App from './App';
 import './style.css';
+
+// Polyfill for Buffer needed by ffmpeg.wasm and other libraries
+(window as any).Buffer = Buffer;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
