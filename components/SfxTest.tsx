@@ -49,17 +49,23 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
 
     const togglePreview = (url: string) => {
         if (!audioRef.current) return;
-        const audio = audioRef.current;
+        const audio = audioRef.current as any;
+        // @FIX: Property 'paused' does not exist on type 'HTMLAudioElement'.
+        // @FIX: Property 'src' does not exist on type 'HTMLAudioElement'.
         const isCurrentlyPlaying = !audio.paused && audio.src.endsWith(encodeURIComponent(url));
 
         if (isCurrentlyPlaying) {
+            // @FIX: Property 'pause' does not exist on type 'HTMLAudioElement'.
             audio.pause();
             setPreviewingUrl(null);
         } else {
+            // @FIX: Property 'pause' does not exist on type 'HTMLAudioElement'.
             audio.pause();
             // Use audio proxy to avoid CORS issues
             const proxyUrl = `/api/audio-proxy?url=${encodeURIComponent(url)}`;
+            // @FIX: Property 'src' does not exist on type 'HTMLAudioElement'.
             audio.src = proxyUrl;
+            // @FIX: Property 'volume' does not exist on type 'HTMLAudioElement'.
             audio.volume = 0.5;
             
             // Log CORS proxy usage
@@ -69,6 +75,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 data: { originalUrl: url, proxyUrl }
             });
             
+            // @FIX: Property 'play' does not exist on type 'HTMLAudioElement'.
             const playPromise = audio.play();
             if (playPromise !== undefined) {
                 playPromise.then(() => {
@@ -99,7 +106,8 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
                 <input
                     type="text"
                     value={description}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
+                    // @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'.
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription((e.target as any).value)}
                     placeholder="Введите описание звука..."
                     className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
                     disabled={isLoading}

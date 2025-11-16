@@ -113,7 +113,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                             <h3 className="text-lg font-semibold text-white mb-2">Google Gemini API</h3>
                             <p className="text-sm text-slate-400 mb-4">Ключ для генерации текста, аудио и изображений.</p>
                             <label className="block text-sm font-medium text-slate-300 mb-1">Gemini API Key</label>
-                            <input type="password" value={geminiApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGeminiApiKey(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                            {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                            <input type="password" value={geminiApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGeminiApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
 
                             <div className="mt-6 border-t border-slate-700 pt-4">
                                 <h4 className="text-md font-semibold text-white mb-2">Статус генерации изображений (Circuit Breaker)</h4>
@@ -138,7 +139,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                              <h3 className="text-lg font-semibold text-white mb-2">Freesound API</h3>
                              <p className="text-sm text-slate-400 mb-4">Ключ для поиска звуковых эффектов (SFX).</p>
                              <label className="block text-sm font-medium text-slate-300 mb-1">Freesound API Key</label>
-                             <input type="password" value={freesoundApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFreesoundApiKey(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                             {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                             <input type="password" value={freesoundApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFreesoundApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                         </div>
                     )}
 
@@ -148,15 +150,18 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                  <h3 className="text-lg font-semibold text-white mb-2">API ключи для стоковых фото</h3>
                                  <p className="text-sm text-slate-400 mb-4">Используются как fallback, если генерация Gemini недоступна.</p>
                                  <label className="block text-sm font-medium text-slate-300 mb-1">Unsplash Access Key</label>
-                                 <input type="password" value={unsplashApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUnsplashApiKey(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                                 {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                                 <input type="password" value={unsplashApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setUnsplashApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                             <div>
                                  <label className="block text-sm font-medium text-slate-300 mb-1">Pexels API Key</label>
-                                 <input type="password" value={pexelsApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPexelsApiKey(e.target.value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                                 {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                                 <input type="password" value={pexelsApiKey} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPexelsApiKey((e.target as any).value)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                             <div className="border-t border-slate-700 pt-4">
                                 <label className="block text-sm font-medium text-slate-300 mb-1">Предпочтительный сервис</label>
-                                <select value={stockPhotoPreference} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStockPhotoPreference(e.target.value as StockPhotoPreference)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
+                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLSelectElement'. */}
+                                <select value={stockPhotoPreference} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStockPhotoPreference((e.target as any).value as StockPhotoPreference)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
                                     <option value="unsplash">Unsplash</option>
                                     <option value="pexels">Pexels</option>
                                     <option value="auto">Авто (сначала Unsplash)</option>
@@ -174,7 +179,8 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                             </div>
                             <div className="border-t border-slate-700 pt-4">
                                 <label className="block text-sm font-medium text-slate-300 mb-1">Режим получения изображений</label>
-                                <select value={imageMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setImageMode(e.target.value as ImageMode)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
+                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLSelectElement'. */}
+                                <select value={imageMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setImageMode((e.target as any).value as ImageMode)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
                                     <option value="generate">Генерация (с fallback на стоки)</option>
                                     <option value="unsplash">Только Unsplash</option>
                                     <option value="pexels">Только Pexels</option>
@@ -190,15 +196,18 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                             <p className="text-sm text-slate-400 mb-4">Настройте, как приложение будет повторять неудачные запросы (например, при превышении лимитов).</p>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Количество попыток</label>
-                                <input type="number" value={retryConfig.retries || 3} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, retries: parseInt(e.target.value, 10) || 3}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                                <input type="number" value={retryConfig.retries || 3} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, retries: parseInt((e.target as any).value, 10) || 3}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Начальная задержка (ms)</label>
-                                <input type="number" value={retryConfig.initialDelay || 5000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, initialDelay: parseInt(e.target.value, 10) || 5000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                                <input type="number" value={retryConfig.initialDelay || 5000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, initialDelay: parseInt((e.target as any).value, 10) || 5000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-300">Максимальная задержка (ms)</label>
-                                <input type="number" value={retryConfig.maxDelay || 60000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, maxDelay: parseInt(e.target.value, 10) || 60000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
+                                {/* @FIX: Property 'value' does not exist on type 'EventTarget & HTMLInputElement'. */}
+                                <input type="number" value={retryConfig.maxDelay || 60000} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRetryConfig(p => ({...p, maxDelay: parseInt((e.target as any).value, 10) || 60000}))} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white" />
                             </div>
                         </div>
                     )}

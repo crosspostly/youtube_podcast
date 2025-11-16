@@ -101,14 +101,12 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     const [characterVoices, setCharacterVoices] = useState<{ [key: string]: string }>({ character1: 'Puck', character2: 'Zephyr' });
     const [monologueVoice, setMonologueVoice] = useState<string>('Puck');
     const [previewingVoice, setPreviewingVoice] = useState<string | null>(null);
-    // FIX: Cannot find name 'HTMLAudioElement'. Changed ref type to 'any'.
     const audioRef = useRef<any>(null);
     const [voiceFilter, setVoiceFilter] = useState<'all' | 'male' | 'female'>('all');
     const activeBlobUrls = useRef<Map<string, string>>(new Map());
 
     const [langSearchTerm, setLangSearchTerm] = useState('');
     const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
-    // FIX: Cannot find name 'HTMLDivElement'. Changed ref type to 'any'.
     const langDropdownRef = useRef<any>(null);
 
     const filteredLanguages = useMemo(() => 
@@ -121,20 +119,16 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     }, [voiceFilter]);
     
     useEffect(() => {
-        // FIX: Cannot find name 'MouseEvent'. Changed event type to 'any'.
         const handleClickOutside = (event: any) => {
-            // FIX: Cast ref and event target to `any` to use `contains` method.
             if (langDropdownRef.current && !(langDropdownRef.current as any).contains(event.target as any)) {
                 setIsLangDropdownOpen(false);
             }
         };
-        // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
         (window as any).document.addEventListener('mousedown', handleClickOutside);
         
         const urls = activeBlobUrls.current;
 
         return () => {
-            // FIX: Cast `window` to `any` to access `document` because DOM types are missing in the environment.
             (window as any).document.removeEventListener('mousedown', handleClickOutside);
             urls.forEach(url => URL.revokeObjectURL(url));
         };
@@ -162,7 +156,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
         const playAudio = (blob: Blob) => {
             if (!audioRef.current) return;
-            // FIX: Cast `audioRef.current` to `any` to access audio properties.
             const audio = audioRef.current as any;
 
             if (activeBlobUrls.current.has(voiceId)) {
@@ -186,7 +179,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         setPreviewingVoice(voiceId);
 
         // This handler will be attached to the single audio element
-        // FIX: Cast `audioRef.current` to `any` to attach event handlers.
         (audioRef.current as any).onended = () => setPreviewingVoice(null);
         (audioRef.current as any).onerror = () => {
              log({ type: 'error', message: `Ошибка воспроизведения аудио для голоса ${voiceId}`});
@@ -203,7 +195,8 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
 
             log({ type: 'info', message: `Голос ${voiceId} не найден в кэше. Генерация...` });
             const selectedLanguageCode = languages.find(l => l.name === language)?.code || 'ru';
-            const generatedBlob = await previewVoice(voiceId, selectedLanguageCode, log);
+            // FIX: Pass apiKeys to previewVoice call
+            const generatedBlob = await previewVoice(voiceId, selectedLanguageCode, log, apiKeys);
             
             await saveVoiceToCache(voiceId, generatedBlob);
             log({ type: 'info', message: `Голос ${voiceId} сохранен в кэш.` });
@@ -228,7 +221,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                 <input 
                     type="text" 
                     value={projectTitleInput} 
-                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                     onChange={(e) => setProjectTitleInput((e.currentTarget as any).value)} 
                     placeholder="Название проекта (видео), например: 'Тайна перевала Дятлова'" 
                     className="flex-grow bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500" 
@@ -244,7 +236,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                 </p>
                 <textarea
                     value={knowledgeBaseText}
-                    // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                     onChange={(e) => setKnowledgeBaseText((e.currentTarget as any).value)}
                     placeholder="Вставьте сюда свой текст или используйте поиск Google ниже..."
                     className="w-full h-40 bg-slate-950 border border-slate-700 rounded-md p-3 text-slate-200 mb-4"
@@ -255,7 +246,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                         <input
                             type="text"
                             value={googleSearchQuestion}
-                            // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                             onChange={(e) => setGoogleSearchQuestion((e.currentTarget as any).value)}
                             placeholder="Задайте вопрос для поиска..."
                             className="flex-grow bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
@@ -288,7 +278,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                                 type="text"
                                                 placeholder="Поиск языка..."
                                                 value={langSearchTerm}
-                                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                                 onChange={e => setLangSearchTerm((e.currentTarget as any).value)}
                                                 className="w-full bg-slate-700 border border-slate-500 rounded-md py-1.5 pl-8 pr-2 text-white"
                                             />
@@ -316,7 +305,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                     </div>
                     <div>
                         <label className="flex items-center text-lg text-slate-200 cursor-pointer">
-                            {/* FIX: Cast e.currentTarget to any to access checked property due to missing DOM types. */}
                             <input type="checkbox" checked={creativeFreedom} onChange={(e) => setCreativeFreedom((e.currentTarget as any).checked)} className="mr-3 h-5 w-5 rounded bg-slate-700 border-slate-600 text-cyan-600 focus:ring-cyan-500" />
                             Творческая свобода (Стиль Кинга/Лавкрафта)
                         </label>
@@ -333,7 +321,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                 max="240"
                                 step="1"
                                 value={totalDurationMinutes}
-                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                 onChange={(e) => setTotalDurationMinutes(Number((e.currentTarget as any).value))}
                                 className="w-full"
                             />
@@ -342,7 +329,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                 min="1"
                                 max="240"
                                 value={totalDurationMinutes}
-                                // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                                 onChange={(e) => setTotalDurationMinutes(Number((e.currentTarget as any).value))}
                                 className="w-24 bg-slate-800 border border-slate-600 rounded-md p-2 text-white"
                             />
@@ -358,7 +344,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                             max="10"
                             step="1"
                             value={initialImageCount}
-                            // FIX: Cast e.currentTarget to any to access value property due to missing DOM types.
                             onChange={(e) => setInitialImageCount(Number((e.currentTarget as any).value))}
                             className="w-full"
                         />
@@ -390,7 +375,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                         <div>
                             <label className="block text-lg font-medium text-slate-200 mb-2">Голос рассказчика</label>
                             <div className="flex items-center gap-4">
-                                {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
                                 <select value={monologueVoice} onChange={e => setMonologueVoice((e.currentTarget as any).value)} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
                                     {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
                                 </select>
@@ -405,7 +389,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                             <div>
                                 <label className="block text-lg font-medium text-slate-200 mb-2">Голос персонажа 1</label>
                                 <div className="flex items-center gap-4">
-                                    {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
                                     <select value={characterVoices.character1} onChange={e => setCharacterVoices(p => ({...p, character1: (e.currentTarget as any).value}))} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
                                         {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
                                     </select>
@@ -417,7 +400,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                             <div>
                                 <label className="block text-lg font-medium text-slate-200 mb-2">Голос персонажа 2</label>
                                 <div className="flex items-center gap-4">
-                                    {/* FIX: Cast e.currentTarget to any to access value property due to missing DOM types. */}
                                     <select value={characterVoices.character2} onChange={e => setCharacterVoices(p => ({...p, character2: (e.currentTarget as any).value}))} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
                                         {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
                                     </select>
@@ -474,7 +456,6 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                     <input
                                         type="checkbox"
                                         checked={saveMediaInHistory}
-                                        // FIX: Cast e.currentTarget to any to access checked property due to missing DOM types.
                                         onChange={(e) => setSaveMediaInHistory((e.currentTarget as any).checked)}
                                         className="mr-2 h-4 w-4 rounded bg-slate-700 border-slate-600 text-cyan-600 focus:ring-cyan-500 focus:ring-offset-slate-800 focus:ring-2"
                                     />

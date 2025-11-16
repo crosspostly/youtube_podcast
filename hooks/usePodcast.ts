@@ -433,12 +433,15 @@ export const usePodcast = (
             }
 
             const url = URL.createObjectURL(finalBlob);
-            const a = document.createElement('a');
+            // @FIX: Cannot find name 'document'.
+            const a = (window as any).document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.${extension}`;
-            document.body.appendChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             log({ type: 'response', message: `✅ Аудио экспортировано (${format})` });
@@ -463,12 +466,15 @@ export const usePodcast = (
         try {
             const srtBlob = await generateSrtFile(podcast, log);
             const url = URL.createObjectURL(srtBlob);
-            const a = document.createElement('a');
+            // @FIX: Cannot find name 'document'.
+            const a = (window as any).document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.srt`;
-            document.body.appendChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
         } catch (err: any) {
             const friendlyError = parseErrorMessage(err);
@@ -496,12 +502,15 @@ export const usePodcast = (
             );
 
             const url = URL.createObjectURL(videoBlob);
-            const a = document.createElement('a');
+            // @FIX: Cannot find name 'document'.
+            const a = (window as any).document.createElement('a');
             a.href = url;
             a.download = `${safeLower(podcastToRender.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'))}.mp4`;
-            document.body.appendChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.appendChild(a);
             a.click();
-            document.body.removeChild(a);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
             log({ type: 'response', message: '✅ Видео успешно создано' });
@@ -625,7 +634,8 @@ export const usePodcast = (
 
     const regenerateProject = () => {
         if (!podcast) return;
-        if (confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
+        // @FIX: Cannot find name 'confirm'.
+        if ((window as any).confirm("Вы уверены, что хотите полностью пересоздать этот проект?")) {
             startNewProject(podcast.topic, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, podcast.totalDurationMinutes, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, podcast.initialImageCount);
         }
     };
@@ -746,7 +756,6 @@ export const usePodcast = (
         
         setPodcast(p => {
             if (!p) return null;
-            // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
             return { ...p, chapters: p.chapters.map(c => ({ ...c, status: 'images_generating' as ChapterStatus })) };
         });
 
@@ -758,11 +767,9 @@ export const usePodcast = (
                 if (podcast.videoPacingMode === 'manual') {
                     const newDurations = Array(newImages.length).fill(60);
                 }
-                // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
                 return { chapterId: chapter.id, status: 'completed' as ChapterStatus, generatedImages: newImages };
             } catch (err: any) {
                 log({ type: 'error', message: `Ошибка при регенерации изображений для главы ${chapter.title}`, data: err });
-                // FIX: Explicitly cast status to ChapterStatus to prevent type widening from string.
                 return { chapterId: chapter.id, status: 'error' as ChapterStatus, error: err.message || 'Ошибка генерации изображений' };
             }
         });

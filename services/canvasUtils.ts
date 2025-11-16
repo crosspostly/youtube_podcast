@@ -4,7 +4,8 @@ import type { TextOptions } from '../types';
 const loadedFontStyles = new Set<string>();
 
 export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
-    if (!fontFamily || document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
+    // @FIX: Cannot find name 'document'.
+    if (!fontFamily || (window as any).document.fonts.check(`12px "${fontFamily}"`) || loadedFontStyles.has(fontFamily)) {
         return;
     }
 
@@ -13,14 +14,18 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 
     try {
         // Using a more direct way to add stylesheet which is broadly supported
-        if (!document.querySelector(`link[href="${fontUrl}"]`)) {
-            const link = document.createElement('link');
+        // @FIX: Cannot find name 'document'.
+        if (!(window as any).document.querySelector(`link[href="${fontUrl}"]`)) {
+            // @FIX: Cannot find name 'document'.
+            const link = (window as any).document.createElement('link');
             link.href = fontUrl;
             link.rel = 'stylesheet';
-            document.head.appendChild(link);
+            // @FIX: Cannot find name 'document'.
+            (window as any).document.head.appendChild(link);
             
             // The Font Loading API is the most reliable way to wait
-            await document.fonts.load(`900 12px "${fontFamily}"`);
+            // @FIX: Cannot find name 'document'.
+            await (window as any).document.fonts.load(`900 12px "${fontFamily}"`);
             loadedFontStyles.add(fontFamily);
         }
     } catch (error) {
@@ -30,7 +35,8 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
 };
 
 
-const wrapText = (context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+// @FIX: Cannot find name 'CanvasRenderingContext2D'.
+const wrapText = (context: any, text: string, maxWidth: number): string[] => {
     const words = text.split(' ');
     if (words.length === 0) return [];
     
@@ -53,8 +59,9 @@ const wrapText = (context: CanvasRenderingContext2D, text: string, maxWidth: num
 
 
 export const drawCanvas = async (
-  context: CanvasRenderingContext2D,
-  baseImage: HTMLImageElement,
+  // @FIX: Cannot find name 'CanvasRenderingContext2D'.
+  context: any,
+  baseImage: any,
   options: TextOptions
 ): Promise<void> => {
     const { width, height } = context.canvas;
