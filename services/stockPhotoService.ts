@@ -1,10 +1,10 @@
-import { GoogleGenAI } from '@google/genai';
+// services/stockPhotoService.ts
+
+import { generateContentWithFallback, type LogFunction } from './geminiService';
 import type { StockPhoto, StockPhotoApiKeys, GeneratedImage } from '../types';
 import type { LogEntry } from '../types';
 import { blockKey, getKeyStatus } from '../utils/stockPhotoKeyManager';
 import { prompts } from './prompts';
-
-type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 // Placeholder image for fallback cases (1024x576 gray placeholder with text)
 const PLACEHOLDER_BASE64 = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAyNCIgaGVpZ2h0PSI1NzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHJlY3Qgd2lkdGg9IjEwMjQiIGhlaWdodD0iNTc2IiBmaWxsPSIjMzc0MTUxIi8+CiAgPHRleHQgeD0iNTEyIiB5PSIyODgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIzMiIgZmlsbD0iIzlDQTNBRiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+CiAgICBJbWFnZSBVbmF2YWlsYWJsZQogIDwvdGV4dD4KICA8dGV4dCB4PSI1MTIiIHk9IjMyMCIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjNkI3MjgwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj4KICAgIFBsYWNlaG9sZGVyCiAgPC90ZXh0Pgo8L3N2Zz4=';
@@ -20,11 +20,11 @@ const simplifyPromptForStock = async (
     try {
         log({ type: 'info', message: `Упрощение промпта для стоков: "${aiPrompt}"` });
         
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [{ text: prompts.simplifyForStock(aiPrompt) }] }
-        });
+        const response = await generateContentWithFallback(
+            { contents: { parts: [{ text: prompts.simplifyForStock(aiPrompt) }] } },
+            log,
+            { gemini: geminiApiKey }
+        );
         
         const simplified = response.text.trim();
         log({ type: 'response', message: `Упрощённый промпт: "${simplified}"` });
@@ -53,12 +53,12 @@ const translateToEnglish = async (
     try {
         log({ type: 'info', message: `Перевод запроса на английский: "${query}"` });
         
-        const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: { parts: [{ text: prompts.translateToEnglish(query) }] }
-        });
-        
+        const response = await generateContentWithFallback(
+            { contents: { parts: [{ text: prompts.translateToEnglish(query) }] } },
+            log,
+            { gemini: geminiApiKey }
+        );
+
         const translated = response.text.trim();
         log({ type: 'response', message: `Переведено: "${translated}"` });
         return translated;

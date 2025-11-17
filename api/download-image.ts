@@ -59,13 +59,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let lastError: any;
     for (let attempt = 1; attempt <= 3; attempt++) {
         try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
+
             const response = await fetch(targetUrl, {
               method: 'GET',
               headers: {
                 'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
                 ...authHeader
               },
+              signal: controller.signal
             });
+
+            clearTimeout(timeout);
 
             if (!response.ok) {
                 // Don't retry on client-side errors (4xx)
@@ -90,9 +96,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         } catch (error) {
             lastError = error;
-            console.warn(`Attempt ${attempt} failed for ${targetUrl}:`, error);
+            console.warn(`Attempt ${attempt} failed for ${targetUrl}:`, error instanceof Error ? error.message : String(error));
             if (attempt < 3) {
-                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
             }
         }
     }

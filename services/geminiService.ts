@@ -21,7 +21,7 @@ export async function validateGeminiKey(apiKey: string): Promise<boolean> {
     // ✅ ПРАВИЛЬНЫЙ СПОСОБ
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-lite-latest',
       contents: 'Скажи "OK"'
     });
     
@@ -395,7 +395,7 @@ export const withQueueAndRetries = async <T>(
 // PRIMARY MODEL
 // ============================================================================
 
-const PRIMARY_TEXT_MODEL = 'gemini-2.5-flash';
+const PRIMARY_TEXT_MODEL = 'gemini-flash-lite-latest';
 
 // ============================================================================
 // GENERATE CONTENT WITH FALLBACK

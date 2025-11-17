@@ -278,7 +278,7 @@ app.post('/api/export-project', async (req, res) => {
     
     for (const [index, chapter] of chapters.entries()) {
       
-      const chapterManifest: any = {
+      const chapterManifest = {
         id: chapter.id,
         title: chapter.title,
         duration: chapter.duration,

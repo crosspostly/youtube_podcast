@@ -1,9 +1,11 @@
-
-
 // ffmpeg.worker.ts
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import coreURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.js?url';
+import wasmURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.wasm?url';
+import workerURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.worker.js?url';
+
 
 // Simplified types for worker context to avoid circular dependencies
 interface PodcastData {
@@ -25,10 +27,6 @@ enum WorkerMessageType {
     DONE = 'done',
     ERROR = 'error',
 }
-
-const FFMPEG_CORE_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.js';
-const FFMPEG_WASM_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.wasm';
-const FFMPEG_WORKER_URL = 'https://aistudiocdn.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.worker.js';
 
 let ffmpeg: FFmpeg | null = null;
 
@@ -58,9 +56,9 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
             log({ type: 'info', message: `[FFMPEG] ${message}` });
         });
         await ffmpeg.load({
-            coreURL: await toBlobURL(FFMPEG_CORE_URL, 'text/javascript'),
-            wasmURL: await toBlobURL(FFMPEG_WASM_URL, 'application/wasm'),
-            workerURL: await toBlobURL(FFMPEG_WORKER_URL, 'text/javascript'),
+            coreURL: await toBlobURL(coreURL, 'text/javascript'),
+            wasmURL: await toBlobURL(wasmURL, 'application/wasm'),
+            workerURL: await toBlobURL(workerURL, 'text/javascript'),
         });
     }
     log({ type: 'info', message: 'FFmpeg в Worker загружен.' });
