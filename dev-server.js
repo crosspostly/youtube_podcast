@@ -154,75 +154,84 @@ app.post('/api/freesound', async (req, res) => {
 });
 
 app.post('/api/download-image', async (req, res) => {
-  let targetUrl = '';
-  try {
-    const { url, source, apiKey } = req.body;
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  const retries = 3;
+  let attempt = 1;
 
-    if (!url || typeof url !== 'string' || !source || !apiKey) {
-      return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
-    }
-    targetUrl = url;
+  while (attempt <= retries) {
+    try {
+      const { url, source, apiKey } = req.body;
 
-    console.log(`Image download proxy: Downloading image from ${targetUrl}`);
-
-    let imageResponse: Response;
-
-    // Unsplash's download_location URL requires a two-step fetch to handle the redirect properly.
-    if (source === 'unsplash') {
-      // Step 1: Get the redirect URL from the 'Location' header.
-      const redirectResponse = await fetch(targetUrl, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Client-ID ${apiKey}`,
-          'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
-        },
-        redirect: 'manual'
-      });
-
-      const location = redirectResponse.headers.get('Location');
-      if (!location || (redirectResponse.status !== 301 && redirectResponse.status !== 302)) {
-        const errorText = await redirectResponse.text().catch(() => '');
-        throw new Error(`Unsplash download_location did not return a valid redirect. Status: ${redirectResponse.status}. Details: ${errorText}`);
+      if (!url || typeof url !== 'string' || !source || !apiKey) {
+        return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
       }
       
-      console.log(`Image download proxy: Unsplash redirected. Fetching final URL.`);
-      
-      // Step 2: Fetch the final image URL (without authorization headers).
-      imageResponse = await fetch(location, {
-        headers: { 'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)' }
-      });
-    } else { // For Pexels
-      imageResponse = await fetch(targetUrl, {
-        headers: {
-          'Authorization': apiKey,
-          'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+      console.log(`Image download proxy: Downloading image from ${url} (Attempt ${attempt}/${retries})`);
+
+      let imageResponse;
+
+      if (source === 'unsplash') {
+        const redirectResponse = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Client-ID ${apiKey}`,
+            'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+          },
+          redirect: 'manual'
+        });
+
+        const location = redirectResponse.headers.get('Location');
+        if (!location || (redirectResponse.status !== 301 && redirectResponse.status !== 302)) {
+          const errorText = await redirectResponse.text().catch(() => '');
+          throw new Error(`Unsplash download_location did not return a valid redirect. Status: ${redirectResponse.status}. Details: ${errorText}`);
         }
-      });
-    }
+        
+        console.log(`Image download proxy: Unsplash redirected. Fetching final URL.`);
+        
+        imageResponse = await fetch(location, {
+          headers: { 'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)' }
+        });
+      } else { // For Pexels
+        imageResponse = await fetch(url, {
+          headers: {
+            'Authorization': apiKey,
+            'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+          }
+        });
+      }
 
-    if (!imageResponse.ok) {
-        const errorText = await imageResponse.text().catch(() => '');
-        throw new Error(`Failed to fetch final image. Status: ${imageResponse.status}. Details: ${errorText}`);
-    }
-    
-    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
-    const arrayBuffer = await imageResponse.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    const dataUrl = `data:${contentType};base64,${base64}`;
+      if (!imageResponse.ok) {
+          const errorText = await imageResponse.text().catch(() => '');
+          throw new Error(`Failed to fetch final image. Status: ${imageResponse.status}. Details: ${errorText}`);
+      }
+      
+      const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+      const arrayBuffer = await imageResponse.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString('base64');
+      const dataUrl = `data:${contentType};base64,${base64}`;
 
-    console.log(`Image downloaded: ${arrayBuffer.byteLength} bytes`);
-    return res.status(200).json({ base64: dataUrl });
+      console.log(`Image downloaded: ${arrayBuffer.byteLength} bytes`);
+      return res.status(200).json({ base64: dataUrl });
     
-  } catch (error) {
-    console.error('Image download proxy uncaught error:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        name: error instanceof Error ? error.name : 'Unknown',
-        url: targetUrl || (req.body ? req.body.url : 'URL not available')
-    });
-    res.status(500).json({
-      error: 'Internal Server Error',
-      message: error instanceof Error ? error.message : 'Unknown error',
-    });
+    } catch (error) {
+      const isFetchFailed = error instanceof Error && error.message.includes('fetch failed');
+      
+      if (isFetchFailed && attempt < retries) {
+        console.log(`Image download attempt ${attempt}/${retries} failed: fetch failed`);
+        await delay(1000 * Math.pow(2, attempt - 1));
+        attempt++;
+      } else {
+        console.error('Image download proxy uncaught error:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            name: error instanceof Error ? error.name : 'Unknown',
+            url: req.body ? req.body.url : 'URL not available'
+        });
+        return res.status(500).json({
+          error: 'Internal Server Error',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
   }
 });
 
