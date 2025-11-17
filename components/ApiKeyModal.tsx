@@ -173,11 +173,48 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                             )}
                             <div className="border-t border-slate-700 pt-4">
                                 <label className="block text-sm font-medium text-slate-300 mb-1">Предпочтительный сервис</label>
-                                <select value={stockPhotoPreference} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setStockPhotoPreference((e.target as any).value as StockPhotoPreference)} className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white">
-                                    <option value="unsplash">Unsplash</option>
-                                    <option value="pexels">Pexels</option>
-                                    <option value="auto">Авто (сначала Unsplash)</option>
-                                </select>
+                                <div className="space-y-2">
+                                    <label className="flex items-center gap-2">
+                                        <input 
+                                            type="radio" 
+                                            value="unsplash" 
+                                            checked={stockPhotoPreference === 'unsplash'}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStockPhotoPreference(e.target.value as StockPhotoPreference)}
+                                            className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 rounded focus:ring-blue-500"
+                                        />
+                                        <span>Unsplash</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input 
+                                            type="radio" 
+                                            value="pexels" 
+                                            checked={stockPhotoPreference === 'pexels'}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStockPhotoPreference(e.target.value as StockPhotoPreference)}
+                                            className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 rounded focus:ring-blue-500"
+                                        />
+                                        <span>Pexels</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input 
+                                            type="radio" 
+                                            value="gemini" 
+                                            checked={stockPhotoPreference === 'gemini'}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStockPhotoPreference(e.target.value as StockPhotoPreference)}
+                                            className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 rounded focus:ring-blue-500"
+                                        />
+                                        <span>Gemini (генерация)</span>
+                                    </label>
+                                    <label className="flex items-center gap-2">
+                                        <input 
+                                            type="radio" 
+                                            value="none" 
+                                            checked={stockPhotoPreference === 'none'}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStockPhotoPreference(e.target.value as StockPhotoPreference)}
+                                            className="w-4 h-4 text-blue-600 bg-slate-900 border-slate-600 rounded focus:ring-blue-500"
+                                        />
+                                        <span>Отключить изображения</span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     )}

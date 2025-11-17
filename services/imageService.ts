@@ -232,7 +232,7 @@ export const generateMoreImages = async (
     log: LogFunction, 
     apiKeys: AllApiKeys, 
     imageMode: ImageMode = 'generate',
-    stockPhotoPreference: 'unsplash' | 'pexels' | 'auto' = 'auto'
+    stockPhotoPreference: 'unsplash' | 'pexels' | 'gemini' | 'none' | 'auto' = 'auto'
 ): Promise<GeneratedImage[]> => {
     const targetImageCount = 5;
     if (prompts.length === 0) {

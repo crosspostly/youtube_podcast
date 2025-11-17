@@ -315,10 +315,25 @@ export const searchStockPhotos = async (
     rawPrompt: string,
     userApiKeys: StockPhotoApiKeys,
     geminiApiKey: string,
-    preferredService: 'unsplash' | 'pexels' | 'auto',
+    preferredService: 'unsplash' | 'pexels' | 'gemini' | 'none',
     log: LogFunction
 ): Promise<StockPhoto[]> => {
     try {
+        // Debug logging for preference
+        log({ type: 'info', message: `🔧 Stock photo preference: "${preferredService}"` });
+        
+        // Handle 'none' preference - return empty array immediately
+        if (preferredService === 'none') {
+            log({ type: 'info', message: 'Изображения отключены в настройках' });
+            return [];
+        }
+        
+        // Handle 'gemini' preference - this should use AI generation, not stock photos
+        if (preferredService === 'gemini') {
+            log({ type: 'info', message: 'Выбран режим генерации через Gemini, стоковые фото не используются' });
+            return [];
+        }
+        
         const { getStockPhotoKeys } = await import('../config/appConfig');
         const finalKeys = getStockPhotoKeys(userApiKeys);
         
@@ -338,6 +353,8 @@ export const searchStockPhotos = async (
             if (finalKeys.unsplash) servicesToTry.push('unsplash');
             if (finalKeys.pexels) servicesToTry.push('pexels');
         }
+        
+        log({ type: 'info', message: `🔧 Services to try in order: ${servicesToTry.join(', ')}` });
         
         for (const service of servicesToTry) {
             try {

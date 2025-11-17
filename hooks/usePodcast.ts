@@ -160,24 +160,38 @@ export const usePodcast = (
                 apiKeys
             );
 
+            // Start music search in parallel with other operations
             const musicSearchText = chapterScript.script.map((line: ScriptLine) => line.text).join(' ');
-            const music = await findMusicWithAi(musicSearchText, log, apiKeys);
-            const backgroundMusic = music.length > 0 ? music[0] : undefined;
+            const musicPromise = findMusicWithAi(musicSearchText, log, apiKeys);
             
             updateChapter(chapterId, "generating", {
                 script: chapterScript.script,
                 title: chapterScript.title,
                 imagePrompts: chapterScript.imagePrompts,
-                backgroundMusic: backgroundMusic
+                backgroundMusic: undefined // Will be updated when music loads
             });
 
-            const [imageResult, audioResult] = await Promise.allSettled([
+            // Run image generation, audio generation, and music search in parallel
+            log({ type: 'info', message: `[1/3] 🚀 Starting parallel generation: images, audio, and music search` });
+            const [imageResult, audioResult, musicResult] = await Promise.allSettled([
                 generateStyleImages(chapterScript.imagePrompts, podcast.initialImageCount, log, apiKeys, imageMode, stockPhotoPreference),
-                generateChapterAudio(chapterScript.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys)
+                generateChapterAudio(chapterScript.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys),
+                musicPromise
             ]);
+            log({ type: 'info', message: `[2/3] ✅ Parallel generation completed` });
 
             const generatedImages = imageResult.status === 'fulfilled' ? imageResult.value : [];
             const audioBlob = audioResult.status === 'fulfilled' ? audioResult.value : null;
+            const music = musicResult.status === 'fulfilled' ? musicResult.value : [];
+            const backgroundMusic = music.length > 0 ? music[0] : undefined;
+            
+            // Log results
+            log({ type: 'info', message: `[3/3] 📊 Results: Images=${generatedImages.length}, Audio=${audioBlob ? '✅' : '❌'}, Music=${backgroundMusic ? '✅' : '❌'}` });
+            
+            // Update chapter with background music now that it's loaded
+            if (backgroundMusic) {
+                updateChapter(chapterId, "generating", { backgroundMusic });
+            }
 
             if (generatedImages.length === 0) {
                  log({type: 'warning', message: 'Изображения не сгенерированы, но аудио готово'});
