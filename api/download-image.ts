@@ -20,6 +20,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(405).json({ error: 'Method Not Allowed' });
     return;
   }
+  
+  let targetUrl: string = '';
 
   try {
     const { url, source, apiKey } = req.body;
@@ -30,7 +32,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Validate URL format and domain
-    let targetUrl: string;
     try {
       targetUrl = url;
       const parsedUrl = new URL(targetUrl);
@@ -107,7 +108,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     throw lastError;
 
   } catch (error) {
-    console.error('Image download proxy error after all retries:', error);
+    console.error('Image download proxy error after all retries:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        name: error instanceof Error ? error.name : 'Unknown',
+        url: targetUrl || (req.body ? req.body.url : 'URL not available')
+    });
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error',

@@ -154,6 +154,7 @@ app.post('/api/freesound', async (req, res) => {
 });
 
 app.post('/api/download-image', async (req, res) => {
+  let targetUrl = '';
   try {
     const { url, source, apiKey } = req.body;
 
@@ -161,7 +162,6 @@ app.post('/api/download-image', async (req, res) => {
       return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
     }
 
-    let targetUrl;
     try {
       targetUrl = url;
       const parsedUrl = new URL(targetUrl);
@@ -231,14 +231,14 @@ app.post('/api/download-image', async (req, res) => {
       }
     }
 
-    console.error('Image download failed after all retries:', lastError);
-    return res.status(500).json({
-      error: 'Internal Server Error after retries',
-      message: lastError instanceof Error ? lastError.message : 'Unknown error',
-    });
+    throw lastError;
 
   } catch (error) {
-    console.error('Image download proxy uncaught error:', error);
+    console.error('Image download proxy uncaught error:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        name: error instanceof Error ? error.name : 'Unknown',
+        url: targetUrl || (req.body ? req.body.url : 'URL not available')
+    });
     res.status(500).json({
       error: 'Internal Server Error',
       message: error instanceof Error ? error.message : 'Unknown error',

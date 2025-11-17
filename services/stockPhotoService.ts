@@ -109,7 +109,7 @@ const searchUnsplash = async (
         .map((photo: any) => ({
             id: photo.id,
             url: photo.urls.regular,
-            downloadUrl: photo.urls.full,
+            downloadUrl: photo.links.download_location,
             photographer: photo.user.name,
             photographerUrl: photo.user.links.html,
             source: 'unsplash' as const,
@@ -236,7 +236,19 @@ export const downloadStockPhoto = async (photo: StockPhoto, apiKeys: StockPhotoA
             body: JSON.stringify({ url: photo.downloadUrl, source: photo.source, apiKey: apiKey })
         });
 
-        if (!response.ok) throw new Error(`Proxy endpoint error: ${response.status}`);
+        if (!response.ok) {
+            let errorDetails = `Proxy endpoint error: ${response.status}`;
+            try {
+                const errorBody = await response.json();
+                errorDetails += ` - ${errorBody.message || JSON.stringify(errorBody)}`;
+                log({ type: 'error', message: 'Ошибка от прокси-сервера', data: errorBody });
+            } catch (e) {
+                const textError = await response.text();
+                errorDetails += ` - ${textError}`;
+                log({ type: 'error', message: 'Не удалось распарсить ошибку от прокси', data: textError });
+            }
+            throw new Error(errorDetails);
+        }
         const { base64 } = await response.json();
         if (!base64) throw new Error('No base64 data received from proxy');
         

@@ -2,9 +2,11 @@
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import coreURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.js?url';
-import wasmURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.wasm?url';
-import workerURL from '@ffmpeg/core-mt/dist/esm/ffmpeg-core.worker.js?url';
+
+// Explicit paths to FFmpeg core files to avoid Vite's `?url` import issues in some environments.
+const coreURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.js';
+const wasmURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.wasm';
+const workerURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.worker.js';
 
 
 // Simplified types for worker context to avoid circular dependencies
@@ -46,6 +48,22 @@ const formatTime = (seconds: number): string => {
     return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
 };
 
+// Helper to convert data URL to Uint8Array
+function dataURLToUint8Array(dataURL: string): Uint8Array {
+    const [header, base64] = dataURL.split(',');
+    if (!base64) {
+        throw new Error('Invalid dataURL format');
+    }
+    const binaryStr = atob(base64);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes;
+}
+
+
 async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, totalDuration }: WorkerRunData): Promise<Blob> {
     progress(0.02, '1/5 Загрузка видео-движка в Worker...');
     log({ type: 'info', message: 'Загрузка FFmpeg в Web Worker...' });
@@ -69,9 +87,19 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
 
     for (let i = 0; i < imageUrls.length; i++) {
         const p = 0.15 + (i / imageUrls.length) * 0.20;
-        progress(p, `2/5 Запись изображения (${i + 1}/${imageUrls.length})...`);
+        progress(p, `2/5 Запись данных в память (${i + 1}/${imageUrls.length})...`);
         try {
-            await ffmpeg.writeFile(`image-${String(i).padStart(3, '0')}.png`, await fetchFile(imageUrls[i]));
+            const imageName = `image-${String(i).padStart(3, '0')}.png`;
+            const imageUrl = imageUrls[i];
+            
+            let data: Uint8Array;
+            if (imageUrl.startsWith('data:')) {
+                data = dataURLToUint8Array(imageUrl);
+            } else {
+                data = await fetchFile(imageUrl);
+            }
+            
+            await ffmpeg.writeFile(imageName, data);
         } catch(e) {
             log({type: 'error', message: `FFmpeg не смог записать изображение ${i+1}.`, data: e});
             throw new Error(`FFmpeg failed to process a pre-validated image: ${imageUrls[i]}`);

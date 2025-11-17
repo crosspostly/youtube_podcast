@@ -3,6 +3,10 @@
 
 
 
+
+
+
+
 import { safeLower, parseErrorMessage } from '../utils/safeLower-util';
 import { cleanupPodcastImages, forceGarbageCollection } from '../utils/memoryCleanup';
 
@@ -32,6 +36,23 @@ const downloadBlob = (blob: Blob, filename: string) => {
     (window as any).document.body.removeChild(a);
     URL.revokeObjectURL(url);
 };
+
+// Helper function to convert a data URL to a Blob
+function dataURLtoBlob(dataurl: string): Blob | null {
+    if (!dataurl || !dataurl.startsWith('data:')) return null;
+    const arr = dataurl.split(',');
+    if (arr.length < 2) return null;
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    if (!mimeMatch) return null;
+    const mime = mimeMatch[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+}
 
 
 export const usePodcast = (
@@ -408,6 +429,8 @@ export const usePodcast = (
     }, [log, setPodcast, setError, isGenerationPaused, updateChapter, apiKeys, defaultFont, imageMode, stockPhotoPreference, updateHistory]);
     
     const startAutomatedProject = useCallback(async (topic: string) => {
+        log({ type: 'info', message: '🚀🚀🚀 ЗАПУСК АВТОМАТИЧЕСКОГО РЕЖИМА 🚀🚀🚀' });
+
         if (!topic.trim()) {
             setError("Введите тему для автоматической генерации.");
             return;
@@ -465,7 +488,7 @@ export const usePodcast = (
                 [blueprint.characters[1]?.name || 'Expert']: 'Zephyr',
             };
             
-            let tempPodcast: Podcast = {
+            let automatedPodcast: Podcast = {
                 id: crypto.randomUUID(),
                 ...blueprint,
                 topic, selectedTitle: blueprint.youtubeTitleOptions[0] || topic, language,
@@ -480,15 +503,15 @@ export const usePodcast = (
             updateStatus("Создание концепции...", 'completed');
     
             updateStatus("Генерация всех сценариев...", 'in_progress');
-            const chapterScriptsPromises = tempPodcast.chapters.map((c, i) => i === 0 ? Promise.resolve(c) : generateNextChapterScript(topic, tempPodcast.selectedTitle, tempPodcast.characters, tempPodcast.chapters.slice(0, i), i, totalDurationMinutes, '', true, language, narrationMode, log, apiKeys));
+            const chapterScriptsPromises = automatedPodcast.chapters.map((c, i) => i === 0 ? Promise.resolve(c) : generateNextChapterScript(topic, automatedPodcast.selectedTitle, automatedPodcast.characters, automatedPodcast.chapters.slice(0, i), i, totalDurationMinutes, '', true, language, narrationMode, log, apiKeys));
             const generatedScripts = await Promise.all(chapterScriptsPromises);
-            tempPodcast.chapters = tempPodcast.chapters.map((c, i) => ({...c, ...generatedScripts[i], status: 'script_completed'}));
+            automatedPodcast.chapters = automatedPodcast.chapters.map((c, i) => ({...c, ...generatedScripts[i], status: 'script_completed'}));
             updateStatus("Генерация всех сценариев...", 'completed');
             
             updateStatus("Генерация ассетов (аудио, изображения)...", 'in_progress');
-            const assetPromises = tempPodcast.chapters.map(async (chapter): Promise<Chapter> => {
+            const assetPromises = automatedPodcast.chapters.map(async (chapter): Promise<Chapter> => {
                 const [audioResult, imageResult, musicResult] = await Promise.allSettled([
-                    generateChapterAudio(chapter.script, narrationMode, tempPodcast.characterVoices, 'Puck', log, apiKeys),
+                    generateChapterAudio(chapter.script, narrationMode, automatedPodcast.characterVoices, 'Puck', log, apiKeys),
                     generateStyleImages(chapter.imagePrompts, initialImageCount, log, apiKeys, 'generate', 'auto'),
                     findMusicWithAi(chapter.script.map(l => l.text).join(' '), log, apiKeys)
                 ]);
@@ -497,31 +520,28 @@ export const usePodcast = (
                     audioBlob: audioResult.status === 'fulfilled' ? audioResult.value : undefined,
                     generatedImages: imageResult.status === 'fulfilled' ? imageResult.value : [],
                     backgroundMusic: musicResult.status === 'fulfilled' && musicResult.value.length > 0 ? musicResult.value[0] : undefined,
-                    // FIX: Type 'string' is not assignable to 'ChapterStatus'.
-                    // Explicitly cast the status string literals to ChapterStatus to satisfy TypeScript.
-                    // Also added error property update.
                     status: audioResult.status === 'fulfilled' ? 'completed' : 'error',
                     error: audioResult.status === 'rejected' ? parseErrorMessage(audioResult.reason) : undefined
                 };
             });
-            tempPodcast.chapters = await Promise.all(assetPromises);
+            automatedPodcast.chapters = await Promise.all(assetPromises);
             updateStatus("Генерация ассетов (аудио, изображения)...", 'completed');
             
             updateStatus("Создание обложек...", 'in_progress');
-            const baseImage = tempPodcast.chapters.flatMap(c => c.generatedImages || []).find(img => img && img.url);
+            const baseImage = automatedPodcast.chapters.flatMap(c => c.generatedImages || []).find(img => img && img.url);
             if (baseImage) {
                 const designConcepts = await generateThumbnailDesignConcepts(topic, language, log, apiKeys);
-                const thumbnails = await generateYoutubeThumbnails(baseImage.url, tempPodcast.selectedTitle, designConcepts, log, defaultFont);
-                tempPodcast = {...tempPodcast, thumbnailBaseImage: baseImage, designConcepts, youtubeThumbnails: thumbnails, selectedThumbnail: thumbnails[0]};
+                const thumbnails = await generateYoutubeThumbnails(baseImage.url, automatedPodcast.selectedTitle, designConcepts, log, defaultFont);
+                automatedPodcast = {...automatedPodcast, thumbnailBaseImage: baseImage, designConcepts, youtubeThumbnails: thumbnails, selectedThumbnail: thumbnails[0]};
             }
             updateStatus("Создание обложек...", 'completed');
     
             updateStatus("Сборка аудиодорожки...", 'in_progress');
-            const finalAudioBlob = await combineAndMixAudio(tempPodcast, log);
+            const finalAudioBlob = await combineAndMixAudio(automatedPodcast, log);
             updateStatus("Сборка аудиодорожки...", 'completed');
             
             updateStatus("Рендеринг видео...", 'in_progress');
-            const videoBlob = await generateVideoService(tempPodcast, finalAudioBlob, (progress, message) => {
+            const videoBlob = await generateVideoService(automatedPodcast, finalAudioBlob, (progress, message) => {
                 const baseProgressIndex = fullLoadingStatus.findIndex(s => s.label === "Рендеринг видео...");
                 const baseProgress = baseProgressIndex / fullLoadingStatus.length;
                 const stepProgress = 1 / fullLoadingStatus.length;
@@ -530,11 +550,11 @@ export const usePodcast = (
             updateStatus("Рендеринг видео...", 'completed');
     
             updateStatus("Подготовка пакета для скачивания...", 'in_progress');
-            const srtBlob = await generateSrtFile(tempPodcast, log);
-            const metadata = { title: tempPodcast.selectedTitle, description: tempPodcast.description, tags: tempPodcast.seoKeywords };
+            const srtBlob = await generateSrtFile(automatedPodcast, log);
+            const metadata = { title: automatedPodcast.selectedTitle, description: automatedPodcast.description, tags: automatedPodcast.seoKeywords };
             const metadataBlob = new Blob([JSON.stringify(metadata, null, 2)], { type: 'application/json' });
-            const thumbnailBlob = tempPodcast.selectedThumbnail?.dataUrl ? await (await fetch(tempPodcast.selectedThumbnail.dataUrl)).blob() : null;
-            const sanitizedTitle = safeLower(tempPodcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'));
+            const thumbnailBlob = automatedPodcast.selectedThumbnail?.dataUrl ? dataURLtoBlob(automatedPodcast.selectedThumbnail.dataUrl) : null;
+            const sanitizedTitle = safeLower(automatedPodcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_'));
             
             downloadBlob(videoBlob, `${sanitizedTitle}.mp4`);
             if (thumbnailBlob) downloadBlob(thumbnailBlob, `${sanitizedTitle}_thumbnail.png`);
