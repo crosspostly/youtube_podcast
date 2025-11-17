@@ -3,10 +3,10 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
-// Explicit paths to FFmpeg core files to avoid Vite's `?url` import issues in some environments.
-const coreURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.js';
-const wasmURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.wasm';
-const workerURL = '/node_modules/@ffmpeg/core-mt/dist/esm/ffmpeg-core.worker.js';
+// Use stable CDN URLs for FFmpeg core files to ensure reliability across all environments.
+const coreURL = "https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.js";
+const wasmURL = "https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.wasm";
+const workerURL = "https://unpkg.com/@ffmpeg/core-mt@0.12.6/dist/esm/ffmpeg-core.worker.js";
 
 
 // Simplified types for worker context to avoid circular dependencies
@@ -31,6 +31,8 @@ enum WorkerMessageType {
 }
 
 let ffmpeg: FFmpeg | null = null;
+// FIX: Declare isCancellationRequested in the worker's scope.
+let isCancellationRequested = false;
 
 const log = (data: { type: string; message: string; data?: any }) => {
     self.postMessage({ type: WorkerMessageType.LOG, data });
@@ -133,6 +135,7 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
 
     progress(0.35, '3/5 Рендеринг видео...');
     ffmpeg.on('progress', ({ progress: p, time }) => {
+        if (isCancellationRequested) return;
         const currentProgress = Math.min(1, Math.max(0, p));
         const processedTime = time / 1000000;
         progress(
@@ -162,14 +165,21 @@ self.onmessage = async (event: MessageEvent) => {
     const { type, data } = event.data;
 
     if (type === 'run') {
+        // FIX: Reset cancellation flag on a new run.
+        isCancellationRequested = false;
         try {
             const result = await run(data);
             self.postMessage({ type: WorkerMessageType.DONE, data: result });
         } catch (error: any) {
-            log({ type: 'error', message: 'Ошибка в FFmpeg Worker', data: error.message });
-            self.postMessage({ type: WorkerMessageType.ERROR, data: { message: error.message } });
+            // FIX: Don't report an error if it was a user-initiated cancellation.
+            if (!isCancellationRequested) {
+                log({ type: 'error', message: 'Ошибка в FFmpeg Worker', data: error.message });
+                self.postMessage({ type: WorkerMessageType.ERROR, data: { message: error.message } });
+            }
         }
     } else if (type === 'cancel') {
+        // FIX: Set cancellation flag when cancel message is received.
+        isCancellationRequested = true;
         log({ type: 'info', message: 'Получена команда отмены в Worker.' });
         if (ffmpeg) {
             try {

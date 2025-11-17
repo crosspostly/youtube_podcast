@@ -30,85 +30,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
       return;
     }
+    
+    targetUrl = url;
+    
+    console.log(`Image download proxy: Starting download for ${source} from ${targetUrl}`);
 
-    // Validate URL format and domain
-    try {
-      targetUrl = url;
-      const parsedUrl = new URL(targetUrl);
-      
-      // Only allow unsplash.com and pexels.com domains for security
-      if (!parsedUrl.hostname.includes('unsplash.com') && !parsedUrl.hostname.includes('pexels.com')) {
-        console.warn(`Image download proxy: Blocked request to non-stock-photo domain: ${parsedUrl.hostname}`);
-        res.status(403).json({ error: 'Only unsplash.com and pexels.com URLs are allowed' });
-        return;
-      }
-    } catch (error) {
-      console.error('Image download proxy: Invalid URL format:', url);
-      res.status(400).json({ error: 'Invalid URL format' });
-      return;
-    }
+    let imageResponse: Response;
 
-    console.log(`Image download proxy: Downloading image from ${targetUrl}`);
-
-    let authHeader = {};
+    // Unsplash's download_location URL requires a two-step fetch to handle the redirect properly.
     if (source === 'unsplash') {
-        authHeader = { 'Authorization': `Client-ID ${apiKey}` };
-    } else if (source === 'pexels') {
-        authHeader = { 'Authorization': apiKey };
+        // Step 1: Get the redirect URL from the 'Location' header. This also triggers the download count on Unsplash's side.
+        const redirectResponse = await fetch(targetUrl, {
+            method: 'GET',
+            headers: {
+                'Authorization': `Client-ID ${apiKey}`,
+                'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+            },
+            redirect: 'manual' // This is key to manually handle the redirect.
+        });
+
+        const location = redirectResponse.headers.get('Location');
+        if (!location || (redirectResponse.status !== 301 && redirectResponse.status !== 302)) {
+            const errorText = await redirectResponse.text().catch(() => '');
+            throw new Error(`Unsplash download_location did not return a valid redirect. Status: ${redirectResponse.status}. Details: ${errorText}`);
+        }
+        
+        console.log(`Image download proxy: Unsplash redirected. Fetching final URL.`);
+        
+        // Step 2: Fetch the final image URL (without authorization headers).
+        imageResponse = await fetch(location, {
+            headers: { 'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)' }
+        });
+    } else { // For Pexels
+        imageResponse = await fetch(targetUrl, {
+            headers: {
+                'Authorization': apiKey,
+                'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+            }
+        });
     }
 
-    let lastError: any;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout
-
-            const response = await fetch(targetUrl, {
-              method: 'GET',
-              headers: {
-                'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
-                ...authHeader
-              },
-              signal: controller.signal
-            });
-
-            clearTimeout(timeout);
-
-            if (!response.ok) {
-                // Don't retry on client-side errors (4xx)
-                if (response.status >= 400 && response.status < 500) {
-                     const errorText = await response.text();
-                     console.error(`Image download proxy error: ${response.statusText}`, errorText);
-                     return res.status(response.status).json({
-                       error: `Failed to fetch image: ${response.statusText}`,
-                       details: errorText,
-                     });
-                }
-                throw new Error(`Server error: ${response.status}`);
-            }
-
-            const contentType = response.headers.get('content-type') || 'image/jpeg';
-            const arrayBuffer = await response.arrayBuffer();
-            const base64 = Buffer.from(arrayBuffer).toString('base64');
-            const dataUrl = `data:${contentType};base64,${base64}`;
-
-            console.log(`Image download proxy: Successfully downloaded ${arrayBuffer.byteLength} bytes from ${targetUrl}`);
-            return res.status(200).json({ base64: dataUrl });
-
-        } catch (error) {
-            lastError = error;
-            console.warn(`Attempt ${attempt} failed for ${targetUrl}:`, error instanceof Error ? error.message : String(error));
-            if (attempt < 3) {
-                await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-            }
-        }
+    if (!imageResponse.ok) {
+        const errorText = await imageResponse.text().catch(() => '');
+        throw new Error(`Failed to fetch final image. Status: ${imageResponse.status}. Details: ${errorText}`);
     }
     
-    // If all retries failed
-    throw lastError;
+    const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
+    const arrayBuffer = await imageResponse.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const dataUrl = `data:${contentType};base64,${base64}`;
+
+    console.log(`Image download proxy: Successfully downloaded ${arrayBuffer.byteLength} bytes.`);
+    return res.status(200).json({ base64: dataUrl });
 
   } catch (error) {
-    console.error('Image download proxy error after all retries:', {
+    console.error('Image download proxy error:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         name: error instanceof Error ? error.name : 'Unknown',
         url: targetUrl || (req.body ? req.body.url : 'URL not available')
