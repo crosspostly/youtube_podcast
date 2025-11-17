@@ -106,7 +106,7 @@ export const regenerateSingleImage = async (
                 log, 
                 { retries: 3, initialDelay: 10000 }, // Retry after 10s for 429 errors
                 'image', 
-                5000, // Wait 5s between image requests
+                15000, // Wait 15s between image requests to be safer on low rate limits
                 requestKey
             );
             

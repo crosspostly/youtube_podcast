@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       react(),
     ],
+    optimizeDeps: {
+      exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+    },
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || ''),
       'process.env.FREESOUND_API_KEY': JSON.stringify(env.VITE_FREESOUND_API_KEY || env.FREESOUND_API_KEY || ''),

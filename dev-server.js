@@ -35,7 +35,8 @@ async function checkFfmpeg() {
 }
 
 
-// ============================================================================
+// 
+======================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
@@ -219,14 +220,11 @@ app.post('/api/freesound', async (req, res) => {
 });
 
 app.post('/api/download-image', async (req, res) => {
-  let targetUrl = '';
-  try {
-    const { url, source, apiKey } = req.body;
+  const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  const retries = 3;
+  let attempt = 1;
 
-    if (!url || typeof url !== 'string' || !source || !apiKey) {
-      return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
-    }
-
+  while (attempt <= retries) {
     try {
       targetUrl = url;
       const parsedUrl = new URL(targetUrl);
@@ -275,18 +273,13 @@ app.post('/api/download-image', async (req, res) => {
       }
     }
 
-    let authHeader = {};
-    if (source === 'unsplash') {
-        authHeader = { 'Authorization': `Client-ID ${apiKey}` };
-    } else if (source === 'pexels') {
-        authHeader = { 'Authorization': apiKey };
-    }
+      if (!url || typeof url !== 'string' || !source || !apiKey) {
+        return res.status(400).json({ error: 'Missing or invalid parameters: url, source, and apiKey are required.' });
+      }
+      
+      console.log(`Image download proxy: Downloading image from ${url} (Attempt ${attempt}/${retries})`);
 
-    let lastError;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30 seconds
+      let imageResponse;
 
         const headers = {
           'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
@@ -360,6 +353,20 @@ app.post('/api/download-image', async (req, res) => {
             throw fetchError; // Throw the original fetch error
           }
         }
+        
+        console.log(`Image download proxy: Unsplash redirected. Fetching final URL.`);
+        
+        imageResponse = await fetch(location, {
+          headers: { 'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)' }
+        });
+      } else { // For Pexels
+        imageResponse = await fetch(url, {
+          headers: {
+            'Authorization': apiKey,
+            'User-Agent': 'Mystic-Narratives-AI/1.0 (Image Download Proxy)',
+          }
+        });
+      }
 
         const base64 = Buffer.from(arrayBuffer).toString('base64');
         const dataUrl = `data:${contentType};base64,${base64}`;
