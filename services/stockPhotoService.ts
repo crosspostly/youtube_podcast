@@ -238,14 +238,40 @@ export const downloadStockPhoto = async (photo: StockPhoto, apiKeys: StockPhotoA
 
         if (!response.ok) {
             let errorDetails = `Proxy endpoint error: ${response.status}`;
+            let errorData = null;
+            
             try {
-                const errorBody = await response.json();
-                errorDetails += ` - ${errorBody.message || JSON.stringify(errorBody)}`;
-                log({ type: 'error', message: 'Ошибка от прокси-сервера', data: errorBody });
+                errorData = await response.json();
+                errorDetails += ` - ${errorData.message || JSON.stringify(errorData)}`;
+                log({ type: 'error', message: 'Ошибка от прокси-сервера', data: { 
+                    status: response.status,
+                    statusText: response.statusText,
+                    error: errorData,
+                    url: photo.downloadUrl,
+                    source: photo.source,
+                    photographer: photo.photographer
+                } });
             } catch (e) {
-                const textError = await response.text();
-                errorDetails += ` - ${textError}`;
-                log({ type: 'error', message: 'Не удалось распарсить ошибку от прокси', data: textError });
+                // If JSON parsing fails, try to get text
+                try {
+                    const textError = await response.text();
+                    errorDetails += ` - ${textError}`;
+                    log({ type: 'error', message: 'Не удалось распарсить ошибку от прокси (текст)', data: { 
+                        status: response.status,
+                        statusText: response.statusText,
+                        text: textError,
+                        url: photo.downloadUrl,
+                        source: photo.source
+                    } });
+                } catch (textError) {
+                    errorDetails += ` - Unable to read error response`;
+                    log({ type: 'error', message: 'Не удалось прочитать ошибку от прокси', data: { 
+                        status: response.status,
+                        statusText: response.statusText,
+                        url: photo.downloadUrl,
+                        source: photo.source
+                    } });
+                }
             }
             throw new Error(errorDetails);
         }
@@ -254,11 +280,30 @@ export const downloadStockPhoto = async (photo: StockPhoto, apiKeys: StockPhotoA
         
         const croppedBase64 = await cropToAspectRatio(base64, log);
         
-        log({ type: 'response', message: `✅ Фото скачано и обработано через proxy` });
+        log({ 
+            type: 'response', 
+            message: `✅ Фото скачано и обработано через proxy`,
+            data: {
+                photographer: photo.photographer,
+                source: photo.source,
+                originalUrl: photo.url,
+                downloadUrl: photo.downloadUrl
+            }
+        });
         return croppedBase64;
         
     } catch (error) {
-        log({ type: 'error', message: '❌ Не удалось скачать фото, используем placeholder', data: error });
+        log({ 
+            type: 'error', 
+            message: '❌ Не удалось скачать фото, используем placeholder', 
+            data: {
+                error: error instanceof Error ? error.message : error,
+                photographer: photo.photographer,
+                source: photo.source,
+                downloadUrl: photo.downloadUrl,
+                stack: error instanceof Error ? error.stack : undefined
+            }
+        });
         return PLACEHOLDER_BASE64;
     }
 };
