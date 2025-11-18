@@ -171,22 +171,28 @@ export const usePodcast = (
                 backgroundMusic: undefined // Will be updated when music loads
             });
 
-            // Run image generation, audio generation, and music search in parallel
-            log({ type: 'info', message: `[1/3] 🚀 Starting parallel generation: images, audio, and music search` });
-            const [imageResult, audioResult, musicResult] = await Promise.allSettled([
-                generateStyleImages(chapterScript.imagePrompts, podcast.initialImageCount, log, apiKeys, imageMode, stockPhotoPreference),
-                generateChapterAudio(chapterScript.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys),
-                musicPromise
-            ]);
-            log({ type: 'info', message: `[2/3] ✅ Parallel generation completed` });
+            // Run image generation, audio generation, and music search sequentially with delays to prevent 429 errors
+            log({ type: 'info', message: `[1/3] 🚀 Запуск генерации изображений...` });
+            const imageResult = await generateStyleImages(chapterScript.imagePrompts, podcast.initialImageCount, log, apiKeys, imageMode, stockPhotoPreference);
+            
+            // Add delay between requests to prevent rate limiting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            log({ type: 'info', message: `[2/3] 🎤 Запуск генерации аудио...` });
+            const audioResult = await generateChapterAudio(chapterScript.script, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log, apiKeys);
+            
+            // Add delay between requests to prevent rate limiting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            log({ type: 'info', message: `[3/3] 🎵 Поиск музыки...` });
+            const musicResult = await musicPromise;
+            log({ type: 'info', message: `✅ Последовательная генерация завершена` });
 
-            const generatedImages = imageResult.status === 'fulfilled' ? imageResult.value : [];
-            const audioBlob = audioResult.status === 'fulfilled' ? audioResult.value : null;
-            const music = musicResult.status === 'fulfilled' ? musicResult.value : [];
+            const generatedImages = imageResult || [];
+            const audioBlob = audioResult || null;
+            const music = musicResult || [];
             const backgroundMusic = music.length > 0 ? music[0] : undefined;
             
             // Log results
-            log({ type: 'info', message: `[3/3] 📊 Results: Images=${generatedImages.length}, Audio=${audioBlob ? '✅' : '❌'}, Music=${backgroundMusic ? '✅' : '❌'}` });
+            log({ type: 'info', message: `📊 Результаты: Изображений=${generatedImages.length}, Аудио=${audioBlob ? '✅' : '❌'}, Музыка=${backgroundMusic ? '✅' : '❌'}` });
             
             // Update chapter with background music now that it's loaded
             if (backgroundMusic) {

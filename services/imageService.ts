@@ -82,13 +82,13 @@ export const regenerateSingleImage = async (
 ): Promise<GeneratedImage> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
     const status = getGeminiImageStatus();
-    const canUseGemini = imageMode === 'generate' && !status.isTripped;
+    const shouldUseGemini = (imageMode === 'generate' || stockPhotoPreference === 'gemini') && !status.isTripped;
     
     let geminiAttempted = false;
     let geminiFailed = false;
     
     // РЕЖИМ 1: Сначала пробуем Gemini, если разрешено
-    if (canUseGemini) {
+    if (shouldUseGemini) {
         geminiAttempted = true;
         try {
             log({ type: 'request', message: `Запрос изображения от Gemini` });
@@ -146,7 +146,7 @@ export const regenerateSingleImage = async (
                  log({ type: 'warning', message: `Ошибка генерации Gemini (попытка ${updatedStatus.consecutiveFailures}/${CONSECUTIVE_FAILURE_THRESHOLD}). Переключаемся на стоковые фото...`, data: geminiError });
             }
         }
-    } else if (imageMode === 'generate' && status.isTripped) {
+    } else if ((imageMode === 'generate' || stockPhotoPreference === 'gemini') && status.isTripped) {
         log({ type: 'warning', message: '⚠️ Gemini временно отключен из-за ошибок. Используем стоковые фото.', showToUser: true });
     }
 

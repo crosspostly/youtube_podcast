@@ -67,7 +67,7 @@ function dataURLToUint8Array(dataURL: string): Uint8Array {
 
 
 async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, totalDuration }: WorkerRunData): Promise<Blob> {
-    progress(0.02, '1/5 Загрузка видео-движка в Worker...');
+    progress(0.02, '1/6 Загрузка видео-движка в Worker...');
     log({ type: 'info', message: 'Загрузка FFmpeg в Web Worker...' });
 
     if (!ffmpeg) {
@@ -83,13 +83,13 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
     }
     log({ type: 'info', message: 'FFmpeg в Worker загружен.' });
 
-    progress(0.15, '2/5 Запись данных в память...');
+    progress(0.15, '2/6 Запись данных в память...');
     await ffmpeg.writeFile('audio.wav', await fetchFile(audioBlob));
     await ffmpeg.writeFile('subtitles.srt', await fetchFile(srtBlob));
 
     for (let i = 0; i < imageUrls.length; i++) {
         const p = 0.15 + (i / imageUrls.length) * 0.20;
-        progress(p, `2/5 Запись данных в память (${i + 1}/${imageUrls.length})...`);
+        progress(p, `2/6 Запись данных в память (${i + 1}/${imageUrls.length})...`);
         try {
             const imageName = `image-${String(i).padStart(3, '0')}.png`;
             const imageUrl = imageUrls[i];
@@ -97,6 +97,8 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
             let data: Uint8Array;
             if (imageUrl.startsWith('data:')) {
                 data = dataURLToUint8Array(imageUrl);
+                // Clear base64 from memory after processing
+                imageUrls[i] = '';
             } else {
                 data = await fetchFile(imageUrl);
             }
@@ -133,20 +135,53 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
         'output.mp4'
     ];
 
-    progress(0.35, '3/5 Рендеринг видео...');
+    progress(0.35, '3a/6 Применение zoom-эффектов к изображениям...');
+    log({ type: 'info', message: '🎬 Применение zoom-эффектов и подготовка изображений...' });
+    
+    let lastLoggedPercent = 0;
     ffmpeg.on('progress', ({ progress: p, time }) => {
         if (isCancellationRequested) return;
         const currentProgress = Math.min(1, Math.max(0, p));
         const processedTime = time / 1000000;
+        const progressPercent = Math.round(currentProgress * 100);
+        
+        // Calculate detailed stage based on progress
+        let stageMessage = `3/6 Рендеринг видео...`;
+        let stageProgress = 0.35 + (currentProgress * 0.55);
+        
+        if (progressPercent < 20) {
+            stageMessage = `3b/6 Склейка видеодорожки...`;
+            stageProgress = 0.40 + (currentProgress * 0.15);
+        } else if (progressPercent < 40) {
+            stageMessage = `3c/6 Наложение субтитров...`;
+            stageProgress = 0.55 + (currentProgress * 0.15);
+        } else if (progressPercent < 70) {
+            stageMessage = `3d/6 Микширование аудио...`;
+            stageProgress = 0.70 + (currentProgress * 0.20);
+        } else {
+            stageMessage = `3e/6 Кодирование в MP4...`;
+            stageProgress = 0.85 + (currentProgress * 0.10);
+        }
+        
         progress(
-            0.35 + (currentProgress * 0.6),
-            `3/5 Рендеринг видео... ${Math.round(currentProgress * 100)}% (${formatTime(processedTime)} / ${formatTime(totalDuration)})`
+            stageProgress,
+            `${stageMessage} ${progressPercent}% (${formatTime(processedTime)} / ${formatTime(totalDuration)})`
         );
+        
+        // Log progress every 15% to avoid spamming the logs
+        if (progressPercent % 15 === 0 && progressPercent !== lastLoggedPercent) {
+            log({ 
+                type: 'info', 
+                message: `🎬 ${stageMessage} ${progressPercent}%: ${formatTime(processedTime)} / ${formatTime(totalDuration)}` 
+            });
+            lastLoggedPercent = progressPercent;
+        }
     });
 
     await ffmpeg.exec(ffmpegArgs);
 
-    progress(0.95, '4/5 Финальная обработка...');
+    progress(0.95, '4/6 Финальная обработка...');
+    log({ type: 'info', message: '🎬 Финальная обработка и очистка временных файлов...' });
     const data = await ffmpeg.readFile('output.mp4');
     
     for (let i = 0; i < imageUrls.length; i++) {
@@ -157,7 +192,8 @@ async function run({ podcast, audioBlob, srtBlob, imageUrls, imageDurations, tot
     await ffmpeg.deleteFile('output.mp4');
     
     ffmpeg.off('progress', ()=>{});
-    progress(1, '5/5 Видео готово!');
+    progress(1, '6/6 Видео готово!');
+    log({ type: 'info', message: '✅ Видео успешно сгенерировано!' });
     return new Blob([(data as Uint8Array).buffer], { type: 'video/mp4' });
 }
 

@@ -79,6 +79,16 @@ export const generateVideo = async (
                     imageUrls.push(FALLBACK_PLACEHOLDER_BASE64);
                 }
             });
+            
+            // Clear loaded images from memory to prevent leaks
+            loadedImageResults.forEach((result) => {
+                if (result.status === 'fulfilled') {
+                    const img = result.value as any;
+                    img.src = ''; // Clear the src to free memory
+                    img.onload = null;
+                    img.onerror = null;
+                }
+            });
 
             let totalDuration: number;
             let imageDurations: number[];
