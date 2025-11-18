@@ -1,16 +1,20 @@
 
 import React from 'react';
 
-interface SpinnerProps {
+// Fix: Update SpinnerProps to accept standard SVG attributes.
+interface SpinnerProps extends React.SVGProps<SVGSVGElement> {
     className?: string;
+    // Fix: Explicitly add title prop to resolve TS error.
+    title?: string;
 }
 
-const Spinner: React.FC<SpinnerProps> = ({ className = 'w-8 h-8' }) => (
+const Spinner: React.FC<SpinnerProps> = ({ className = 'w-8 h-8', ...props }) => (
     <svg 
         className={`${className} animate-spin text-cyan-400`} 
         xmlns="http://www.w3.org/2000/svg" 
         fill="none" 
         viewBox="0 0 24 24"
+        {...props}
     >
         <circle 
             className="opacity-25" 

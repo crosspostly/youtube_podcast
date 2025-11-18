@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateThumbnailDesignConcepts } from '../services/ttsService';
+import { generateThumbnailDesignConcepts } from '../services/aiTextService';
 import { drawCanvas } from '../services/canvasUtils';
-import { LogEntry, ThumbnailDesignConcept, TextOptions } from '../types';
+import { LogEntry, TextOptions } from '../types';
 import Spinner from './Spinner';
 import { CloseIcon } from './Icons';
 import { usePodcastContext } from '../context/PodcastContext';
@@ -26,10 +26,9 @@ const PodcastTest: React.FC<PodcastTestProps> = ({ onClose }) => {
     const [isTesting, setIsTesting] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
     const imageRef = useRef<HTMLImageElement | null>(null);
-    const { log: contextLog, apiKeys } = usePodcastContext();
+    const { log: contextLog } = usePodcastContext();
 
 
-    // Preload the placeholder image
     useEffect(() => {
         const img = new Image();
         img.crossOrigin = "anonymous";
@@ -42,7 +41,6 @@ const PodcastTest: React.FC<PodcastTestProps> = ({ onClose }) => {
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
         const message = `[${entry.type.toUpperCase()}] ${entry.message}`;
         setLogs(prev => [...prev, message]);
-        // Also send to the main application log
         contextLog(entry);
     };
     
@@ -74,7 +72,7 @@ const PodcastTest: React.FC<PodcastTestProps> = ({ onClose }) => {
 
         for (const test of testTopics) {
             try {
-                const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log, apiKeys.gemini);
+                const concepts = await generateThumbnailDesignConcepts(test.topic, test.language, log);
                 
                 const canvas = document.createElement('canvas');
                 canvas.width = 1280;

@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { findMusicWithAi } from '../services/ttsService';
+import { findMusicWithAi } from '../services/musicService';
 import { LogEntry, MusicTrack } from '../types';
 import Spinner from './Spinner';
 import { CloseIcon, PlayIcon, PauseIcon, SearchIcon } from './Icons';
@@ -17,12 +17,11 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
     const [error, setError] = useState<string | null>(null);
     const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
-    const { log: contextLog, apiKeys } = usePodcastContext();
+    const { log: contextLog } = usePodcastContext();
 
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
         const newEntry = { ...entry, timestamp: new Date().toISOString() };
         setLogs(prev => [newEntry, ...prev]);
-        // Also send to the main application log
         contextLog(entry);
     };
 
@@ -37,7 +36,7 @@ const MusicGenerationTest: React.FC<MusicGenerationTestProps> = ({ onClose }) =>
         setError(null);
 
         try {
-            const tracks = await findMusicWithAi(topic, log, apiKeys.gemini);
+            const tracks = await findMusicWithAi(topic, log);
             setResults(tracks);
             if (tracks.length === 0) {
                  log({ type: 'info', message: 'Test finished: No music tracks were found for the generated keywords.' });

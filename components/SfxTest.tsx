@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { findSfxWithAi } from '../services/ttsService';
+import { findSfxWithAi } from '../services/sfxService';
 import { LogEntry, SoundEffect } from '../types';
 import Spinner from './Spinner';
 import { CloseIcon, PlayIcon, PauseIcon, SearchIcon } from './Icons';
@@ -17,7 +17,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
     const [error, setError] = useState<string | null>(null);
     const [previewingUrl, setPreviewingUrl] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
-    const { log: contextLog, apiKeys } = usePodcastContext();
+    const { log: contextLog } = usePodcastContext();
 
     const log = (entry: Omit<LogEntry, 'timestamp'>) => {
         const newEntry = { ...entry, timestamp: new Date().toISOString() };
@@ -36,7 +36,7 @@ const SfxTest: React.FC<SfxTestProps> = ({ onClose }) => {
         setError(null);
 
         try {
-            const sfx = await findSfxWithAi(description, log, { gemini: apiKeys.gemini, freesound: apiKeys.freesound });
+            const sfx = await findSfxWithAi(description, log);
             setResults(sfx);
             log({ type: 'info', message: `Test finished: Found ${sfx.length} sound effects.` });
         } catch (err: any) {

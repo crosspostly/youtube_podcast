@@ -1,3 +1,4 @@
+
 export interface Source {
   uri: string;
   title: string;
@@ -23,7 +24,7 @@ export interface SoundEffect {
 export interface ScriptLine {
   speaker: string;
   text: string;
-  // New fields for SFX
+  searchKeywords?: string; // For SFX
   soundEffect?: SoundEffect;
   soundEffectVolume?: number;
 }
@@ -41,6 +42,9 @@ export interface Chapter {
   id:string;
   title: string;
   script: ScriptLine[];
+  musicSearchKeywords?: string;
+  visualSearchPrompts?: string[]; // Prompts specific to this chapter
+  images?: string[]; // Generated images for this chapter
   audioBlob?: Blob;
   status: ChapterStatus;
   error?: string;
@@ -79,6 +83,7 @@ export interface YoutubeThumbnail {
 export interface Character {
   name: string;
   description: string;
+  suggestedVoiceId?: string; // AI suggested voice ID
 }
 
 // AI-Generated Design concept for thumbnails
@@ -112,11 +117,11 @@ export interface Podcast {
   selectedTitle: string;
   description: string;
   seoKeywords: string[];
-  imagePrompts: string[];
+  visualSearchPrompts: string[]; // Kept for global context/thumbnail gen
   characters: Character[];
   sources: Source[];
   chapters: Chapter[];
-  generatedImages?: string[];
+  generatedImages?: string[]; // Deprecated in favor of chapter images, but kept for legacy/thumbnails
   youtubeThumbnails?: YoutubeThumbnail[];
   designConcepts?: ThumbnailDesignConcept[];
   knowledgeBaseText?: string;
@@ -130,4 +135,41 @@ export interface Podcast {
   initialImageCount: number;
   // New fields for background music
   backgroundMusicVolume: number;
+  imageSource: 'ai' | 'stock';
+}
+
+export interface StockPhoto {
+    id: string;
+    url: string; 
+    downloadUrl: string; 
+    authorName: string;
+    authorUrl: string;
+    source: 'Unsplash' | 'Pexels';
+}
+
+export type ApiKeys = {
+    gemini: string;
+    freesound: string;
+    unsplash: string;
+    pexels: string;
+    jamendo: string;
+};
+
+export interface DetailedContentIdea {
+    title: string;
+    description: string;
+    historicalFact: string;
+    lovecraftianTwist: string;
+    scriptStructure: string[];
+    tags: string[];
+    sources: string[];
+    visuals: string[];
+    dialogueTone: string;
+}
+
+export interface QueuedProject {
+    id: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'error';
+    title: string;
+    knowledgeBase: string;
 }

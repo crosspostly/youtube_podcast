@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import type { Podcast, YoutubeThumbnail, LogEntry } from './types';
+import React, { useState, useEffect } from 'react';
+import type { YoutubeThumbnail, ApiKeys } from './types';
 import ThumbnailEditor from './components/ThumbnailEditor';
 import PodcastTest from './components/PodcastTest';
 import SfxTest from './components/SfxTest';
@@ -11,7 +11,7 @@ import MusicGenerationTest from './components/MusicGenerationTest';
 import ProjectSetup from './components/ProjectSetup';
 import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
-
+import { getAllApiKeys, saveApiKey, ApiService } from './config/apiConfig';
 
 const AppUI: React.FC<{
     isLogVisible: boolean;
@@ -112,27 +112,27 @@ const AppUI: React.FC<{
 const App: React.FC = () => {
     const [isLogVisible, setIsLogVisible] = useState(false);
     const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-    const [apiKeys, setApiKeys] = useState({ gemini: '', openRouter: '', freesound: '' });
+    const [apiKeys, setApiKeys] = useState<ApiKeys>(getAllApiKeys());
     const [defaultFont, setDefaultFont] = useState('Impact');
 
     useEffect(() => {
         try {
-            const storedKeys = localStorage.getItem('apiKeys');
-            if (storedKeys) {
-                setApiKeys(JSON.parse(storedKeys));
-            }
             const storedFont = localStorage.getItem('channelDefaultFont') || 'Impact';
             setDefaultFont(storedFont);
         } catch (e) { console.error("Failed to load settings from localStorage", e); }
     }, []);
 
-    const handleSaveApiKeys = (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => {
-        setApiKeys(data.keys);
-        setDefaultFont(data.defaultFont);
+    const handleSaveSettings = (data: { keys: Partial<ApiKeys>, defaultFont: string }) => {
+        Object.entries(data.keys).forEach(([key, value]) => {
+            saveApiKey(key as ApiService, value);
+        });
+        
         try {
-            localStorage.setItem('apiKeys', JSON.stringify(data.keys));
             localStorage.setItem('channelDefaultFont', data.defaultFont);
-        } catch (e) { console.error("Failed to save settings to localStorage", e); }
+        } catch (e) { console.error("Failed to save font to localStorage", e); }
+
+        setApiKeys(getAllApiKeys());
+        setDefaultFont(data.defaultFont);
     };
     
     return (
@@ -144,12 +144,12 @@ const App: React.FC = () => {
             {isApiKeyModalOpen && (
                 <ApiKeyModal
                     onClose={() => setIsApiKeyModalOpen(false)}
-                    onSave={handleSaveApiKeys}
+                    onSave={handleSaveSettings}
                     currentKeys={apiKeys}
                     currentFont={defaultFont}
                 />
             )}
-            <PodcastProvider apiKeys={apiKeys} defaultFont={defaultFont}>
+            <PodcastProvider defaultFont={defaultFont}>
                 <AppUI 
                     isLogVisible={isLogVisible} 
                     onCloseLog={() => setIsLogVisible(false)}

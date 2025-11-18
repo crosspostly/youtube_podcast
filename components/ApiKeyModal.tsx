@@ -1,26 +1,35 @@
 import React, { useState } from 'react';
 import { CloseIcon, KeyIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
+import { ApiKeys } from '../types';
 
 interface ApiKeyModalProps {
     onClose: () => void;
-    onSave: (data: { keys: { gemini: string; openRouter: string; freesound: string }, defaultFont: string }) => void;
-    currentKeys: { gemini: string; openRouter: string; freesound: string };
+    onSave: (data: { keys: Partial<ApiKeys>, defaultFont: string }) => void;
+    currentKeys: ApiKeys;
     currentFont: string;
 }
 
-type Tab = 'gemini' | 'fallback' | 'sfx' | 'style';
+type Tab = 'ai' | 'sounds' | 'stock' | 'style';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
-    const [openRouterApiKey, setOpenRouterApiKey] = useState(currentKeys.openRouter);
     const [freesoundApiKey, setFreesoundApiKey] = useState(currentKeys.freesound);
+    const [unsplashApiKey, setUnsplashApiKey] = useState(currentKeys.unsplash);
+    const [pexelsApiKey, setPexelsApiKey] = useState(currentKeys.pexels);
+    const [jamendoApiKey, setJamendoApiKey] = useState(currentKeys.jamendo);
     const [defaultFont, setDefaultFont] = useState(currentFont);
-    const [activeTab, setActiveTab] = useState<Tab>('gemini');
+    const [activeTab, setActiveTab] = useState<Tab>('ai');
 
     const handleSave = () => {
         onSave({ 
-            keys: { gemini: geminiApiKey, openRouter: openRouterApiKey, freesound: freesoundApiKey },
+            keys: { 
+                gemini: geminiApiKey, 
+                freesound: freesoundApiKey,
+                unsplash: unsplashApiKey,
+                pexels: pexelsApiKey,
+                jamendo: jamendoApiKey
+            },
             defaultFont
         });
         onClose();
@@ -47,70 +56,112 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                     <button onClick={onClose} className="text-slate-400 hover:text-white"><CloseIcon/></button>
                 </div>
                 <div className="px-6 pt-2">
-                    <div className="flex items-center border-b border-slate-700">
-                        <TabButton tabId="gemini" label="Google Gemini" />
-                        <TabButton tabId="fallback" label="Fallback" />
-                        <TabButton tabId="sfx" label="SFX" />
+                    <div className="flex items-center border-b border-slate-700 flex-wrap">
+                        <TabButton tabId="ai" label="AI" />
+                        <TabButton tabId="sounds" label="Звуки и Музыка" />
+                        <TabButton tabId="stock" label="Стоковые Фото" />
                         <TabButton tabId="style" label="Стиль канала" />
                     </div>
                 </div>
-                <div className="p-6 space-y-4">
-                    {activeTab === 'gemini' && (
-                        <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">Google Gemini API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Основной сервис для генерации текста и изображений. Если поле пустое, будет использоваться ключ по умолчанию.
-                            </p>
+                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
+                    {activeTab === 'ai' && (
+                        <div className="space-y-6">
                             <div>
-                                <label htmlFor="geminiApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Gemini API-ключ</label>
-                                <input
-                                    id="geminiApiKeyInput"
-                                    type="password"
-                                    value={geminiApiKey}
-                                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                                    placeholder="Введите ваш ключ API..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
+                                <h4 className="text-lg font-semibold text-white mb-2">Google Gemini API</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Основной сервис для генерации текста и изображений. Если поле пустое, будет использоваться ключ из `.env` файла.
+                                </p>
+                                <div>
+                                    <label htmlFor="geminiApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Gemini API-ключ</label>
+                                    <input
+                                        id="geminiApiKeyInput"
+                                        type="password"
+                                        value={geminiApiKey}
+                                        onChange={(e) => setGeminiApiKey(e.target.value)}
+                                        placeholder="Введите ваш ключ API..."
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
-                    {activeTab === 'fallback' && (
-                        <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">OpenRouter API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Запасной сервис для генерации изображений, если квота Google Imagen исчерпана.
-                                <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
-                            </p>
-                            <div>
-                                <label htmlFor="openRouterApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш OpenRouter API-ключ</label>
-                                <input
-                                    id="openRouterApiKeyInput"
-                                    type="password"
-                                    value={openRouterApiKey}
-                                    onChange={(e) => setOpenRouterApiKey(e.target.value)}
-                                    placeholder="Введите ваш ключ OpenRouter..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
+                     {activeTab === 'sounds' && (
+                        <div className="space-y-6">
+                             <div>
+                                <h4 className="text-lg font-semibold text-white mb-2">Freesound API</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Ключ для доступа к библиотеке звуковых эффектов Freesound.org.
+                                    <a href="https://freesound.org/docs/api/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
+                                </p>
+                                <div>
+                                    <label htmlFor="freesoundApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Freesound API-ключ</label>
+                                    <input
+                                        id="freesoundApiKeyInput"
+                                        type="password"
+                                        value={freesoundApiKey}
+                                        onChange={(e) => setFreesoundApiKey(e.target.value)}
+                                        placeholder="Введите ваш ключ Freesound..."
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                    />
+                                </div>
+                            </div>
+                             <div>
+                                <h4 className="text-lg font-semibold text-white mb-2">Jamendo API</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Ключ для доступа к музыкальной библиотеке Jamendo.
+                                    <a href="https://developer.jamendo.com/v3.0/docs" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
+                                </p>
+                                <div>
+                                    <label htmlFor="jamendoApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Jamendo Client ID</label>
+                                    <input
+                                        id="jamendoApiKeyInput"
+                                        type="password"
+                                        value={jamendoApiKey}
+                                        onChange={(e) => setJamendoApiKey(e.target.value)}
+                                        placeholder="Введите ваш Client ID..."
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
-                     {activeTab === 'sfx' && (
-                        <div>
-                            <h4 className="text-lg font-semibold text-white mb-2">Freesound API</h4>
-                            <p className="text-slate-300 text-sm mb-4">
-                                Ключ для доступа к библиотеке звуковых эффектов Freesound.org. Если поле пустое, будет использоваться ключ по умолчанию с общими лимитами.
-                                <a href="https://freesound.org/docs/api/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
-                            </p>
-                            <div>
-                                <label htmlFor="freesoundApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Freesound API-ключ</label>
-                                <input
-                                    id="freesoundApiKeyInput"
-                                    type="password"
-                                    value={freesoundApiKey}
-                                    onChange={(e) => setFreesoundApiKey(e.target.value)}
-                                    placeholder="Введите ваш ключ Freesound..."
-                                    className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
-                                />
+                     {activeTab === 'stock' && (
+                        <div className="space-y-6">
+                             <div>
+                                <h4 className="text-lg font-semibold text-white mb-2">Unsplash API</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Ключ для доступа к библиотеке стоковых фото Unsplash.
+                                    <a href="https://unsplash.com/developers" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
+                                </p>
+                                <div>
+                                    <label htmlFor="unsplashApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Unsplash Access Key</label>
+                                    <input
+                                        id="unsplashApiKeyInput"
+                                        type="password"
+                                        value={unsplashApiKey}
+                                        onChange={(e) => setUnsplashApiKey(e.target.value)}
+                                        placeholder="Введите ваш ключ Unsplash..."
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                    />
+                                </div>
+                            </div>
+                             <div>
+                                <h4 className="text-lg font-semibold text-white mb-2">Pexels API</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Ключ для доступа к библиотеке стоковых фото и видео Pexels.
+                                    <a href="https://www.pexels.com/api/" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline ml-1">Получить ключ здесь.</a>
+                                </p>
+                                <div>
+                                    <label htmlFor="pexelsApiKeyInput" className="block text-sm font-medium text-slate-300 mb-1">Ваш Pexels API-ключ</label>
+                                    <input
+                                        id="pexelsApiKeyInput"
+                                        type="password"
+                                        value={pexelsApiKey}
+                                        onChange={(e) => setPexelsApiKey(e.target.value)}
+                                        placeholder="Введите ваш ключ Pexels..."
+                                        className="w-full bg-slate-900 border border-slate-600 rounded-md p-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                    />
+                                </div>
                             </div>
                         </div>
                     )}
