@@ -190,7 +190,7 @@ export interface GeneratedImage {
 
 export type ImageMode = 'generate' | 'unsplash' | 'pexels' | 'auto';
 
-export type StockPhotoPreference = 'unsplash' | 'pexels' | 'auto';
+export type StockPhotoPreference = 'unsplash' | 'pexels' | 'gemini' | 'none';
 
 export type StockPhotoApiKeys = {
     unsplash?: string;
