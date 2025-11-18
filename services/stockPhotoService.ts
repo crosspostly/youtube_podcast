@@ -316,22 +316,31 @@ export const searchStockPhotos = async (
     userApiKeys: StockPhotoApiKeys,
     geminiApiKey: string,
     preferredService: 'unsplash' | 'pexels' | 'gemini' | 'none',
-    log: LogFunction
+    log: LogFunction,
+    allowFallback: boolean = false
 ): Promise<StockPhoto[]> => {
     try {
         // Debug logging for preference
-        log({ type: 'info', message: `🔧 Stock photo preference: "${preferredService}"` });
+        log({ type: 'info', message: `🔧 Stock photo preference: "${preferredService}"${allowFallback ? ' (fallback mode)' : ''}` });
         
-        // Handle 'none' preference - return empty array immediately
+        // Handle 'none' preference - return empty array immediately unless in fallback mode
         if (preferredService === 'none') {
-            log({ type: 'info', message: 'Изображения отключены в настройках' });
-            return [];
+            if (!allowFallback) {
+                log({ type: 'info', message: 'Изображения отключены в настройках' });
+                return [];
+            } else {
+                log({ type: 'warning', message: '⚠️ Опция "none" игнорируется как fallback от Gemini, ищем на стоках' });
+            }
         }
         
         // Handle 'gemini' preference - this should use AI generation, not stock photos
         if (preferredService === 'gemini') {
-            log({ type: 'info', message: 'Выбран режим генерации через Gemini, стоковые фото не используются' });
-            return [];
+            if (!allowFallback) {
+                log({ type: 'info', message: 'Выбран режим генерации через Gemini, стоковые фото не используются' });
+                return [];
+            } else {
+                log({ type: 'warning', message: '⚠️ Gemini недоступен, используем стоковые фото как fallback' });
+            }
         }
         
         const { getStockPhotoKeys } = await import('../config/appConfig');
@@ -342,16 +351,34 @@ export const searchStockPhotos = async (
         const simplifiedPrompt = await simplifyPromptForStock(rawPrompt, geminiApiKey, log);
         const finalQuery = await translateToEnglish(simplifiedPrompt, geminiApiKey, log);
         
+        // Determine service priority based on preference and fallback mode
         const servicesToTry: ('unsplash' | 'pexels')[] = [];
-        if (preferredService === 'unsplash') {
-            if (finalKeys.unsplash) servicesToTry.push('unsplash');
-            if (finalKeys.pexels) servicesToTry.push('pexels');
-        } else if (preferredService === 'pexels') {
-            if (finalKeys.pexels) servicesToTry.push('pexels');
-            if (finalKeys.unsplash) servicesToTry.push('unsplash');
-        } else { // auto
-            if (finalKeys.unsplash) servicesToTry.push('unsplash');
-            if (finalKeys.pexels) servicesToTry.push('pexels');
+        
+        if (allowFallback) {
+            // In fallback mode, try any available service, prioritizing the user's preference if it's a stock service
+            if (preferredService === 'unsplash' && finalKeys.unsplash) {
+                servicesToTry.push('unsplash');
+                if (finalKeys.pexels) servicesToTry.push('pexels');
+            } else if (preferredService === 'pexels' && finalKeys.pexels) {
+                servicesToTry.push('pexels');
+                if (finalKeys.unsplash) servicesToTry.push('unsplash');
+            } else {
+                // No valid stock preference or preference is gemini/none, try any available
+                if (finalKeys.unsplash) servicesToTry.push('unsplash');
+                if (finalKeys.pexels) servicesToTry.push('pexels');
+            }
+        } else {
+            // Normal mode - respect the preference strictly
+            if (preferredService === 'unsplash') {
+                if (finalKeys.unsplash) servicesToTry.push('unsplash');
+                if (finalKeys.pexels) servicesToTry.push('pexels');
+            } else if (preferredService === 'pexels') {
+                if (finalKeys.pexels) servicesToTry.push('pexels');
+                if (finalKeys.unsplash) servicesToTry.push('unsplash');
+            } else { // auto
+                if (finalKeys.unsplash) servicesToTry.push('unsplash');
+                if (finalKeys.pexels) servicesToTry.push('pexels');
+            }
         }
         
         log({ type: 'info', message: `🔧 Services to try in order: ${servicesToTry.join(', ')}` });
@@ -362,7 +389,10 @@ export const searchStockPhotos = async (
                 const photos = service === 'unsplash' 
                     ? await searchUnsplash(finalQuery, finalKeys.unsplash!, log)
                     : await searchPexels(finalQuery, finalKeys.pexels!, log);
-                if (photos.length > 0) return photos;
+                if (photos.length > 0) {
+                    log({ type: 'response', message: `✅ Найдено ${photos.length} фото на ${service}` });
+                    return photos;
+                }
                 log({ type: 'warning', message: `⚠️ ${service} не нашёл результатов.` });
             } catch (error) {
                 log({ type: 'warning', message: `❌ Ошибка ${service}, пробуем следующий сервис...`, data: error });
