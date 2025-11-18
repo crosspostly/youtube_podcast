@@ -84,8 +84,12 @@ export const regenerateSingleImage = async (
     const status = getGeminiImageStatus();
     const canUseGemini = imageMode === 'generate' && !status.isTripped;
     
+    let geminiAttempted = false;
+    let geminiFailed = false;
+    
     // РЕЖИМ 1: Сначала пробуем Gemini, если разрешено
     if (canUseGemini) {
+        geminiAttempted = true;
         try {
             log({ type: 'request', message: `Запрос изображения от Gemini` });
             const ai = getAiClient(apiKeys.gemini, log);
@@ -132,6 +136,7 @@ export const regenerateSingleImage = async (
             throw new Error("No image data in Gemini Flash Image response");
     
         } catch (geminiError: any) {
+            geminiFailed = true;
             recordGeminiFailure(); // Сообщаем о провале
             const updatedStatus = getGeminiImageStatus();
             
@@ -154,16 +159,21 @@ export const regenerateSingleImage = async (
             ? stockPhotoPreference
             : imageMode;
 
+        // Determine if this is a fallback call from Gemini or a direct stock photo request
+        const isFallbackFromGemini = geminiAttempted && geminiFailed;
+        
         const photos = await searchStockPhotos(
             prompt,
             { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels },
             apiKeys.gemini || '', 
             preferredStockService,
-            log
+            log,
+            isFallbackFromGemini  // allowFallback=true only when coming from Gemini failure
         );
         
         if (photos.length > 0) {
-            log({ type: 'response', message: `✅ Изображение найдено на стоковом сервисе (fallback)` });
+            const sourceText = isFallbackFromGemini ? '(fallback от Gemini)' : '(прямой поиск)';
+            log({ type: 'response', message: `✅ Изображение найдено на стоковом сервисе ${sourceText}` });
             const base64 = await downloadStockPhoto(photos[0], { unsplash: apiKeys.unsplash, pexels: apiKeys.pexels }, log);
             return {
                 url: base64,

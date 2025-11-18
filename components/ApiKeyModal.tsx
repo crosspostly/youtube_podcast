@@ -53,6 +53,18 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
     }, []);
 
     const handleSave = () => {
+        // Validation: Check if Gemini is selected as stock photo preference but no API key is provided
+        if (stockPhotoPreference === 'gemini' && !geminiApiKey.trim()) {
+            alert('Для выбора "Gemini (генерация)" необходимо указать Gemini API ключ на вкладке "Gemini API"');
+            return;
+        }
+        
+        // Validation: Check if imageMode is 'generate' but no Gemini API key is provided
+        if (imageMode === 'generate' && !geminiApiKey.trim()) {
+            alert('Для режима "Генерация (с fallback на стоки)" необходимо указать Gemini API ключ на вкладке "Gemini API"');
+            return;
+        }
+        
         onSave({ 
             keys: { 
                 gemini: geminiApiKey, 
@@ -215,6 +227,15 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                         <span>Отключить изображения</span>
                                     </label>
                                 </div>
+                                
+                                {/* Warning messages for validation */}
+                                {stockPhotoPreference === 'gemini' && !geminiApiKey.trim() && (
+                                    <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                                        <p className="text-sm text-yellow-300">
+                                            ⚠️ Требуется Gemini API ключ для генерации изображений. Добавьте ключ на вкладке "Gemini API".
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -234,6 +255,15 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({
                                     <option value="pexels">Только Pexels</option>
                                     <option value="auto">Авто-выбор стока</option>
                                 </select>
+                                
+                                {/* Warning for imageMode validation */}
+                                {imageMode === 'generate' && !geminiApiKey.trim() && (
+                                    <div className="mt-2 p-3 bg-yellow-900/30 border border-yellow-600 rounded-lg">
+                                        <p className="text-sm text-yellow-300">
+                                            ⚠️ Требуется Gemini API ключ для режима генерации. Добавьте ключ на вкладке "Gemini API".
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
