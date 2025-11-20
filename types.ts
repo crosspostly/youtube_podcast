@@ -16,6 +16,9 @@ export interface SoundEffect {
     name: string;
     previews: {
         'preview-hq-mp3': string;
+        'preview-lq-mp3'?: string;
+        'preview-hq-ogg'?: string;
+        'preview-lq-ogg'?: string;
     };
     license: string;
     username: string;
@@ -136,6 +139,7 @@ export interface Podcast {
   // New fields for background music
   backgroundMusicVolume: number;
   imageSource: 'ai' | 'stock';
+  thumbnailText: string;
 }
 
 export interface StockPhoto {
@@ -172,4 +176,11 @@ export interface QueuedProject {
     status: 'pending' | 'in_progress' | 'completed' | 'error';
     title: string;
     knowledgeBase: string;
+    // Settings for this specific project
+    language: string;
+    totalDuration: number;
+    narrationMode: NarrationMode;
+    creativeFreedom: boolean;
+    imagesPerChapter: number;
+    imageSource: 'ai' | 'stock';
 }

@@ -3,11 +3,13 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import JSZip from 'jszip';
 import { generatePodcastBlueprint, generateQuickTestBlueprint, generateNextChapterScript, regenerateTextAssets, generateThumbnailDesignConcepts, generateContentPlan } from '../services/aiTextService';
 import { generateChapterAudio } from '../services/aiAudioService';
-import { combineAndMixAudio, convertWavToMp3, generateSrtFile, getChapterDurations } from '../services/audioUtils';
+import { combineAndMixAudio, convertWavToMp3, generateSrtFile, getChapterDurations, createWavBlobFromPcm } from '../services/audioUtils';
 import { findMusicManually, findMusicWithAi } from '../services/musicService';
 import { findSfxForScript, findSfxManually, findSfxWithAi } from '../services/sfxService';
 import { generateStyleImages, generateYoutubeThumbnails, regenerateSingleImage as regenerateSingleImageApi, generateMoreImages as generateMoreImagesApi } from '../services/imageService';
 import { searchStockPhotos, getOnePhotoFromEachStockService } from '../services/stockPhotoService';
+import { fetchWithCorsFallback } from '../services/apiUtils';
+import { drawCanvas } from '../services/canvasUtils';
 import type { Podcast, Chapter, LogEntry, YoutubeThumbnail, NarrationMode, MusicTrack, ScriptLine, DetailedContentIdea, QueuedProject, SoundEffect } from '../types';
 
 interface LoadingStatus {
@@ -177,6 +179,7 @@ export const usePodcast = (
             ...blueprint,
             topic,
             selectedTitle,
+            thumbnailText: selectedTitle, // Initialize with title, but separate logic
             language,
             chapters: [{ 
                 ...firstChapter, 
@@ -194,7 +197,7 @@ export const usePodcast = (
             characterVoices: finalCharacterVoices,
             monologueVoice,
             selectedBgIndex: 0,
-            backgroundMusicVolume: 0.07,
+            backgroundMusicVolume: 0.12, // Increased default volume to 12%
             initialImageCount: imagesPerChapter,
             imageSource,
         };
@@ -466,51 +469,215 @@ export const usePodcast = (
         try {
             const zip = new JSZip();
 
-            // 1. Audio and Subtitles
+            // 1. Audio (WAV Mix)
             const finalAudioWav = await combineAndMixAudio(targetPodcast);
-            const srtBlob = await generateSrtFile(targetPodcast, log);
             zip.file('final_audio.wav', finalAudioWav);
+            
+            // Helper to get exact audio duration
+            const getAudioDuration = async (blob: Blob): Promise<number> => {
+                const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+                const buffer = await audioContext.decodeAudioData(await blob.arrayBuffer());
+                return buffer.duration;
+            };
+            const audioDuration = await getAudioDuration(finalAudioWav);
+            
+            // 2. Subtitles
+            const srtBlob = await generateSrtFile(targetPodcast, log);
             zip.file('subtitles.srt', srtBlob);
             log({ type: 'info', message: 'Аудио и субтитры добавлены в архив.' });
 
-            // 2. Images (Now organized per chapter + Thumbnails)
-            const imageFolder = zip.folder('images');
+            // --- SAVE STEMS (VOICE, MUSIC, SFX) ---
+            const voiceFolder = zip.folder('voice');
+            const musicFolder = zip.folder('music');
+            const sfxFolder = zip.folder('sfx');
+            const imageFolder = zip.folder('images'); // Flattened images folder
+            
+            let totalImageCount = 0;
+            const allImages: string[] = [];
+            let globalImageCounter = 1; // For sequential naming across all chapters
             
             // Add generated thumbnails
             if (targetPodcast.youtubeThumbnails) {
                 const thumbFolder = zip.folder('thumbnails');
                  for (const thumb of targetPodcast.youtubeThumbnails) {
-                    const response = await fetch(thumb.dataUrl);
-                    const blob = await response.blob();
-                    thumbFolder?.file(`${thumb.styleName.replace(/[^a-z0-9]/gi, '_')}.png`, blob);
-                }
-            }
-
-            // Add chapter images
-            for (let i = 0; i < targetPodcast.chapters.length; i++) {
-                const chapter = targetPodcast.chapters[i];
-                if (chapter.images && chapter.images.length > 0) {
-                     const chapterFolder = imageFolder?.folder(`chapter_${i + 1}`);
-                     let imgCount = 1;
-                     for (const imgSrc of chapter.images) {
-                         try {
-                             const response = await fetch(imgSrc);
-                             const blob = await response.blob();
-                             const ext = response.headers.get('content-type')?.includes('png') ? 'png' : 'jpeg';
-                             chapterFolder?.file(`img_${String(imgCount).padStart(2, '0')}.${ext}`, blob);
-                             imgCount++;
-                         } catch (e) {
-                             console.error("Failed to add image to zip", e);
-                         }
+                    try {
+                        const response = await fetch(thumb.dataUrl);
+                        const blob = await response.blob();
+                        thumbFolder?.file(`${thumb.styleName.replace(/[^a-z0-9]/gi, '_')}.png`, blob);
+                    } catch (e) {
+                         console.error("Failed to save thumbnail", e);
                     }
                 }
             }
 
-            // 3. YouTube Details
+            // Iterate through chapters for Images and Stems
+            for (let i = 0; i < targetPodcast.chapters.length; i++) {
+                const chapter = targetPodcast.chapters[i];
+                
+                // 3.1 Voice Stem
+                if (chapter.audioBlob) {
+                    voiceFolder?.file(`chapter_${i + 1}_voice.wav`, chapter.audioBlob);
+                }
+
+                // 3.2 Music Stem
+                if (chapter.backgroundMusic) {
+                     const safeName = chapter.backgroundMusic.name.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+                     try {
+                        // Use Force HTTPS + fallback fetcher
+                        const musicUrl = chapter.backgroundMusic.audio.replace(/^http:\/\//, 'https://');
+                        const response = await fetchWithCorsFallback(musicUrl);
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            musicFolder?.file(`chapter_${i + 1}_${safeName}.mp3`, blob);
+                        } else {
+                             throw new Error(`Music fetch status: ${response.status}`);
+                        }
+                     } catch (e) {
+                         console.warn(`Failed to download music stem for chapter ${i+1}`, e);
+                         log({ type: 'error', message: `Не удалось скачать музыку для главы ${i+1} (исходник), сохраняем ссылку.`, data: e });
+                         // Fallback: Save a text file with the link
+                         const textContent = `Source URL: ${chapter.backgroundMusic.audio}\nTrack: ${chapter.backgroundMusic.name}\nArtist: ${chapter.backgroundMusic.artist_name}\n\nPlease download manually if needed.`;
+                         musicFolder?.file(`[LINK]_chapter_${i + 1}_${safeName}.txt`, textContent);
+                     }
+                }
+
+                // 3.3 SFX Stems
+                if (chapter.script) {
+                    for (let j = 0; j < chapter.script.length; j++) {
+                        const line = chapter.script[j];
+                        if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+                             try {
+                                const sfxUrl = line.soundEffect.previews['preview-hq-mp3'].replace(/^http:\/\//, 'https://');
+                                const response = await fetchWithCorsFallback(sfxUrl);
+                                if (response.ok) {
+                                    const blob = await response.blob();
+                                    const safeSfxName = line.soundEffect.name.replace(/[^a-z0-9]/gi, '_').substring(0, 30);
+                                    sfxFolder?.file(`chapter_${i + 1}_line_${j}_${safeSfxName}.mp3`, blob);
+                                }
+                             } catch (e) {
+                                 console.warn(`Failed to download SFX stem: ${line.soundEffect.name}`, e);
+                             }
+                        }
+                    }
+                }
+
+                // 3.4 Images - FLATTENED STRUCTURE
+                if (chapter.images && chapter.images.length > 0) {
+                     for (const imgSrc of chapter.images) {
+                         try {
+                             // Use fetchWithCorsFallback for images too, as AdBlock might block stock sites
+                             const response = await fetchWithCorsFallback(imgSrc);
+                             if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+                             const blob = await response.blob();
+                             const ext = response.headers.get('content-type')?.includes('png') ? 'png' : 'jpeg';
+                             
+                             // Sequential naming: img_001.png, img_002.png, etc.
+                             const filename = `img_${String(globalImageCounter).padStart(3, '0')}.${ext}`;
+                             
+                             // Save directly to 'images/' folder, no chapter subfolders
+                             imageFolder?.file(filename, blob);
+                             
+                             // Path for filelist.txt must be relative to the root of ZIP extraction, usually just 'images/filename'
+                             allImages.push(`images/${filename}`);
+                             
+                             globalImageCounter++;
+                             totalImageCount++;
+                         } catch (e) {
+                             console.error(`Failed to add image ${imgSrc} to zip. Likely AdBlock/Network issue.`, e);
+                             log({ type: 'error', message: `Не удалось скачать картинку (возможно, блокировщик рекламы). Пропуск.` });
+                             // Skip this image but continue execution
+                         }
+                    }
+                }
+            }
+            
+            // 4. Generate filelist.txt for FFmpeg
+            if (totalImageCount > 0 && audioDuration > 0) {
+                const durationPerImage = audioDuration / totalImageCount;
+                let filelistContent = '';
+                // Add images with calculated duration
+                for (let i = 0; i < allImages.length; i++) {
+                     filelistContent += `file '${allImages[i]}'\n`;
+                     filelistContent += `duration ${durationPerImage.toFixed(2)}\n`;
+                }
+                // Repeat last image to ensure stream doesn't cut off
+                if (allImages.length > 0) {
+                     filelistContent += `file '${allImages[allImages.length - 1]}'\n`;
+                }
+                
+                zip.file('filelist.txt', filelistContent);
+                
+                // 5. Generate Assembly Scripts
+                // IMPROVED: Hardcoded subtitles (baked in), high quality (crf 18, preset slow), neat subtitle styling.
+                
+                const ffmpegCommand = `ffmpeg -y -f concat -safe 0 -i filelist.txt -i final_audio.wav -vf "subtitles=subtitles.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=30,Alignment=2'" -c:v libx264 -preset slow -crf 18 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest final_video.mp4`;
+                
+                // Windows Batch Script
+                const batContent = `@echo off
+echo ===================================================
+echo   Mystic Narratives Video Assembler (High Quality)
+echo ===================================================
+echo.
+echo This script will combine images, audio, and subtitles into final_video.mp4.
+echo Quality: 1080p High (CRF 18)
+echo Subtitles: Hardcoded (Baked-in), Arial, White with Black Outline.
+echo.
+${ffmpegCommand}
+echo.
+if %errorlevel% equ 0 (
+    echo [SUCCESS] Video created: final_video.mp4
+) else (
+    echo [ERROR] FFmpeg failed. Check if FFmpeg is installed.
+)
+pause
+`;
+                zip.file('assemble_video.bat', batContent);
+
+                // Unix/Mac Shell Script
+                const shContent = `#!/bin/bash
+echo "Starting high-quality video assembly..."
+if ! command -v ffmpeg &> /dev/null; then
+    echo "Error: FFmpeg is not installed."
+    exit 1
+fi
+${ffmpegCommand}
+echo "Done. Video saved as final_video.mp4"
+`;
+                zip.file('assemble_video.sh', shContent);
+                
+                // README for Assembly
+                const readmeContent = `
+HOW TO ASSEMBLE YOUR VIDEO
+==========================
+
+1. Install FFmpeg
+   - Windows: Download from https://ffmpeg.org/download.html (or 'winget install ffmpeg')
+   - Mac: 'brew install ffmpeg'
+   - Linux: 'sudo apt install ffmpeg'
+
+2. Run the Script
+   - Windows: Double-click 'assemble_video.bat'
+   - Mac/Linux: Open terminal, go to this folder, run 'chmod +x assemble_video.sh' then './assemble_video.sh'
+
+FEATURES:
+- Combines all images from the 'images' folder.
+- Syncs them to the length of 'final_audio.wav'.
+- **Hardcodes subtitles** into the video (white text, black outline) so they work on all platforms (Instagram, TikTok, etc.).
+- High Quality output (CRF 18).
+
+SOURCE FILES:
+- voice/: Raw voice tracks for each chapter.
+- music/: Raw music tracks for each chapter (MP3).
+- sfx/: Raw Sound effects used (MP3).
+`;
+                zip.file('README_ASSEMBLY.txt', readmeContent);
+            }
+
+            // 6. YouTube Details
             const detailsContent = `=================================\n    YouTube Video Details\n=================================\n\nTITLE:\n${targetPodcast.selectedTitle}\n\n---------------------------------\n\nDESCRIPTION:\n${targetPodcast.description}\n\n---------------------------------\n\nTAGS / KEYWORDS:\n${targetPodcast.seoKeywords.join(', ')}\n`;
             zip.file('youtube_details.txt', detailsContent);
 
-            // 4. Generate and Download
+            // 7. Generate and Download
             const zipBlob = await zip.generateAsync({ type: 'blob' });
             const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
@@ -558,18 +725,18 @@ export const usePodcast = (
 
         try {
             // Headless generation WITH generateAllChapters = true
-            // Using hardcoded defaults for queue, but could be configurable
+            // Now using settings from the queue item
             const generatedPodcast = await createPodcastData(
                 itemToRun.title,
                 itemToRun.knowledgeBase,
-                true, // Creative Freedom
-                'English', // Default language
-                20, // Duration
-                'dialogue', // Narration
+                itemToRun.creativeFreedom,
+                itemToRun.language,
+                itemToRun.totalDuration,
+                itemToRun.narrationMode,
                 { character1: 'auto', character2: 'auto' }, // Voices - AUTO for queue
-                'Puck',
-                5, // Images per chapter (hardcoded for now, could pass from startContentPipeline)
-                'ai', // Image source
+                'Puck', // Default monologue voice if needed
+                itemToRun.imagesPerChapter,
+                itemToRun.imageSource,
                 true, // Force FULL GENERATION of all chapters
                 (l, s) => {}, // No status UI updates
                 (p) => {} // No progress UI updates
@@ -649,6 +816,7 @@ export const usePodcast = (
         }
     };
 
+    // Separate Title Selection from Thumbnail Text
     const handleTitleSelection = useCallback(async (newTitle: string, forceUpdate = false) => {
         if (!podcast || (!forceUpdate && podcast.selectedTitle === newTitle)) return;
         setPodcast(p => p ? { ...p, selectedTitle: newTitle } : null);
@@ -666,6 +834,54 @@ export const usePodcast = (
         }
     }, [podcast, log, setPodcast, defaultFont]);
     
+    // Dedicated function to update thumbnail text and redraw canvases
+    const updateThumbnailText = useCallback(async (newText: string) => {
+        if (!podcast) return;
+        
+        // 1. Update state to reflect text change immediately (optimistic)
+        setPodcast(p => p ? { ...p, thumbnailText: newText } : null);
+        
+        // 2. Find a base image to draw on
+        // Prefer the first image of the first chapter, or the generated legacy images
+        const baseImageSrc = podcast.chapters[0]?.images?.[0] || podcast.generatedImages?.[0];
+        
+        if (!baseImageSrc || !podcast.youtubeThumbnails) return;
+        
+        try {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = baseImageSrc;
+            
+            // Wait for image load
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+            });
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 1280;
+            canvas.height = 720;
+            const ctx = canvas.getContext('2d');
+            if(!ctx) return;
+
+            const updatedThumbnails = await Promise.all(podcast.youtubeThumbnails.map(async (thumb) => {
+                 const newOptions = { ...thumb.options, text: newText };
+                 await drawCanvas(ctx, img, newOptions);
+                 return {
+                     ...thumb,
+                     options: newOptions,
+                     dataUrl: canvas.toDataURL('image/png')
+                 };
+            }));
+
+            setPodcast(p => p ? { ...p, youtubeThumbnails: updatedThumbnails } : null);
+
+        } catch (e) {
+            console.error("Failed to refresh thumbnails with new text", e);
+        }
+
+    }, [podcast, setPodcast]);
+    
     const handleBgSelection = useCallback(async (index: number) => {
         // Legacy logic kept for API compatibility, but mostly replaced by per-chapter images
         setPodcast(p => p ? { ...p, selectedBgIndex: index } : null);
@@ -677,8 +893,9 @@ export const usePodcast = (
         try {
             const newTextAssets = await regenerateTextAssets(podcast.topic, podcast.creativeFreedom, podcast.language, log);
             const newSelectedTitle = newTextAssets.youtubeTitleOptions[0] || podcast.selectedTitle;
-            setPodcast(p => p ? { ...p, ...newTextAssets, selectedTitle: newSelectedTitle } : null);
-            await handleTitleSelection(newSelectedTitle, true);
+            setPodcast(p => p ? { ...p, ...newTextAssets, selectedTitle: newSelectedTitle, thumbnailText: newSelectedTitle } : null);
+            // We don't auto-update thumbnails here strictly, but usually new text implies new thumbnail content. 
+            // User can click 'To Thumbnail' to sync.
         } catch (err: any) {
             setError(err.message || 'Ошибка при обновлении текста.');
             log({ type: 'error', message: 'Ошибка при регенерации текста', data: err });
@@ -706,7 +923,7 @@ export const usePodcast = (
             
             // Update thumbnail if needed
             if (newImages.length > 0 && podcast.designConcepts) {
-                 const newThumbnails = await generateYoutubeThumbnails(newImages[0], podcast.selectedTitle, podcast.designConcepts, log, defaultFont);
+                 const newThumbnails = await generateYoutubeThumbnails(newImages[0], podcast.thumbnailText, podcast.designConcepts, log, defaultFont);
                  setPodcast(p => p ? { ...p, youtubeThumbnails: newThumbnails } : null);
             }
 
@@ -891,6 +1108,7 @@ export const usePodcast = (
                 ...blueprint,
                 topic: 'Quick Test: Deep Space',
                 selectedTitle: blueprint.youtubeTitleOptions[0],
+                thumbnailText: blueprint.youtubeTitleOptions[0],
                 description: blueprint.description,
                 seoKeywords: blueprint.seoKeywords,
                 visualSearchPrompts: blueprint.visualSearchPrompts,
@@ -908,7 +1126,7 @@ export const usePodcast = (
                 characterVoices: { [char1]: 'Puck', [char2]: 'Zephyr' },
                 monologueVoice: 'Puck',
                 selectedBgIndex: 0,
-                backgroundMusicVolume: 0.05,
+                backgroundMusicVolume: 0.12, // Default 12%
                 initialImageCount: testImages.length,
                 imageSource: 'stock'
             };
@@ -925,7 +1143,17 @@ export const usePodcast = (
         }
     }, [log, setPodcast]);
 
-    const startContentPipeline = useCallback(async (count: number) => {
+    const startContentPipeline = useCallback(async (
+        count: number,
+        settings: {
+            language: string,
+            totalDuration: number,
+            narrationMode: NarrationMode,
+            creativeFreedom: boolean,
+            imagesPerChapter: number,
+            imageSource: 'ai' | 'stock'
+        }
+    ) => {
         if (isLoading || isQueueRunning) return;
         setIsLoading(true);
         try {
@@ -934,12 +1162,13 @@ export const usePodcast = (
                 id: crypto.randomUUID(),
                 status: 'pending',
                 title: idea.title,
-                knowledgeBase: `Historical Fact: ${idea.historicalFact}\nTwist: ${idea.lovecraftianTwist}\nStructure: ${idea.scriptStructure.join('\n')}\nTone: ${idea.dialogueTone}`
+                knowledgeBase: `Historical Fact: ${idea.historicalFact}\nTwist: ${idea.lovecraftianTwist}\nStructure: ${idea.scriptStructure.join('\n')}\nTone: ${idea.dialogueTone}`,
+                ...settings
             }));
             
             setProjectQueue(prev => [...prev, ...newQueueItems]);
             setIsQueueRunning(true);
-            log({ type: 'info', message: `В очередь добавлено ${count} проектов.` });
+            log({ type: 'info', message: `В очередь добавлено ${count} проектов с выбранными настройками.` });
         } catch (err: any) {
             setError('Не удалось создать контент-план.');
             log({ type: 'error', message: 'Content pipeline failed', data: err });
@@ -968,5 +1197,6 @@ export const usePodcast = (
         findMusicForChapter,
         findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
+        updateThumbnailText, // Exported function for manual update
     };
 };

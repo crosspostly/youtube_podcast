@@ -37,7 +37,8 @@ const searchJamendo = async (query: string, clientId: string, log: LogFunction):
             id: track.id,
             name: track.name,
             artist_name: track.artist_name,
-            audio: track.audio
+            // Fix: Force HTTPS for audio URLs to prevent Mixed Content errors
+            audio: track.audio.replace(/^http:\/\//, 'https://')
         }));
     } catch (error) {
         log({ type: 'error', message: `Network error while searching music for '${query}'`, data: error });

@@ -186,6 +186,17 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         onStartProject(projectTitleInput, knowledgeBaseText, creativeFreedom, language, totalDurationMinutes, narrationMode, characterVoices, monologueVoice, initialImageCount, imageSource);
     };
 
+    const handleStartPipeline = () => {
+        startContentPipeline(contentPlanCount, {
+            language,
+            totalDuration: totalDurationMinutes,
+            narrationMode,
+            creativeFreedom,
+            imagesPerChapter: initialImageCount,
+            imageSource
+        });
+    };
+
     const getStatusIcon = (status: QueuedProject['status']) => {
         switch(status) {
             case 'pending': return <div className="w-5 h-5 rounded-full border-2 border-slate-500" title="В очереди"></div>;
@@ -256,14 +267,14 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                 className="w-32 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
                             />
                         </div>
-                        <button onClick={() => startContentPipeline(contentPlanCount)} disabled={isAnythingLoading} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-bold rounded-lg hover:from-teal-400 hover:to-cyan-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-wait">
+                        <button onClick={handleStartPipeline} disabled={isAnythingLoading} className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-bold rounded-lg hover:from-teal-400 hover:to-cyan-500 disabled:from-slate-600 disabled:to-slate-700 disabled:cursor-wait">
                             {isQueueRunning ? <Spinner className="w-5 h-5" /> : <LightbulbIcon className="w-5 h-5" />}
                             <span>Запустить Контент-Конвейер</span>
                         </button>
                     </div>
                 </div>
                  <p className="text-slate-400 mb-4 text-sm">
-                    Нажмите кнопку, чтобы ИИ сгенерировал детальный план для {contentPlanCount} видео и автоматически поставил их в очередь на создание.
+                    Нажмите кнопку, чтобы ИИ сгенерировал детальный план для {contentPlanCount} видео (используя текущие настройки языка и озвучки ниже) и автоматически поставил их в очередь на создание.
                 </p>
                 {projectQueue.length > 0 && (
                     <div className="mt-6 border-t border-slate-700 pt-4">
@@ -274,7 +285,10 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                     <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
                                         {getStatusIcon(item.status)}
                                     </div>
-                                    <p className="text-slate-300 truncate">{item.title}</p>
+                                    <div className="min-w-0">
+                                        <p className="text-slate-300 truncate">{item.title}</p>
+                                        <p className="text-xs text-slate-500">{item.language}, {item.narrationMode}</p>
+                                    </div>
                                 </div>
                             ))}
                         </div>

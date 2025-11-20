@@ -1,6 +1,8 @@
+
 // services/audioUtils.ts
 import * as lamejs from 'lamejs';
 import type { Podcast, LogEntry, Chapter } from '../types';
+import { fetchWithCorsFallback } from './apiUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -112,7 +114,20 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
 
         if (chapter.backgroundMusic) {
              try {
-                const musicResponse = await fetch(chapter.backgroundMusic.audio);
+                // Fix: Force HTTPS to prevent Mixed Content blocking
+                const musicUrl = chapter.backgroundMusic.audio.replace(/^http:\/\//, 'https://');
+                // Use fallback fetcher to handle CORS/AdBlock
+                const musicResponse = await fetchWithCorsFallback(musicUrl);
+                
+                if (!musicResponse.ok) {
+                     throw new Error(`Music fetch failed: ${musicResponse.status} ${musicResponse.statusText}`);
+                }
+
+                const contentType = musicResponse.headers.get('content-type');
+                if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
+                    throw new Error(`Invalid content type for music: ${contentType}. Expected audio.`);
+                }
+                
                 const musicArrayBuffer = await musicResponse.arrayBuffer();
                 const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
 
@@ -144,7 +159,9 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                     musicSource.start(speechTimeCursor + musicCursor, 0, speechBuffer.duration - musicCursor);
                     musicCursor += musicBuffer.duration;
                 }
-            } catch (e) { console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); }
+            } catch (e) { 
+                console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); 
+            }
         }
         speechTimeCursor += speechBuffer.duration;
     }
@@ -157,23 +174,59 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
     for (const line of allScriptLines) {
         if (line.speaker.toUpperCase() !== 'SFX' && line.text) {
              estimatedTimeCursor += Math.max(1, line.text.length / CHARS_PER_SECOND);
-        } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect?.previews['preview-hq-mp3']) {
-            try {
-                const sfxResponse = await fetch(line.soundEffect.previews['preview-hq-mp3']);
-                const sfxArrayBuffer = await sfxResponse.arrayBuffer();
-                const sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
-                
-                const sfxGainNode = offlineContext.createGain();
-                sfxGainNode.gain.value = line.soundEffectVolume ?? 0.7; // Default volume 70%
-                sfxGainNode.connect(offlineContext.destination);
+        } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+            const sfx = line.soundEffect;
+            
+            // List of candidates to try in order. 
+            // HQ MP3 is preferred, then OGG, then LQ MP3.
+            const urlsToTry = [
+                sfx.previews['preview-hq-mp3'],
+                sfx.previews['preview-hq-ogg'],
+                sfx.previews['preview-lq-mp3'],
+                sfx.previews['preview-lq-ogg']
+            ].filter(url => !!url).map(url => url?.replace(/^http:\/\//, 'https://') || '');
+            
+            let sfxBuffer: AudioBuffer | null = null;
 
-                const sfxSource = offlineContext.createBufferSource();
-                sfxSource.buffer = sfxBuffer;
-                sfxSource.connect(sfxGainNode);
-                
-                sfxSource.start(Math.min(estimatedTimeCursor, totalDuration - sfxBuffer.duration));
+            // Try fetching each candidate URL until one works
+            for (const sfxUrl of urlsToTry) {
+                if(!sfxUrl) continue;
+                try {
+                    const sfxResponse = await fetchWithCorsFallback(sfxUrl);
+                    if (!sfxResponse.ok) continue;
 
-            } catch(e) { console.error(`Не удалось обработать SFX: ${line.soundEffect.name}`, e); }
+                    const contentType = sfxResponse.headers.get('content-type');
+                    if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
+                        continue; 
+                    }
+
+                    const sfxArrayBuffer = await sfxResponse.arrayBuffer();
+                    sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
+                    if(sfxBuffer) break; // Success
+                } catch (e) {
+                    console.warn(`Failed to fetch/decode SFX candidate: ${sfxUrl}`, e);
+                }
+            }
+
+            if (sfxBuffer) {
+                try {
+                    const sfxGainNode = offlineContext.createGain();
+                    sfxGainNode.gain.value = line.soundEffectVolume ?? 0.7; // Default volume 70%
+                    sfxGainNode.connect(offlineContext.destination);
+
+                    const sfxSource = offlineContext.createBufferSource();
+                    sfxSource.buffer = sfxBuffer;
+                    sfxSource.connect(sfxGainNode);
+                    
+                    // Ensure start time is not negative
+                    const startTime = Math.min(estimatedTimeCursor, totalDuration - sfxBuffer.duration);
+                    sfxSource.start(Math.max(0, startTime));
+                } catch(e) {
+                     console.error(`Error scheduling SFX: ${sfx.name}`, e);
+                }
+            } else {
+                console.error(`Все попытки загрузить SFX "${sfx.name}" не удались.`);
+            }
         }
     }
 
@@ -290,4 +343,31 @@ export const getChapterDurations = async (chapters: Chapter[]): Promise<number[]
         }
     }
     return durations;
+};
+// Helper to get duration from WAV blob without full decoding
+export const getWavDuration = async (blob: Blob): Promise<number> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const buffer = event.target?.result as ArrayBuffer;
+                const view = new DataView(buffer);
+                // WAV header parsing
+                // Offset 24: Sample Rate (4 bytes)
+                // Offset 28: Byte Rate (4 bytes)
+                // Offset 40: Data Size (4 bytes)
+                
+                const sampleRate = view.getUint32(24, true);
+                const byteRate = view.getUint32(28, true);
+                const dataSize = view.getUint32(40, true);
+                
+                const duration = dataSize / byteRate;
+                resolve(duration);
+            } catch (e) {
+                reject(e);
+            }
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(blob.slice(0, 100)); // Read header only
+    });
 };

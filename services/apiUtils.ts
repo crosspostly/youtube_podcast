@@ -72,3 +72,72 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
 export const getProxiedUrl = (url: string): string => {
     return url;
 };
+
+/**
+ * Robust fetch wrapper that attempts a direct fetch first,
+ * and falls back to multiple CORS proxies if the direct fetch fails.
+ */
+export const fetchWithCorsFallback = async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+    
+    // 1. Try Direct Fetch
+    try {
+        const response = await fetch(url, { ...options, mode: 'cors' });
+        if (response.ok) return response;
+        // If 403/401, it might be a server blocking the request, try proxy.
+        if (response.status === 403 || response.status === 401) {
+             console.warn(`Direct fetch failed with ${response.status}, attempting proxy...`);
+        }
+    } catch (directError) {
+        console.warn("Direct fetch failed (CORS/Network), attempting proxy...", directError);
+    }
+
+    // 2. Try CORSProxy.io
+    try {
+        const proxyUrl1 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+        const proxyResponse1 = await fetch(proxyUrl1, options);
+        if (proxyResponse1.ok) return proxyResponse1;
+        console.warn(`CORSProxy.io failed with ${proxyResponse1.status}`);
+    } catch (proxyError1) {
+         console.warn("CORSProxy.io failed", proxyError1);
+    }
+    
+    await wait(300);
+
+    // 3. Try AllOrigins (Raw) - good for audio files, might strip auth headers
+    try {
+        const proxyUrl2 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+        // Filter out Authorization header for AllOrigins as it might not handle it well for external resources
+        // unless specifically needed. But for public audio it is fine.
+        const proxyResponse2 = await fetch(proxyUrl2, options);
+        if (proxyResponse2.ok) return proxyResponse2;
+        console.warn(`AllOrigins failed with ${proxyResponse2.status}`);
+    } catch (proxyError2) {
+        console.warn("AllOrigins failed", proxyError2);
+    }
+
+    await wait(300);
+
+    // 4. Try ThingProxy
+    try {
+        const proxyUrl3 = `https://thingproxy.freeboard.io/fetch/${url}`;
+        const proxyResponse3 = await fetch(proxyUrl3, options);
+        if (proxyResponse3.ok) return proxyResponse3;
+        console.warn(`ThingProxy failed with ${proxyResponse3.status}`);
+    } catch(e) {
+        console.warn("ThingProxy failed", e);
+    }
+
+    await wait(300);
+
+    // 5. Try CodeTabs (Last resort)
+    try {
+        const proxyUrl4 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+        const proxyResponse4 = await fetch(proxyUrl4, options);
+        if (proxyResponse4.ok) return proxyResponse4;
+        throw new Error(`CodeTabs returned ${proxyResponse4.status}`);
+    } catch (proxyError4) {
+        // If all fail, throw a generic error to be caught by the caller
+        throw new Error(`All fetch attempts failed for URL: ${url}. Last error: ${proxyError4}`);
+    }
+};

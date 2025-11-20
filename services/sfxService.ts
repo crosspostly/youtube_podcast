@@ -60,7 +60,13 @@ const performFreesoundSearch = async (searchTags: string, log: LogFunction, retr
             return [];
         }
         
-        return data.results;
+        return data.results.map((sfx: any) => ({
+            ...sfx,
+            previews: {
+                ...sfx.previews,
+                'preview-hq-mp3': sfx.previews['preview-hq-mp3'].replace(/^http:\/\//, 'https://')
+            }
+        }));
 
     } catch (error: any) {
         const errorMsg = error.message || String(error);

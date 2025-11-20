@@ -114,9 +114,9 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
     }
 };
 
-// Fix: Add 'imageSource' to Omit to align the blueprint with its purpose.
-// The blueprint defines the content, while imageSource is a generation setting handled later.
-type BlueprintResult = Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount' | 'imageSource'> & { chapters: Chapter[] };
+// Fix: Add 'imageSource' and 'thumbnailText' to Omit to align the blueprint with its purpose.
+// The blueprint defines the content, while imageSource and thumbnailText are settings/states handled later.
+type BlueprintResult = Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount' | 'imageSource' | 'thumbnailText'> & { chapters: Chapter[] };
 
 export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction): Promise<BlueprintResult> => {
     log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
