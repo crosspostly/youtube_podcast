@@ -4,8 +4,7 @@ import type { LogEntry, SoundEffect, ScriptLine } from '../types';
 import { getApiKey } from '../config/apiConfig';
 import { generateContentWithFallback } from './aiTextService';
 import { getSfxKeywordsPrompt } from './prompts';
-// Fix: Import the new proxy utility to fix CORS issues.
-import { getProxiedUrl } from './apiUtils';
+import { fetchWithCorsFallback } from './apiUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -26,8 +25,7 @@ const performFreesoundSearch = async (searchTags: string, log: LogFunction, retr
     log({ type: 'request', message: `Запрос SFX с Freesound (Query: "${cleanTags}")`, data: { url: searchUrl } });
 
     try {
-        const proxiedUrl = getProxiedUrl(searchUrl);
-        const response = await fetch(proxiedUrl, {
+        const response = await fetchWithCorsFallback(searchUrl, {
             method: 'GET',
             headers: { 'Authorization': `Token ${apiKey}` },
             mode: 'cors'

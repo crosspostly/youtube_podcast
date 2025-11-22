@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
@@ -14,7 +13,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         podcast, setPodcast, isLoading,
         audioUrls, isGenerationPaused, setIsGenerationPaused,
         isRegeneratingText, isRegeneratingImages, isRegeneratingAudio,
-        isConvertingToMp3, isGeneratingSrt, isZipping,
+        isCombiningAudio, isGeneratingSrt, isZipping,
         handleGenerateChapter, combineAndDownload, downloadProjectAsZip,
         regenerateProject, regenerateText,
         regenerateImages, regenerateAllAudio,
@@ -22,7 +21,9 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         setChapterMusic,
         findMusicForChapter, findMusicManuallyForChapter,
         findSfxForLine, findSfxManuallyForLine, setSfxForLine, setSfxVolume,
-        generateSrt // Exposed for manual triggering
+        generateSrt,
+        updateThumbnailText, // Exposed for instant updates
+        handleTitleSelection // Exposed for title selection
     } = usePodcastContext();
     
     const [isSourceModalOpen, setIsSourceModalOpen] = useState(false);
@@ -32,6 +33,12 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const [volumePopoverChapterId, setVolumePopoverChapterId] = useState<string | null>(null);
     const volumePopoverRef = useRef<HTMLDivElement>(null);
     const [copiedField, setCopiedField] = useState<string | null>(null);
+    
+    // Local state for inputs to allow typing
+    const [customThumbnailText, setCustomThumbnailText] = useState('');
+    const [customVideoTitle, setCustomVideoTitle] = useState('');
+    
+    const [isUpdatingThumbnails, setIsUpdatingThumbnails] = useState(false);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -43,10 +50,35 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Sync local state with podcast state when it changes externally
+    useEffect(() => {
+        if (podcast?.thumbnailText) setCustomThumbnailText(podcast.thumbnailText);
+        if (podcast?.selectedTitle) setCustomVideoTitle(podcast.selectedTitle);
+    }, [podcast?.thumbnailText, podcast?.selectedTitle]);
+
     const handleCopy = (text: string, fieldId: string) => {
         navigator.clipboard.writeText(text);
         setCopiedField(fieldId);
         setTimeout(() => setCopiedField(null), 2000);
+    };
+
+    // Handler for Video Title (Metadata)
+    const handleVideoTitleChange = (newTitle: string) => {
+        setCustomVideoTitle(newTitle);
+        handleTitleSelection(newTitle);
+    };
+
+    // Handler for Thumbnail Text (Visual)
+    const handleThumbnailTextChange = async (newText: string) => {
+        setCustomThumbnailText(newText);
+        if (!newText.trim()) return;
+        
+        setIsUpdatingThumbnails(true);
+        try {
+            await updateThumbnailText(newText);
+        } finally {
+            setIsUpdatingThumbnails(false);
+        }
     };
 
     const SfxFinderModal = () => {
@@ -149,8 +181,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                     <label key={sfx.id} className="p-2 rounded-md flex items-center justify-between gap-2 bg-slate-900/70 hover:bg-slate-900 cursor-pointer border-2 border-transparent has-[:checked]:border-cyan-500">
                                         <div className="flex items-center gap-3 min-w-0">
                                             <input type="radio" name="sfx-selection" checked={tempSelectedSfx?.id === sfx.id} onChange={() => setTempSelectedSfx(sfx)} className="h-5 w-5 mr-2 text-cyan-600 bg-slate-700 border-slate-600 focus:ring-cyan-500"/>
-                                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); togglePreview(sfx.previews['preview-hq-mp3']); }} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700 flex-shrink-0">
-                                                {previewingUrl === sfx.previews['preview-hq-mp3'] ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
+                                            <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); sfx.previews?.['preview-hq-mp3'] && togglePreview(sfx.previews['preview-hq-mp3']); }} className="p-2 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700 flex-shrink-0" disabled={!sfx.previews?.['preview-hq-mp3']}>
+                                                {(previewingUrl === sfx.previews?.['preview-hq-mp3']) ? <PauseIcon className="w-5 h-5" /> : <PlayIcon className="w-5 h-5" />}
                                             </button>
                                             <div className="truncate">
                                                 <p className="font-semibold text-white truncate">{sfx.name}</p>
@@ -234,7 +266,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     
         const handleSave = () => {
             if (tempSelectedTrack) {
-                setChapterMusic(musicModalChapter.id, tempSelectedTrack, false);
+                setChapterMusic(musicModalChapter.id, tempSelectedTrack);
             }
             setMusicModalChapter(null);
         };
@@ -325,8 +357,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const allChaptersDone = podcast.chapters.every(c => c.status === 'completed');
     const isQueueActive = !allChaptersDone && podcast.chapters.some(c => c.status !== 'error');
 
-    const handleSfxPreview = (url: string, volume: number) => {
-        if (!audioPlayerRef.current) return;
+    const handleSfxPreview = (url: string | undefined, volume: number) => {
+        if (!url || !audioPlayerRef.current) return;
         const audio = audioPlayerRef.current;
         audio.pause();
         audio.src = url;
@@ -338,7 +370,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     };
 
     return (
-        <div className="w-full max-w-5xl mx-auto pb-24">
+        <div className="w-full max-w-6xl mx-auto pb-24">
             <audio ref={audioPlayerRef} className="hidden" />
             <MusicFinderModal />
             <SfxFinderModal />
@@ -356,42 +388,53 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </div>
             )}
             
-            <header className="text-center mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                <h2 className="text-3xl md:text-4xl font-bold text-white">{podcast.selectedTitle}</h2>
+            {/* HEADER: VIDEO TITLE */}
+            <header className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <TitleIcon className="w-4 h-4" />
+                    Название видео (YouTube Title)
+                </h3>
+                
+                <div className="space-y-4">
+                     <input 
+                        type="text" 
+                        value={customVideoTitle}
+                        onChange={(e) => handleVideoTitleChange(e.target.value)}
+                        placeholder="Введите название видео..."
+                        className="w-full bg-slate-800/80 border border-slate-600 rounded-xl px-4 py-3 text-xl md:text-2xl font-bold text-white focus:ring-2 focus:ring-cyan-500"
+                     />
+                    
+                    {podcast.youtubeTitleOptions.length > 0 && (
+                        <div className="flex gap-2 flex-wrap">
+                            <span className="text-xs text-slate-500 py-2">Варианты:</span>
+                            {podcast.youtubeTitleOptions.map((title, idx) => (
+                                <button 
+                                    key={idx}
+                                    onClick={() => handleVideoTitleChange(title)}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border ${
+                                        podcast.selectedTitle === title 
+                                        ? 'bg-cyan-900/50 border-cyan-400 text-cyan-100' 
+                                        : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:border-slate-500'
+                                    }`}
+                                >
+                                    {title}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
             </header>
             
-            {/* Metadata Section: Tags & Titles & Description */}
-            {(podcast.seoKeywords.length > 0 || podcast.youtubeTitleOptions.length > 0 || podcast.description) && (
+            {/* Metadata Section: Description & Tags */}
+            {(podcast.seoKeywords.length > 0 || podcast.description) && (
                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                     <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><TitleIcon /> Метаданные для YouTube</h3>
+                     <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><DescriptionIcon /> Метаданные</h3>
                      
-                     {podcast.youtubeTitleOptions.length > 0 && (
-                        <div className="mb-6">
-                            <label className="block text-sm font-medium text-slate-400 mb-2">Варианты заголовков (AI)</label>
-                            <div className="space-y-2">
-                                {podcast.youtubeTitleOptions.map((title, idx) => (
-                                    <div key={idx} className="flex items-center justify-between p-2 bg-slate-800/50 rounded-lg border border-slate-800 hover:border-slate-600 transition-colors">
-                                        <span className="text-slate-200 truncate pr-2">{title}</span>
-                                        <button 
-                                            onClick={() => handleCopy(title, `title-${idx}`)}
-                                            className="p-1 text-slate-400 hover:text-cyan-400 flex-shrink-0"
-                                            title="Копировать"
-                                        >
-                                            {copiedField === `title-${idx}` ? <CheckIcon className="w-4 h-4 text-green-400"/> : <CopyIcon className="w-4 h-4"/>}
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                     )}
-
-                    {/* Description Block - Moved here from Header */}
+                    {/* Description Block */}
                     {podcast.description && (
                         <div className="mb-6">
                             <div className="flex justify-between items-center mb-2">
-                                <label className="block text-sm font-medium text-slate-400 flex items-center gap-2">
-                                    <DescriptionIcon className="w-4 h-4"/> Описание видео (YouTube Description)
-                                </label>
+                                <label className="block text-sm font-medium text-slate-400">Описание видео (YouTube Description)</label>
                                 <button 
                                     onClick={() => handleCopy(podcast.description, 'description')}
                                     className="text-xs flex items-center gap-1 text-cyan-400 hover:text-cyan-300"
@@ -445,21 +488,34 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                 </div>
             )}
             
-            <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
-                <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><SpeakerWaveIcon /> Общие настройки аудио</h3>
-                <div>
-                    <label className="block text-lg font-medium text-slate-200 mb-2">
-                        Общая громкость фоновой музыки: <span className="font-bold text-cyan-300">{Math.round(podcast.backgroundMusicVolume * 100)}%</span>
-                    </label>
-                    <input
-                        type="range"
-                        min="0"
-                        max="0.5" // Max volume at 50% to not overpower speech
-                        step="0.01"
-                        value={podcast.backgroundMusicVolume}
-                        onChange={e => setGlobalMusicVolume(Number(e.target.value))}
-                        className="w-full"
-                    />
+            {/* Export Section REORDERED */}
+            <div className="mb-8 p-6 bg-slate-900/80 backdrop-blur-lg rounded-2xl border border-cyan-900/50 shadow-2xl shadow-cyan-900/20">
+                <h3 className="text-2xl font-bold text-white flex items-center gap-3 mb-6"><DownloadIcon className="w-8 h-8 text-cyan-400"/> Экспорт материалов</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                     <button 
+                        onClick={() => combineAndDownload('wav')} 
+                        disabled={isCombiningAudio || isZipping}
+                        className="flex items-center justify-center gap-3 px-6 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 hover:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isCombiningAudio ? <Spinner className="w-5 h-5"/> : <SpeakerWaveIcon className="w-6 h-6 text-cyan-300"/>}
+                        <span>Скачать Аудио (WAV)</span>
+                    </button>
+                    <button 
+                        onClick={() => generateSrt()} 
+                        disabled={isGeneratingSrt || isZipping}
+                        className="flex items-center justify-center gap-3 px-6 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 hover:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isGeneratingSrt ? <Spinner className="w-5 h-5"/> : <SubtitleIcon className="w-6 h-6 text-cyan-300"/>}
+                        <span>Скачать Субтитры (SRT)</span>
+                    </button>
+                    <button 
+                        onClick={() => downloadProjectAsZip()} 
+                        disabled={isZipping || isCombiningAudio}
+                        className="flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isZipping ? <Spinner className="w-5 h-5"/> : <DownloadIcon className="w-6 h-6"/>}
+                        <span>Скачать Полный ZIP</span>
+                    </button>
                 </div>
             </div>
 
@@ -549,7 +605,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                             <p className="text-xs text-cyan-400 truncate pl-10">{line.soundEffect?.name || 'Не выбран'}</p>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews['preview-hq-mp3'], line.soundEffectVolume ?? 0.7)} className="p-1.5 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-3 h-3"/></button>}
+                                                            {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews?.['preview-hq-mp3'], line.soundEffectVolume ?? 0.7)} className="p-1.5 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-3 h-3"/></button>}
                                                             <button onClick={() => setSfxModalLine({ chapterId: chapter.id, line, lineIndex })} className="p-1.5 bg-indigo-600/80 rounded-full text-white hover:bg-indigo-700"><EditIcon className="w-3 h-3"/></button>
                                                         </div>
                                                         <div className="flex items-center gap-2">
@@ -572,37 +628,6 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         )}
                     </div>
                 ))}
-            </div>
-
-            {/* Export Section */}
-            <div className="mb-8 p-6 bg-slate-900/80 backdrop-blur-lg rounded-2xl border border-cyan-900/50 shadow-2xl shadow-cyan-900/20">
-                <h3 className="text-2xl font-bold text-white flex items-center gap-3 mb-6"><DownloadIcon className="w-8 h-8 text-cyan-400"/> Экспорт материалов</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                     <button 
-                        onClick={() => combineAndDownload('wav')} 
-                        disabled={isLoading || isConvertingToMp3}
-                        className="flex items-center justify-center gap-3 px-6 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 hover:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isLoading ? <Spinner className="w-5 h-5"/> : <SpeakerWaveIcon className="w-6 h-6 text-cyan-300"/>}
-                        <span>Скачать Аудио (WAV)</span>
-                    </button>
-                    <button 
-                        onClick={() => generateSrt()} 
-                        disabled={isGeneratingSrt}
-                        className="flex items-center justify-center gap-3 px-6 py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 hover:border-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isGeneratingSrt ? <Spinner className="w-5 h-5"/> : <SubtitleIcon className="w-6 h-6 text-cyan-300"/>}
-                        <span>Скачать Субтитры (SRT)</span>
-                    </button>
-                    <button 
-                        onClick={() => downloadProjectAsZip()} 
-                        disabled={isZipping}
-                        className="flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white font-bold rounded-xl transition-all shadow-lg shadow-cyan-900/40 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isZipping ? <Spinner className="w-5 h-5"/> : <DownloadIcon className="w-6 h-6"/>}
-                        <span>Скачать Полный ZIP</span>
-                    </button>
-                </div>
             </div>
 
             <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
@@ -630,17 +655,68 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             {podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0 && (
                 <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                     <div className="border-t border-slate-700 pt-6 mt-8">
-                        <h4 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><ImageIcon /> Обложки для YouTube</h4>
-                        <p className="text-sm text-slate-400 mb-4">Нажмите на обложку, чтобы открыть редактор.</p>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            {podcast.youtubeThumbnails.map((thumbnail) => (
-                                <div key={thumbnail.styleName} className="group relative cursor-pointer" onClick={() => onEditThumbnail(thumbnail)}>
-                                    <img src={thumbnail.dataUrl} alt={thumbnail.styleName} className="rounded-lg w-full aspect-video object-cover transition-all" />
-                                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-                                        <EditIcon className="w-8 h-8 text-white" />
-                                    </div>
+                        <div className="flex flex-col lg:flex-row gap-8">
+                            {/* LEFT COLUMN: Text Selection */}
+                            <div className="lg:w-1/3 flex-shrink-0 space-y-4">
+                                <div>
+                                    <h4 className="text-xl font-bold text-white flex items-center gap-3 mb-2"><ImageIcon /> Текст на изображении (Thumbnail Text)</h4>
+                                    <p className="text-sm text-slate-400">Выберите или введите текст, который будет наложен на обложку.</p>
                                 </div>
-                            ))}
+                                
+                                <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-2">
+                                     <div className="relative">
+                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Свой текст</label>
+                                         <input 
+                                            type="text" 
+                                            value={customThumbnailText}
+                                            onChange={(e) => handleThumbnailTextChange(e.target.value)}
+                                            placeholder="Введите текст для обложки..."
+                                            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:ring-2 focus:ring-cyan-500"
+                                         />
+                                     </div>
+                                     
+                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1 mt-4">Варианты от ИИ</label>
+                                     {podcast.youtubeTitleOptions.map((title, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => handleThumbnailTextChange(title)}
+                                            disabled={isUpdatingThumbnails}
+                                            className={`w-full text-left p-3 rounded-lg border transition-all flex items-start gap-2 ${
+                                                podcast.thumbnailText === title 
+                                                ? 'bg-cyan-900/30 border-cyan-500 text-cyan-100' 
+                                                : 'bg-slate-800/50 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-500'
+                                            }`}
+                                        >
+                                            <div className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center flex-shrink-0 ${podcast.thumbnailText === title ? 'border-cyan-400' : 'border-slate-500'}`}>
+                                                {podcast.thumbnailText === title && <div className="w-2 h-2 bg-cyan-400 rounded-full"></div>}
+                                            </div>
+                                            <span className="text-sm leading-snug">{title}</span>
+                                        </button>
+                                     ))}
+                                </div>
+                            </div>
+
+                            {/* RIGHT COLUMN: Thumbnails Grid */}
+                            <div className="flex-grow min-w-0">
+                                <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    Варианты дизайна
+                                    {isUpdatingThumbnails && <Spinner className="w-4 h-4" />}
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {podcast.youtubeThumbnails.map((thumbnail) => (
+                                        <div key={thumbnail.styleName} className="group relative cursor-pointer rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-500 transition-all" onClick={() => onEditThumbnail(thumbnail)}>
+                                            <img src={thumbnail.dataUrl} alt={thumbnail.styleName} className={`w-full aspect-video object-cover transition-opacity ${isUpdatingThumbnails ? 'opacity-50' : 'opacity-100'}`} />
+                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                                <EditIcon className="w-8 h-8 text-white mb-2" />
+                                                <span className="text-white font-bold text-sm">Редактировать</span>
+                                            </div>
+                                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm">
+                                                <p className="text-xs text-white font-semibold text-center">{thumbnail.styleName}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

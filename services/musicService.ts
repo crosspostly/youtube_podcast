@@ -4,8 +4,7 @@ import type { LogEntry, MusicTrack } from '../types';
 import { getApiKey } from '../config/apiConfig';
 import { generateContentWithFallback } from './aiTextService';
 import { getMusicKeywordsPrompt } from './prompts';
-// Fix: Import the new proxy utility to fix CORS issues.
-import { getProxiedUrl } from './apiUtils';
+import { fetchWithCorsFallback } from './apiUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -19,9 +18,7 @@ const searchJamendo = async (query: string, clientId: string, log: LogFunction):
     log({ type: 'request', message: `Запрос музыки с Jamendo: ${query}`, data: { url: searchUrl } });
 
     try {
-        // Fix: Use the proxied URL to avoid CORS errors.
-        const proxiedUrl = getProxiedUrl(searchUrl);
-        const jamendoResponse = await fetch(proxiedUrl, { mode: 'cors' });
+        const jamendoResponse = await fetchWithCorsFallback(searchUrl, { mode: 'cors' });
         
         if (!jamendoResponse.ok) {
             log({ type: 'error', message: `Jamendo API error: ${jamendoResponse.statusText}` });

@@ -1,6 +1,5 @@
 import type { TextOptions } from '../types';
-// Fix: Import proxy utility for loading cross-origin images to canvas.
-import { getProxiedUrl } from './apiUtils';
+import { fetchWithCorsFallback } from './apiUtils';
 
 // A cache to avoid re-fetching font CSS
 const loadedFontStyles = new Set<string>();
@@ -74,13 +73,23 @@ export const drawCanvas = async (
     image: HTMLImageElement,
     options: TextOptions
 ): Promise<void> => {
+    // 1. CRITICAL FIX: Load font BEFORE clearing or drawing anything.
+    // This prevents the "Ghosting" race condition where an async font load
+    // causes a delayed draw to render on top of a subsequent draw.
+    if (options.fontFamily) {
+        await loadGoogleFont(options.fontFamily);
+    }
+
     const canvas = ctx.canvas;
+    
+    // 2. Now that we are ready to draw, Clear the canvas completely.
+    // This ensures this specific draw call owns the entire frame.
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw background image
+    // 3. Draw background image
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
 
-    // Draw overlay
+    // 4. Draw overlay
     if (options.overlayColor) {
         ctx.fillStyle = options.overlayColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -88,11 +97,6 @@ export const drawCanvas = async (
 
     // Prepare text
     const textToDraw = options.textTransform === 'uppercase' ? options.text.toUpperCase() : options.text;
-
-    // Load font if needed
-    if (options.fontFamily) {
-        await loadGoogleFont(options.fontFamily);
-    }
 
     // Set text styles
     ctx.font = `900 ${options.fontSize}px "${options.fontFamily}"`;
@@ -118,16 +122,25 @@ export const drawCanvas = async (
     }
 
     // Set stroke style
+    let strokeWidth = 0;
     if (options.strokeColor && options.strokeWidth && options.strokeWidth > 0) {
         ctx.strokeStyle = options.strokeColor;
         ctx.lineWidth = options.strokeWidth;
+        strokeWidth = options.strokeWidth;
     } else {
         ctx.lineWidth = 0;
         ctx.strokeStyle = 'transparent';
     }
     
     const maxWidth = canvas.width * 0.9;
-    const lineHeight = options.fontSize * 1.1;
+    
+    // IMPROVED LINE HEIGHT CALCULATION
+    // 1. Use a slightly larger base multiplier (1.15)
+    // 2. CRITICAL: Add 2.5x the stroke width. 
+    //    Stroke extends outwards by half its width on top AND bottom. 
+    //    We need to clear the bottom stroke of line 1 AND the top stroke of line 2.
+    const lineHeight = (options.fontSize * 1.15) + (strokeWidth * 2.5);
+    
     wrapAndDrawText(ctx, textToDraw, options.position.x, options.position.y, maxWidth, lineHeight);
 
     // Reset shadow for next draw operations
@@ -138,41 +151,52 @@ export const drawCanvas = async (
 };
 
 export const cropToAspectRatio = (imageUrl: string, targetAspectRatio = 16 / 9): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-                return reject(new Error('Could not get canvas context for cropping.'));
-            }
+    return new Promise(async (resolve, reject) => {
+        try {
+            const response = await fetchWithCorsFallback(imageUrl);
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
 
-            const sourceWidth = img.width;
-            const sourceHeight = img.height;
-            const sourceAspectRatio = sourceWidth / sourceHeight;
+            const img = new Image();
+            // crossOrigin is not needed for blob URLs
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    URL.revokeObjectURL(objectUrl);
+                    return reject(new Error('Could not get canvas context for cropping.'));
+                }
 
-            let sx = 0, sy = 0, sWidth = sourceWidth, sHeight = sourceHeight;
+                const sourceWidth = img.width;
+                const sourceHeight = img.height;
+                const sourceAspectRatio = sourceWidth / sourceHeight;
 
-            if (sourceAspectRatio > targetAspectRatio) {
-                // Image is wider than target
-                sWidth = sourceHeight * targetAspectRatio;
-                sx = (sourceWidth - sWidth) / 2;
-            } else if (sourceAspectRatio < targetAspectRatio) {
-                // Image is taller than target
-                sHeight = sourceWidth / targetAspectRatio;
-                sy = (sourceHeight - sHeight) / 2;
-            }
+                let sx = 0, sy = 0, sWidth = sourceWidth, sHeight = sourceHeight;
 
-            canvas.width = 1280;
-            canvas.height = Math.round(1280 / targetAspectRatio);
-            
-            ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg'));
-        };
-        img.onerror = (e) => reject(new Error(`Failed to load image for cropping from ${imageUrl}. Error: ${e}`));
-        
-        // Use proxy to avoid CORS issues
-        img.src = getProxiedUrl(imageUrl);
+                if (sourceAspectRatio > targetAspectRatio) {
+                    // Image is wider than target
+                    sWidth = sourceHeight * targetAspectRatio;
+                    sx = (sourceWidth - sWidth) / 2;
+                } else if (sourceAspectRatio < targetAspectRatio) {
+                    // Image is taller than target
+                    sHeight = sourceWidth / targetAspectRatio;
+                    sy = (sourceHeight - sHeight) / 2;
+                }
+
+                canvas.width = 1280;
+                canvas.height = Math.round(1280 / targetAspectRatio);
+
+                ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/jpeg'));
+                URL.revokeObjectURL(objectUrl); // Cleanup
+            };
+            img.onerror = (e) => {
+                URL.revokeObjectURL(objectUrl);
+                reject(new Error(`Failed to load image for cropping from blob URL. Error: ${e}`));
+            };
+            img.src = objectUrl;
+        } catch (err) {
+            reject(new Error(`Failed to fetch image for cropping from ${imageUrl}. Error: ${err}`));
+        }
     });
 };

@@ -1,6 +1,5 @@
 
-// services/audioUtils.ts
-import * as lamejs from 'lamejs';
+import { Mp3Encoder, WavHeader } from 'lamejs';
 import type { Podcast, LogEntry, Chapter } from '../types';
 import { fetchWithCorsFallback } from './apiUtils';
 
@@ -101,6 +100,32 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
     const offlineContext = new OfflineAudioContext(numberOfChannels, Math.ceil(totalDuration * sampleRate), sampleRate);
 
     let speechTimeCursor = 0;
+    
+    // Helper function to retry music fetching with delay and potential url cleaning
+    const fetchMusicWithRetry = async (url: string, retries = 3): Promise<Response> => {
+        let currentUrl = url;
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await fetchWithCorsFallback(currentUrl);
+                if (response.ok) return response;
+            } catch (e) {
+                console.warn(`Music fetch attempt ${i+1} failed for ${currentUrl}:`, e);
+                
+                // On first failure for Jamendo, try removing query parameters to access base file if possible
+                // Note: Jamendo needs params for valid access, but sometimes stripping 'from' tracking helps with proxies
+                if (i === 0 && currentUrl.includes('jamendo.com') && currentUrl.includes('&from=')) {
+                     const cleanUrl = currentUrl.replace(/&from=[^&]*/, '');
+                     console.log(`Retrying with cleaned URL: ${cleanUrl}`);
+                     currentUrl = cleanUrl;
+                }
+
+                if (i === retries - 1) throw e;
+                await new Promise(r => setTimeout(r, 2000)); // Wait 2s before retry
+            }
+        }
+        throw new Error(`Failed to fetch music after ${retries} attempts`);
+    };
+
     // Layer 1: Speech and Music
     for (let i = 0; i < podcast.chapters.length; i++) {
         const chapter = podcast.chapters[i];
@@ -113,15 +138,13 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
         speechSource.start(speechTimeCursor);
 
         if (chapter.backgroundMusic) {
-             try {
+            let musicBuffer: AudioBuffer | null = null;
+
+            try {
                 // Fix: Force HTTPS to prevent Mixed Content blocking
-                const musicUrl = chapter.backgroundMusic.audio.replace(/^http:\/\//, 'https://');
-                // Use fallback fetcher to handle CORS/AdBlock
-                const musicResponse = await fetchWithCorsFallback(musicUrl);
+                let musicUrl = chapter.backgroundMusic.audio.replace(/^http:\/\//, 'https://');
                 
-                if (!musicResponse.ok) {
-                     throw new Error(`Music fetch failed: ${musicResponse.status} ${musicResponse.statusText}`);
-                }
+                const musicResponse = await fetchMusicWithRetry(musicUrl);
 
                 const contentType = musicResponse.headers.get('content-type');
                 if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
@@ -129,8 +152,13 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                 }
                 
                 const musicArrayBuffer = await musicResponse.arrayBuffer();
-                const musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
+                musicBuffer = await audioContext.decodeAudioData(musicArrayBuffer);
 
+            } catch (e) { 
+                console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); 
+            }
+            
+            if (musicBuffer) {
                 const musicGainNode = offlineContext.createGain();
                 const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
                 
@@ -147,8 +175,8 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                 }
 
                 if (i === podcast.chapters.length - 1 || podcast.chapters[i+1].backgroundMusic?.id !== chapter.backgroundMusic.id) {
-                     musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
-                     musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
+                        musicGainNode.gain.setValueAtTime(chapterVolume, Math.max(fadeInStartTime, fadeOutEndTime - crossfadeDuration));
+                        musicGainNode.gain.linearRampToValueAtTime(0, fadeOutEndTime);
                 }
 
                 let musicCursor = 0;
@@ -157,10 +185,8 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                     musicSource.buffer = musicBuffer;
                     musicSource.connect(musicGainNode);
                     musicSource.start(speechTimeCursor + musicCursor, 0, speechBuffer.duration - musicCursor);
-                    musicCursor += musicBuffer.duration;
+                    musicCursor += musicBuffer!.duration;
                 }
-            } catch (e) { 
-                console.error(`Не удалось обработать музыку для главы ${chapter.title}`, e); 
             }
         }
         speechTimeCursor += speechBuffer.duration;
@@ -179,11 +205,12 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
             
             // List of candidates to try in order. 
             // HQ MP3 is preferred, then OGG, then LQ MP3.
+            // Safe access with optional chaining in case API returned partial object
             const urlsToTry = [
-                sfx.previews['preview-hq-mp3'],
-                sfx.previews['preview-hq-ogg'],
-                sfx.previews['preview-lq-mp3'],
-                sfx.previews['preview-lq-ogg']
+                sfx.previews?.['preview-hq-mp3'],
+                sfx.previews?.['preview-hq-ogg'],
+                sfx.previews?.['preview-lq-mp3'],
+                sfx.previews?.['preview-lq-ogg']
             ].filter(url => !!url).map(url => url?.replace(/^http:\/\//, 'https://') || '');
             
             let sfxBuffer: AudioBuffer | null = null;
@@ -225,7 +252,7 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                      console.error(`Error scheduling SFX: ${sfx.name}`, e);
                 }
             } else {
-                console.error(`Все попытки загрузить SFX "${sfx.name}" не удались.`);
+                console.error(`Не удалось обработать SFX: ${sfx.name}`);
             }
         }
     }
@@ -237,10 +264,10 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
 export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<Blob> => {
     log({ type: 'info', message: 'Начало конвертации WAV в MP3.' });
     const arrayBuffer = await wavBlob.arrayBuffer();
-    const wav = lamejs.WavHeader.readHeader(new DataView(arrayBuffer));
+    const wav = WavHeader.readHeader(new DataView(arrayBuffer));
     const samples = new Int16Array(arrayBuffer, wav.dataOffset, wav.dataLen / 2);
     
-    const mp3encoder = new lamejs.Mp3Encoder(wav.channels, wav.sampleRate, 128); // 128 kbps
+    const mp3encoder = new Mp3Encoder(wav.channels, wav.sampleRate, 128); // 128 kbps
     const mp3Data = [];
     const sampleBlockSize = 1152; 
 

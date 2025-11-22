@@ -1,8 +1,7 @@
 import type { LogEntry, StockPhoto } from '../types';
 import { getApiKey } from '../config/apiConfig';
 import { cropToAspectRatio } from './canvasUtils';
-// Fix: Import the new proxy utility to fix CORS issues.
-import { getProxiedUrl } from './apiUtils';
+import { fetchWithCorsFallback } from './apiUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -20,9 +19,7 @@ const searchUnsplash = async (query: string, log: LogFunction): Promise<StockPho
     log({ type: 'request', message: 'Searching Unsplash for photos', data: { query } });
 
     try {
-        // Fix: Use the proxied URL to avoid CORS errors.
-        const proxiedUrl = getProxiedUrl(url);
-        const response = await fetch(proxiedUrl, { headers: { Authorization: `Client-ID ${apiKey}` } });
+        const response = await fetchWithCorsFallback(url, { headers: { Authorization: `Client-ID ${apiKey}` } });
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.errors?.[0] || 'Unsplash API error');
@@ -53,9 +50,7 @@ const searchPexels = async (query: string, log: LogFunction): Promise<StockPhoto
     log({ type: 'request', message: 'Searching Pexels for photos', data: { query } });
 
     try {
-        // Fix: Use the proxied URL to avoid CORS errors.
-        const proxiedUrl = getProxiedUrl(url);
-        const response = await fetch(proxiedUrl, { headers: { Authorization: apiKey } });
+        const response = await fetchWithCorsFallback(url, { headers: { Authorization: apiKey } });
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.error || 'Pexels API error');

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { CloseIcon, KeyIcon } from './Icons';
+import { CloseIcon, KeyIcon, WrenchIcon } from './Icons';
 import FontAutocompleteInput from './FontAutocompleteInput';
 import { ApiKeys } from '../types';
+import { usePodcastContext } from '../context/PodcastContext';
 
 interface ApiKeyModalProps {
     onClose: () => void;
@@ -10,7 +11,7 @@ interface ApiKeyModalProps {
     currentFont: string;
 }
 
-type Tab = 'ai' | 'sounds' | 'stock' | 'style';
+type Tab = 'ai' | 'sounds' | 'stock' | 'style' | 'dev';
 
 const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys, currentFont }) => {
     const [geminiApiKey, setGeminiApiKey] = useState(currentKeys.gemini);
@@ -20,6 +21,10 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
     const [jamendoApiKey, setJamendoApiKey] = useState(currentKeys.jamendo);
     const [defaultFont, setDefaultFont] = useState(currentFont);
     const [activeTab, setActiveTab] = useState<Tab>('ai');
+    
+    // Use global context for devMode
+    const { devMode, setDevMode } = usePodcastContext();
+    const [localDevMode, setLocalDevMode] = useState(devMode);
 
     const handleSave = () => {
         onSave({ 
@@ -32,6 +37,7 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
             },
             defaultFont
         });
+        setDevMode(localDevMode);
         onClose();
     };
 
@@ -58,9 +64,10 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                 <div className="px-6 pt-2">
                     <div className="flex items-center border-b border-slate-700 flex-wrap">
                         <TabButton tabId="ai" label="AI" />
-                        <TabButton tabId="sounds" label="Звуки и Музыка" />
-                        <TabButton tabId="stock" label="Стоковые Фото" />
-                        <TabButton tabId="style" label="Стиль канала" />
+                        <TabButton tabId="sounds" label="Звуки" />
+                        <TabButton tabId="stock" label="Фото" />
+                        <TabButton tabId="style" label="Стиль" />
+                        <TabButton tabId="dev" label="Dev" />
                     </div>
                 </div>
                 <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
@@ -178,6 +185,33 @@ const ApiKeyModal: React.FC<ApiKeyModalProps> = ({ onClose, onSave, currentKeys,
                                     value={defaultFont} 
                                     onChange={setDefaultFont} 
                                 />
+                            </div>
+                        </div>
+                    )}
+                    {activeTab === 'dev' && (
+                        <div className="space-y-6">
+                            <div className="bg-yellow-900/20 border border-yellow-700/50 rounded-lg p-4">
+                                <h4 className="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2"><WrenchIcon /> Режим разработчика (Dev Mode)</h4>
+                                <p className="text-slate-300 text-sm mb-4">
+                                    Включает ускоренную генерацию контента для тестирования и отладки.
+                                </p>
+                                <div className="flex items-center justify-between bg-slate-900 p-3 rounded-lg">
+                                    <span className="text-white font-medium">Включить Dev Mode</span>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={localDevMode} 
+                                            onChange={(e) => setLocalDevMode(e.target.checked)} 
+                                            className="sr-only peer" 
+                                        />
+                                        <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+                                    </label>
+                                </div>
+                                <ul className="list-disc list-inside text-xs text-slate-400 mt-4 space-y-1">
+                                    <li>Музыка не скачивается браузером (в ZIP кладется ссылка).</li>
+                                    <li>Параллельная генерация картинок (пауза 2-5 сек вместо очереди).</li>
+                                    <li>Максимально быстрый запуск всех процессов.</li>
+                                </ul>
                             </div>
                         </div>
                     )}

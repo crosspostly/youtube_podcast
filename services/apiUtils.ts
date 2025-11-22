@@ -1,5 +1,4 @@
 
-// services/apiUtils.ts
 import { GoogleGenAI } from "@google/genai";
 import { getApiKey } from '../config/apiConfig';
 import type { LogEntry } from '../types';
@@ -26,7 +25,6 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /**
  * Generic retry wrapper for any async function.
  * It specifically checks for temporary, retryable errors like overload or rate limits.
- * Moved here from the deprecated geminiService.
  */
 export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, retries = 3, initialDelay = 1000): Promise<T> => {
     let attempt = 1;
@@ -52,7 +50,6 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
                 currentDelay *= 2; // Exponential backoff
             } else {
                 // If the error is not retryable or retries are exhausted, throw it.
-                // Fix: Enhance error logging by serializing the error object for more detail.
                 const serializedError = JSON.stringify(error, Object.getOwnPropertyNames(error));
                 log({ type: 'error', message: `API call failed permanently after ${attempt} attempts.`, data: serializedError });
                 throw error;
@@ -64,80 +61,66 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
 };
 
 /**
- * Helper to handle URLs.
- * Reverted to return the original URL directly as the proxy prefix was causing 404 errors.
- * @param url The original absolute URL.
- * @returns The original URL.
- */
-export const getProxiedUrl = (url: string): string => {
-    return url;
-};
-
-/**
  * Robust fetch wrapper that attempts a direct fetch first,
  * and falls back to multiple CORS proxies if the direct fetch fails.
  */
 export const fetchWithCorsFallback = async (url: string, options: RequestInit = {}): Promise<Response> => {
     const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
-    
-    // 1. Try Direct Fetch
+    let lastError: any;
+
+    // Helper to validate response
+    // Proxies often return 200 OK with HTML text on failure.
+    const isValidResponse = (res: Response) => {
+        if (!res.ok) return false;
+        const type = res.headers.get('content-type');
+        const len = res.headers.get('content-length');
+        
+        // Explicitly reject HTML responses for media requests
+        if (type && type.includes('text/html')) {
+             return false;
+        }
+        
+        // If length is very small (< 500 bytes), it's likely an error message or empty file.
+        if (len && parseInt(len) < 500) {
+             // Check if it's NOT audio/image/video but JSON/Text error
+             if (type && (type.includes('text/plain') || type.includes('application/json'))) {
+                 return false;
+             }
+        }
+        return true;
+    };
+
+    // 1. Direct Fetch (Best for CORS-enabled hosts like Freesound CDN/Unsplash)
     try {
         const response = await fetch(url, { ...options, mode: 'cors' });
-        if (response.ok) return response;
-        // If 403/401, it might be a server blocking the request, try proxy.
-        if (response.status === 403 || response.status === 401) {
-             console.warn(`Direct fetch failed with ${response.status}, attempting proxy...`);
-        }
-    } catch (directError) {
-        console.warn("Direct fetch failed (CORS/Network), attempting proxy...", directError);
+        if (isValidResponse(response)) return response;
+    } catch (e) {
+        lastError = e;
     }
 
-    // 2. Try CORSProxy.io
-    try {
-        const proxyUrl1 = `https://corsproxy.io/?${encodeURIComponent(url)}`;
-        const proxyResponse1 = await fetch(proxyUrl1, options);
-        if (proxyResponse1.ok) return proxyResponse1;
-        console.warn(`CORSProxy.io failed with ${proxyResponse1.status}`);
-    } catch (proxyError1) {
-         console.warn("CORSProxy.io failed", proxyError1);
-    }
+    // 2. Proxy Strategies
+    const encodedUrl = encodeURIComponent(url);
     
-    await wait(300);
+    // Updated Proxy List - Ordered by reliability for binary data
+    // corsproxy.io is prioritized as it handles large files well
+    const proxies = [
+        `https://corsproxy.io/?${encodedUrl}`,
+        `https://api.allorigins.win/raw?url=${encodedUrl}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodedUrl}`,
+        // `https://cors-anywhere.herokuapp.com/${url}` // Use only if you have access/own instance
+    ];
 
-    // 3. Try AllOrigins (Raw) - good for audio files, might strip auth headers
-    try {
-        const proxyUrl2 = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-        // Filter out Authorization header for AllOrigins as it might not handle it well for external resources
-        // unless specifically needed. But for public audio it is fine.
-        const proxyResponse2 = await fetch(proxyUrl2, options);
-        if (proxyResponse2.ok) return proxyResponse2;
-        console.warn(`AllOrigins failed with ${proxyResponse2.status}`);
-    } catch (proxyError2) {
-        console.warn("AllOrigins failed", proxyError2);
+    for (const proxyUrl of proxies) {
+        try {
+            // Random delay 500ms-1500ms to avoid rate limiting on proxies
+            await wait(500 + Math.random() * 1000); 
+            const response = await fetch(proxyUrl, options);
+            if (isValidResponse(response)) return response;
+        } catch (e) {
+            lastError = e;
+            console.warn(`Proxy failed: ${proxyUrl}`, e);
+        }
     }
 
-    await wait(300);
-
-    // 4. Try ThingProxy
-    try {
-        const proxyUrl3 = `https://thingproxy.freeboard.io/fetch/${url}`;
-        const proxyResponse3 = await fetch(proxyUrl3, options);
-        if (proxyResponse3.ok) return proxyResponse3;
-        console.warn(`ThingProxy failed with ${proxyResponse3.status}`);
-    } catch(e) {
-        console.warn("ThingProxy failed", e);
-    }
-
-    await wait(300);
-
-    // 5. Try CodeTabs (Last resort)
-    try {
-        const proxyUrl4 = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
-        const proxyResponse4 = await fetch(proxyUrl4, options);
-        if (proxyResponse4.ok) return proxyResponse4;
-        throw new Error(`CodeTabs returned ${proxyResponse4.status}`);
-    } catch (proxyError4) {
-        // If all fail, throw a generic error to be caught by the caller
-        throw new Error(`All fetch attempts failed for URL: ${url}. Last error: ${proxyError4}`);
-    }
+    throw new Error(`All fetch attempts failed for URL: ${url}. Last error: ${lastError}`);
 };

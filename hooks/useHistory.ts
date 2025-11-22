@@ -30,7 +30,17 @@ export const useHistory = () => {
                 const { chapters, ...podcastRest } = p;
                 const serializablePodcast: any = {
                     ...podcastRest,
-                    chapters: chapters.map(({ audioBlob, ...chapterRest }) => chapterRest)
+                    chapters: chapters.map(({ audioBlob, images, ...chapterRest }) => {
+                         // Strip audioBlob always as it's too big
+                         const cleanChapter = { ...chapterRest };
+                         // Strip images from chapters unless saveMedia is on
+                         if (!saveMediaInHistory) {
+                             return cleanChapter;
+                         }
+                         // Even if saveMedia is on, storing base64 images in localStorage is risky. 
+                         // We keep it for now but it likely will hit quota soon.
+                         return { ...cleanChapter, images };
+                    })
                 };
         
                 if (!saveMediaInHistory) {
@@ -44,7 +54,7 @@ export const useHistory = () => {
             try {
                 localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
             } catch (e) {
-                log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено.', data: e });
+                log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено. История не обновлена.', data: e });
             }
         };
 

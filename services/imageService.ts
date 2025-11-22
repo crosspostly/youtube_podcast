@@ -7,6 +7,9 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting, lovecraftian horror, ultra-detailed, wide angle shot, mysterious atmosphere";
 
+// Helper for delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 export const regenerateSingleImage = async (prompt: string, log: LogFunction): Promise<string> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
     
@@ -36,7 +39,7 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction): P
     throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
 };
 
-export const generateStyleImages = async (visualSearchPrompts: string[], imageCount: number, log: LogFunction): Promise<string[]> => {
+export const generateStyleImages = async (visualSearchPrompts: string[], imageCount: number, log: LogFunction, devMode: boolean = false): Promise<string[]> => {
     const targetImageCount = imageCount > 0 ? imageCount : 3;
     let finalPrompts = [...visualSearchPrompts];
     if (finalPrompts.length === 0) {
@@ -48,17 +51,44 @@ export const generateStyleImages = async (visualSearchPrompts: string[], imageCo
     }
     finalPrompts = finalPrompts.slice(0, targetImageCount);
 
-    const generatedImages: string[] = [];
-    for (let i = 0; i < finalPrompts.length; i++) {
-        try {
-            const imageSrc = await regenerateSingleImage(finalPrompts[i], log);
-            generatedImages.push(imageSrc);
-             log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
-        } catch (error) {
-            log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
+    log({ type: 'info', message: `Запуск генерации ${targetImageCount} изображений. Режим: ${devMode ? 'ПАРАЛЛЕЛЬНЫЙ (DEV)' : 'ПОСЛЕДОВАТЕЛЬНЫЙ'}` });
+
+    if (devMode) {
+        // PARALLEL MODE: Fire all requests with small staggered delays
+        // This speeds up the process significantly but hits rate limits harder.
+        // Delays are 2-7 seconds apart.
+        const imagePromises = finalPrompts.map(async (prompt, index) => {
+            // Random delay between 2000ms and 7000ms * index to stagger
+            const staggerDelay = 2000 + (Math.random() * 5000) + (index * 1000);
+            await delay(staggerDelay);
+            
+            try {
+                const imageSrc = await regenerateSingleImage(prompt, log);
+                log({ type: 'info', message: `[DEV MODE] Изображение ${index + 1} готово.` });
+                return imageSrc;
+            } catch (error) {
+                log({ type: 'error', message: `[DEV MODE] Ошибка изображения ${index + 1}.`, data: error });
+                return null; // Filter out failed ones later
+            }
+        });
+
+        const results = await Promise.all(imagePromises);
+        return results.filter((img): img is string => img !== null);
+
+    } else {
+        // SEQUENTIAL MODE (Safe): Wait for one to finish before starting next.
+        const generatedImages: string[] = [];
+        for (let i = 0; i < finalPrompts.length; i++) {
+            try {
+                const imageSrc = await regenerateSingleImage(finalPrompts[i], log);
+                generatedImages.push(imageSrc);
+                 log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано.` });
+            } catch (error) {
+                log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
+            }
         }
+        return generatedImages;
     }
-    return generatedImages;
 };
 
 export const generateMoreImages = async (visualSearchPrompts: string[], log: LogFunction): Promise<string[]> => {
@@ -87,9 +117,9 @@ export const generateMoreImages = async (visualSearchPrompts: string[], log: Log
 };
 
 export const generateYoutubeThumbnails = async (
-    baseImageSrc: string, 
-    title: string, 
-    designConcepts: ThumbnailDesignConcept[], 
+    baseImageSrc: string,
+    title: string,
+    designConcepts: ThumbnailDesignConcept[],
     log: LogFunction,
     defaultFont?: string
 ): Promise<YoutubeThumbnail[]> => {
@@ -111,14 +141,16 @@ export const generateYoutubeThumbnails = async (
         img.src = baseImageSrc;
     });
 
-    const canvas = document.createElement('canvas');
-    canvas.width = 1280;
-    canvas.height = 720;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error("Не удалось получить 2D-контекст холста.");
+    const thumbnailPromises = designConcepts.map(async (concept) => {
+        // Create a separate canvas for each thumbnail to guarantee isolation and prevent race conditions.
+        const canvas = document.createElement('canvas');
+        canvas.width = 1280;
+        canvas.height = 720;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error("Не удалось получить 2D-контекст холста для создания обложки.");
+        }
 
-    const results: YoutubeThumbnail[] = [];
-    for (const concept of designConcepts) {
         const options: TextOptions = {
             text: title,
             fontFamily: defaultFont || concept.fontFamily || 'Impact',
@@ -139,12 +171,14 @@ export const generateYoutubeThumbnails = async (
         
         await drawCanvas(ctx, img, options);
         
-        results.push({
+        return {
             styleName: concept.name,
             dataUrl: canvas.toDataURL('image/png'),
             options: options
-        });
-    }
+        };
+    });
+
+    const results = await Promise.all(thumbnailPromises);
 
     log({ type: 'response', message: 'Обложки по AI-концепциям успешно созданы.' });
     return results;

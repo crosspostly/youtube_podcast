@@ -260,7 +260,8 @@ Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     {
       "name": "Concept name in ${language}",
       "fontFamily": "Google Font Name",
-      "fontSize": 120,
+      // Updated default font size to prevent overlapping on long titles
+      "fontSize": 90,
       "textColor": "#FFFF00",
       "shadowColor": "#000000",
       "overlayOpacity": 0.3,

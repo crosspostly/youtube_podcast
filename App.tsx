@@ -13,10 +13,17 @@ import PodcastStudio from './components/PodcastStudio';
 import LoadingScreen from './components/LoadingScreen';
 import { getAllApiKeys, saveApiKey, ApiService } from './config/apiConfig';
 
-const AppUI: React.FC<{
-    isLogVisible: boolean;
-    onCloseLog: () => void;
-}> = ({ isLogVisible, onCloseLog }) => {
+// This new component contains all UI logic and is rendered within the Provider.
+// This ensures all its children, including modals, have access to the context.
+const AppLayout: React.FC<{
+    apiKeys: ApiKeys;
+    defaultFont: string;
+    onSaveSettings: (data: { keys: Partial<ApiKeys>, defaultFont: string }) => void;
+}> = ({ apiKeys, defaultFont, onSaveSettings }) => {
+    const [isLogVisible, setIsLogVisible] = useState(false);
+    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+    
+    // Now we can safely use the context here.
     const {
         podcast, isLoading, loadingStatus, generationProgress, error, setError,
         logs, editingThumbnail, setEditingThumbnail,
@@ -44,16 +51,28 @@ const AppUI: React.FC<{
     };
 
     return (
-        <>
+         <div className="min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8">
+             <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+                <button onClick={() => setIsApiKeyModalOpen(true)} className="p-2 bg-slate-800/60 text-white rounded-lg hover:bg-slate-700/60 backdrop-blur-sm transition-colors"><KeyIcon /></button>
+                <button onClick={() => setIsLogVisible(true)} className="p-2 bg-slate-800/60 text-white rounded-lg hover:bg-slate-700/60 backdrop-blur-sm transition-colors"><JournalIcon /></button>
+            </div>
+            {isApiKeyModalOpen && (
+                <ApiKeyModal
+                    onClose={() => setIsApiKeyModalOpen(false)}
+                    onSave={onSaveSettings}
+                    currentKeys={apiKeys}
+                    currentFont={defaultFont}
+                />
+            )}
             {isDesignerTestPanelVisible && <PodcastTest onClose={() => setIsDesignerTestPanelVisible(false)} />}
             {isMusicTestPanelVisible && <MusicGenerationTest onClose={() => setIsMusicTestPanelVisible(false)} />}
             {isSfxTestPanelVisible && <SfxTest onClose={() => setIsSfxTestPanelVisible(false)} />}
             {isLogVisible && (
-                <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={onCloseLog}>
+                <div className="fixed inset-0 bg-black/60 z-40 flex justify-end" onClick={() => setIsLogVisible(false)}>
                     <div className="w-full max-w-2xl h-full bg-slate-800 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center p-4 border-b border-slate-700">
                             <h3 className="text-xl font-bold text-white flex items-center gap-2"><JournalIcon/>Журнал запросов</h3>
-                            <button onClick={onCloseLog} className="text-slate-400 hover:text-white"><CloseIcon/></button>
+                            <button onClick={() => setIsLogVisible(false)} className="text-slate-400 hover:text-white"><CloseIcon/></button>
                         </div>
                         <div className="flex-grow p-4 overflow-y-auto text-sm font-mono">
                             {logs.map((entry, index) => (
@@ -105,13 +124,12 @@ const AppUI: React.FC<{
                     )}
                 </main>
             </div>
-        </>
+        </div>
     );
 }
 
+// The main App component now only sets up providers and top-level state.
 const App: React.FC = () => {
-    const [isLogVisible, setIsLogVisible] = useState(false);
-    const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
     const [apiKeys, setApiKeys] = useState<ApiKeys>(getAllApiKeys());
     const [defaultFont, setDefaultFont] = useState('Impact');
 
@@ -136,26 +154,13 @@ const App: React.FC = () => {
     };
     
     return (
-        <div className="min-h-screen text-slate-100 p-4 sm:p-6 lg:p-8">
-             <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-                <button onClick={() => setIsApiKeyModalOpen(true)} className="p-2 bg-slate-800/60 text-white rounded-lg hover:bg-slate-700/60 backdrop-blur-sm transition-colors"><KeyIcon /></button>
-                <button onClick={() => setIsLogVisible(true)} className="p-2 bg-slate-800/60 text-white rounded-lg hover:bg-slate-700/60 backdrop-blur-sm transition-colors"><JournalIcon /></button>
-            </div>
-            {isApiKeyModalOpen && (
-                <ApiKeyModal
-                    onClose={() => setIsApiKeyModalOpen(false)}
-                    onSave={handleSaveSettings}
-                    currentKeys={apiKeys}
-                    currentFont={defaultFont}
-                />
-            )}
-            <PodcastProvider defaultFont={defaultFont}>
-                <AppUI 
-                    isLogVisible={isLogVisible} 
-                    onCloseLog={() => setIsLogVisible(false)}
-                />
-            </PodcastProvider>
-        </div>
+        <PodcastProvider defaultFont={defaultFont}>
+            <AppLayout 
+                apiKeys={apiKeys}
+                defaultFont={defaultFont}
+                onSaveSettings={handleSaveSettings}
+            />
+        </PodcastProvider>
     );
 };
 

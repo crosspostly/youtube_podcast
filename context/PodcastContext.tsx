@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useHistory } from '../hooks/useHistory';
 import { usePodcast } from '../hooks/usePodcast';
 import type { Podcast } from '../types';
@@ -6,7 +6,27 @@ import type { Podcast } from '../types';
 // This helper function combines the hooks and ensures their states are linked.
 const useCombinedState = (defaultFont: string) => {
     const historyHook = useHistory();
-    const podcastHook = usePodcast(historyHook.updateHistoryWithPodcast, defaultFont);
+    // Load devMode from localStorage initially
+    const [devMode, setDevModeState] = useState<boolean>(() => {
+        try {
+            // Default to false if not explicitly set to 'true'.
+            return localStorage.getItem('devMode') === 'true';
+        } catch {
+            return false;
+        }
+    });
+
+    const setDevMode = (value: boolean) => {
+        setDevModeState(value);
+        try {
+            localStorage.setItem('devMode', String(value));
+        } catch (e) {
+            console.error("Failed to save devMode to localStorage", e);
+        }
+    };
+
+    // Pass devMode to usePodcast so it can use it for logic
+    const podcastHook = usePodcast(historyHook.updateHistoryWithPodcast, defaultFont, devMode);
 
     // This override ensures history is always updated when the podcast state is set from any component.
     const setPodcast = (podcast: Podcast | null) => {
@@ -26,6 +46,8 @@ const useCombinedState = (defaultFont: string) => {
         ...historyHook,
         ...podcastHook,
         setPodcast: setPodcastInHistory,
+        devMode,
+        setDevMode
     };
 }
 
