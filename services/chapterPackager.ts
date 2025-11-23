@@ -3,52 +3,43 @@ import JSZip from 'jszip';
 import type { Podcast, Chapter, ChapterMetadata, SfxTiming, LogEntry } from '../types';
 import { fetchWithCorsFallback } from './apiUtils';
 import { getChapterDurations } from './audioUtils';
-import { Mp3Encoder } from 'lamejs';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 const CHARS_PER_SECOND = 15; // Reading speed for timing SFX
 const MAX_SFX_DURATION = 3; // Maximum SFX duration in seconds
 
-/**
- * Main function to package podcast by chapters
- * Creates ZIP with chapters/ folder structure
- */
+// Helper for legacy: convert data URL image to Blob
+const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+    const response = await fetch(dataUrl);
+    return response.blob();
+};
+
 export const packageProjectByChapters = async (
     podcast: Podcast,
     log: LogFunction
 ): Promise<Blob> => {
     log({ type: 'info', message: '🎬 Начало упаковки проекта по главам...' });
-    
     const zip = new JSZip();
-    
-    // Get chapter durations
     const chapterDurations = await getChapterDurations(podcast.chapters);
     log({ type: 'info', message: `✅ Получены длительности ${chapterDurations.length} глав` });
-    
-    // Process each chapter
     for (let i = 0; i < podcast.chapters.length; i++) {
         const chapter = podcast.chapters[i];
         const chapterNum = String(i + 1).padStart(2, '0');
         const audioDuration = chapterDurations[i];
-        
         log({ type: 'info', message: `📁 Обработка главы ${chapterNum}: "${chapter.title}" (${audioDuration.toFixed(1)}s)` });
-        
         const chapterFolder = zip.folder(`chapters/chapter_${chapterNum}`);
         if (!chapterFolder) continue;
-        
         try {
             // 1. Add chapter audio (speech)
             if (chapter.audioBlob) {
                 chapterFolder.file('audio.wav', chapter.audioBlob);
                 log({ type: 'info', message: `  ✅ Аудио главы добавлено` });
             }
-            
             // 2. Generate and add chapter subtitles
             const chapterSrt = generateChapterSrt(chapter, 0);
             chapterFolder.file('subtitles.srt', chapterSrt);
             log({ type: 'info', message: `  ✅ Субтитры сгенерированы` });
-            
             // 3. Download and trim background music
             if (chapter.backgroundMusic) {
                 try {
@@ -60,38 +51,51 @@ export const packageProjectByChapters = async (
                         'music',
                         log
                     );
-                    chapterFolder.file('music.mp3', musicBlob);
+                    chapterFolder.file('music.wav', musicBlob);
                     log({ type: 'info', message: `  ✅ Музыка добавлена и обрезана до ${audioDuration.toFixed(1)}s` });
                 } catch (e: any) {
                     log({ type: 'error', message: `  ❌ Не удалось скачать музыку: ${e.message}` });
                 }
             }
-            
-            // 4. Add chapter images
+            // 4. Add chapter images (handle both legacy and new format)
+            const imagesFolder = chapterFolder.folder('images');
+            let imageCount = 0;
             if (chapter.backgroundImages && chapter.backgroundImages.length > 0) {
-                const imagesFolder = chapterFolder.folder('images');
+                // New format with blobs
                 for (let imgIdx = 0; imgIdx < chapter.backgroundImages.length; imgIdx++) {
                     const img = chapter.backgroundImages[imgIdx];
                     if (img.blob) {
                         const imgNum = String(imgIdx + 1).padStart(3, '0');
                         imagesFolder?.file(`${imgNum}.png`, img.blob);
+                        imageCount++;
                     }
                 }
-                log({ type: 'info', message: `  ✅ Добавлено ${chapter.backgroundImages.length} изображений` });
+            } else if (chapter.images && chapter.images.length > 0) {
+                log({ type: 'info', message: `  ⚠️ Используется устаревший формат images (data URLs)` });
+                for (let imgIdx = 0; imgIdx < chapter.images.length; imgIdx++) {
+                    const imgDataUrl = chapter.images[imgIdx];
+                    try {
+                        const blob = await dataUrlToBlob(imgDataUrl);
+                        const imgNum = String(imgIdx + 1).padStart(3, '0');
+                        imagesFolder?.file(`${imgNum}.png`, blob);
+                        imageCount++;
+                    } catch (e) {
+                        log({ type: 'error', message: `  ❌ Ошибка конвертации изображения ${imgIdx + 1}` });
+                    }
+                }
             }
-            
+            if (imageCount > 0) {
+                log({ type: 'info', message: `  ✅ Добавлено ${imageCount} изображений` });
+            }
             // 5. Download and trim SFX with precise timings
             const sfxFolder = chapterFolder.folder('sfx');
             const sfxTimings: SfxTiming[] = [];
-            
             let timeCursor = 0;
             for (const line of chapter.script) {
                 if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
                     const sfx = line.soundEffect;
                     const sfxStartTime = timeCursor;
-                    
                     const sfxUrl = getBestSfxUrl(sfx);
-                    
                     if (sfxUrl) {
                         try {
                             log({ type: 'info', message: `  🔊 Скачивание SFX: "${sfx.name}" @ ${sfxStartTime.toFixed(1)}s` });
@@ -101,10 +105,8 @@ export const packageProjectByChapters = async (
                                 'sfx',
                                 log
                             );
-                            
-                            const sfxFileName = `${sanitizeFileName(sfx.name)}.mp3`;
+                            const sfxFileName = `${sanitizeFileName(sfx.name)}.wav`;
                             sfxFolder?.file(sfxFileName, sfxBlob);
-                            
                             const sfxDuration = Math.min(MAX_SFX_DURATION, audioDuration - sfxStartTime);
                             sfxTimings.push({
                                 name: sfx.name,
@@ -113,7 +115,6 @@ export const packageProjectByChapters = async (
                                 volume: line.soundEffectVolume ?? 0.7,
                                 filePath: `sfx/${sfxFileName}`
                             });
-                            
                             log({ type: 'info', message: `    ✅ SFX добавлен (${sfxDuration.toFixed(1)}s)` });
                         } catch (e: any) {
                             log({ type: 'error', message: `    ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
@@ -124,33 +125,25 @@ export const packageProjectByChapters = async (
                     timeCursor += line.text.length / CHARS_PER_SECOND;
                 }
             }
-            
             if (sfxTimings.length > 0) {
                 log({ type: 'info', message: `  ✅ Добавлено ${sfxTimings.length} звуковых эффектов` });
             }
-            
             // 6. Create chapter metadata
             const metadata: ChapterMetadata = {
                 chapterNumber: i + 1,
                 title: chapter.title,
                 audioDuration: audioDuration,
-                imageDuration: chapter.backgroundImages?.length 
-                    ? audioDuration / chapter.backgroundImages.length 
-                    : audioDuration,
-                imageCount: chapter.backgroundImages?.length ?? 0,
+                imageDuration: imageCount > 0 ? audioDuration / imageCount : audioDuration,
+                imageCount: imageCount,
                 musicVolume: chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume,
                 sfxTimings: sfxTimings
             };
-            
             chapterFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
             log({ type: 'info', message: `  ✅ Метаданные главы созданы` });
-            
         } catch (error: any) {
             log({ type: 'error', message: `❌ Ошибка обработки главы ${chapterNum}: ${error.message}` });
         }
     }
-    
-    // 7. Add project metadata
     const projectMetadata = {
         title: podcast.selectedTitle || podcast.topic,
         totalChapters: podcast.chapters.length,
@@ -160,110 +153,74 @@ export const packageProjectByChapters = async (
     };
     zip.file('project_metadata.json', JSON.stringify(projectMetadata, null, 2));
     log({ type: 'info', message: '✅ Метаданные проекта созданы' });
-    
-    // 8. Add assembly script
     const assemblyScript = generateChapterBasedAssemblyScript(podcast.chapters.length);
     zip.file('assemble_video.bat', assemblyScript);
     log({ type: 'info', message: '✅ Скрипт сборки видео добавлен' });
-    
     log({ type: 'info', message: '🎉 Упаковка завершена! Генерация ZIP...' });
     return zip.generateAsync({ type: 'blob' });
 };
 
-/**
- * Get best available SFX URL from previews
- */
 const getBestSfxUrl = (sfx: any): string | null => {
     const candidates = [
         sfx.previews?.['preview-hq-mp3'],
         sfx.previews?.['preview-hq-ogg'],
         sfx.previews?.['preview-lq-mp3'],
     ].filter(Boolean);
-    
     return candidates[0]?.replace(/^http:\/\//, 'https://') || null;
 };
 
-/**
- * Download audio and trim to max duration
- */
 const downloadAndTrimAudio = async (
     url: string,
     maxDuration: number,
     type: 'music' | 'sfx',
     log: LogFunction
 ): Promise<Blob> => {
-    // Validate URL
     if (!url || !url.startsWith('https://')) {
         throw new Error(`Invalid URL for ${type}: ${url}`);
     }
-    
-    // Download
     const response = await fetchWithCorsFallback(url);
     if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    
     const contentType = response.headers.get('content-type');
     if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
         throw new Error(`Invalid content type: ${contentType}. Expected audio.`);
     }
-    
     const arrayBuffer = await response.arrayBuffer();
-    
-    // Decode audio
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
     let audioBuffer: AudioBuffer;
-    
     try {
         audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     } catch (e) {
         throw new Error(`Failed to decode ${type} audio`);
     }
-    
-    // Check if trimming needed
     if (audioBuffer.duration <= maxDuration) {
-        // No trim needed, return original
-        return new Blob([arrayBuffer], { type: 'audio/mpeg' });
+        return audioBufferToWavBlob(audioBuffer);
     }
-    
-    // Trim to max duration with fade out
     const trimmedDuration = maxDuration;
-    const fadeOutDuration = 1.0; // 1 second fade out
-    
+    const fadeOutDuration = 1.0;
     const offlineContext = new OfflineAudioContext(
         audioBuffer.numberOfChannels,
         Math.ceil(trimmedDuration * audioBuffer.sampleRate),
         audioBuffer.sampleRate
     );
-    
     const source = offlineContext.createBufferSource();
     source.buffer = audioBuffer;
-    
-    // Apply fade out
     const gainNode = offlineContext.createGain();
     gainNode.gain.setValueAtTime(1.0, 0);
     gainNode.gain.setValueAtTime(1.0, trimmedDuration - fadeOutDuration);
     gainNode.gain.linearRampToValueAtTime(0, trimmedDuration);
-    
     source.connect(gainNode);
     gainNode.connect(offlineContext.destination);
     source.start(0, 0, trimmedDuration);
-    
     const renderedBuffer = await offlineContext.startRendering();
-    
-    // Convert to WAV then MP3
-    const wavBlob = audioBufferToWavBlob(renderedBuffer);
-    return convertWavToMp3Simple(wavBlob);
+    return audioBufferToWavBlob(renderedBuffer);
 };
 
-/**
- * Convert AudioBuffer to WAV Blob
- */
 const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
     const numChannels = buffer.numberOfChannels;
     const sampleRate = buffer.sampleRate;
     const bitDepth = 16;
-
     let result: Float32Array;
     if (numChannels === 2) {
         result = new Float32Array(buffer.length * 2);
@@ -276,24 +233,21 @@ const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
     } else {
         result = buffer.getChannelData(0);
     }
-
     const dataLength = result.length * (bitDepth / 8);
     const bufferLength = 44 + dataLength;
     const arrayBuffer = new ArrayBuffer(bufferLength);
     const view = new DataView(arrayBuffer);
-
     const writeString = (offset: number, string: string) => {
         for (let i = 0; i < string.length; i++) {
             view.setUint8(offset + i, string.charCodeAt(i));
         }
     };
-
     writeString(0, 'RIFF');
     view.setUint32(4, 36 + dataLength, true);
     writeString(8, 'WAVE');
     writeString(12, 'fmt ');
     view.setUint32(16, 16, true);
-    view.setUint16(20, 1, true); // PCM
+    view.setUint16(20, 1, true);
     view.setUint16(22, numChannels, true);
     view.setUint32(24, sampleRate, true);
     view.setUint32(28, sampleRate * (bitDepth / 8) * numChannels, true);
@@ -301,68 +255,42 @@ const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
     view.setUint16(34, bitDepth, true);
     writeString(36, 'data');
     view.setUint32(40, dataLength, true);
-
     let offset = 44;
     for (let i = 0; i < result.length; i++, offset += 2) {
         const s = Math.max(-1, Math.min(1, result[i]));
         view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
     }
-
     return new Blob([view], { type: 'audio/wav' });
 };
 
-/**
- * Simple WAV to MP3 conversion
- */
-const convertWavToMp3Simple = async (wavBlob: Blob): Promise<Blob> => {
-    // For now, return WAV as-is
-    // Full MP3 encoding can be added later with lamejs if needed
-    // Most systems can handle WAV for mixing
-    return wavBlob;
-};
-
-/**
- * Clean subtitle text from encoding artifacts
- */
 const cleanSubtitleText = (text: string): string => {
     return text
-        // Fix common encoding issues
-        .replace(/â€"/g, '—')        // em-dash
-        .replace(/â€"/g, '–')        // en-dash  
-        .replace(/â€œ/g, '"')        // left double quote
-        .replace(/â€/g, '"')         // right double quote
-        .replace(/â€™/g, "'")        // right single quote
-        .replace(/â€˜/g, "'")        // left single quote
-        .replace(/â€¦/g, '...')      // ellipsis
-        
-        // Remove control characters
+        .replace(/â€"/g, '—')
+        .replace(/â€"/g, '–')
+        .replace(/â€œ/g, '"')
+        .replace(/â€/g, '"')
+        .replace(/â€™/g, "'")
+        .replace(/â€˜/g, "'")
+        .replace(/â€¦/g, '...')
         .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-        
-        // Normalize spaces
         .replace(/\s+/g, ' ')
         .trim();
 };
 
-/**
- * Generate SRT subtitles for a single chapter
- */
 const generateChapterSrt = (chapter: Chapter, startTime: number): string => {
     let srtContent = '';
     let currentTime = startTime;
     let subtitleIndex = 1;
-    
     const formatTime = (seconds: number): string => {
         const date = new Date(0);
         date.setSeconds(seconds);
         return date.toISOString().substr(11, 12).replace('.', ',');
     };
-    
     const chunkSubtitles = (text: string, maxLineLength = 42, maxLines = 2): string[] => {
         const cleanedText = cleanSubtitleText(text);
         const words = cleanedText.split(' ');
         const lines: string[] = [];
         let currentLine = '';
-
         words.forEach(word => {
             if (currentLine.length + word.length + 1 <= maxLineLength) {
                 currentLine += (currentLine ? ' ' : '') + word;
@@ -372,49 +300,36 @@ const generateChapterSrt = (chapter: Chapter, startTime: number): string => {
             }
         });
         if (currentLine) lines.push(currentLine);
-
         const chunks: string[] = [];
         for (let i = 0; i < lines.length; i += maxLines) {
             chunks.push(lines.slice(i, i + maxLines).join('\n'));
         }
         return chunks;
     };
-    
     for (const line of chapter.script) {
         if (line.speaker.toUpperCase() === 'SFX') continue;
-        
         const chunks = chunkSubtitles(line.text);
         for (const chunk of chunks) {
             if (!chunk.trim()) continue;
-            
             const duration = Math.max(1, chunk.replace(/\n/g, ' ').length / CHARS_PER_SECOND);
-            
             srtContent += `${subtitleIndex}\n`;
             srtContent += `${formatTime(currentTime)} --> ${formatTime(currentTime + duration)}\n`;
             srtContent += `${chunk}\n\n`;
-            
             currentTime += duration;
             subtitleIndex++;
         }
     }
-    
     return srtContent;
 };
 
-/**
- * Sanitize filename for file system
- */
 const sanitizeFileName = (name: string): string => {
     return name
         .replace(/[^\w\s-]/g, '')
         .replace(/\s+/g, '_')
         .toLowerCase()
-        .substring(0, 50); // Limit length
+        .substring(0, 50);
 };
 
-/**
- * Generate FFmpeg assembly script for chapter-based structure
- */
 const generateChapterBasedAssemblyScript = (chapterCount: number): string => {
     return `@echo off
 setlocal enabledelayedexpansion
@@ -487,8 +402,8 @@ for /L %%i in (1,1,${chapterCount}) do (
     set "maps=-map [v] -map 1:a"
     
     REM Add music if exists
-    if exist "!chapter_dir!\\music.mp3" (
-        set "inputs=!inputs! -i \"!chapter_dir!\\music.mp3\""
+    if exist "!chapter_dir!\\music.wav" (
+        set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
         set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=2[a]"
         set "maps=-map [v] -map [a]"
     ) else (
