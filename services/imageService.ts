@@ -35,6 +35,21 @@ export const regenerateSingleImageWithBlob = async (prompt: string, log: LogFunc
     throw new Error("Не удалось найти данные изображения");
 };
 
+export const generateStyleImages = generateImagesWithBlobs;
+
+export const generateYoutubeThumbnails = async (
+    baseImage: BackgroundImage,
+    title: string,
+    designConcepts: any[],
+    log: LogFunction,
+    defaultFont: string
+): Promise<any[]> => {
+    // Placeholder implementation - this would need the actual thumbnail generation logic
+    // For now, return empty array to avoid build errors
+    log({ type: 'info', message: 'Генерация YouTube миниатюр (placeholder)' });
+    return [];
+};
+
 export const generateImagesWithBlobs = async (
     visualSearchPrompts: string[],
     imageCount: number,

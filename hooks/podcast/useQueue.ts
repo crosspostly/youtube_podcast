@@ -28,6 +28,7 @@ export const useQueue = (
     setError: React.Dispatch<React.SetStateAction<string | null>>
 ) => {
     const [projectQueue, setProjectQueue] = useState<QueuedProject[]>([]);
+    const [completedPodcasts, setCompletedPodcasts] = useState<Map<string, Podcast>>(new Map());
     const [isQueueRunning, setIsQueueRunning] = useState(false);
     const [isPipelineLoading, setIsPipelineLoading] = useState(false);
 
@@ -54,6 +55,9 @@ export const useQueue = (
                 { character1: 'auto', character2: 'auto' }, 'Puck', itemToRun.imagesPerChapter, itemToRun.imageSource,
                 true, () => {}, () => {} // No UI updates for headless
             );
+
+            // Store the completed podcast for batch export
+            setCompletedPodcasts(prev => new Map(prev).set(itemToRun.id, generatedPodcast));
 
             // In a real implementation, you might auto-download the ZIP here.
             // For now, we just mark as complete.
@@ -101,6 +105,7 @@ export const useQueue = (
 
     return {
         projectQueue,
+        completedPodcasts,
         isQueueRunning,
         isPipelineLoading,
         startContentPipeline,

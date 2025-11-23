@@ -6,7 +6,7 @@ import { previewVoice } from '../services/aiAudioService';
 import { getVoiceFromCache, saveVoiceToCache } from '../services/dbService';
 import { VOICES } from '../config/voices';
 import Spinner from './Spinner';
-import { HistoryIcon, TrashIcon, SearchIcon, PlayIcon, PauseIcon, BeakerIcon, ImageIcon, LightbulbIcon, CheckIcon, CloseIcon } from './Icons';
+import { HistoryIcon, TrashIcon, SearchIcon, PlayIcon, PauseIcon, BeakerIcon, ImageIcon, LightbulbIcon, CheckIcon, CloseIcon, DownloadIcon } from './Icons';
 
 interface ProjectSetupProps {
     onStartProject: (
@@ -54,7 +54,8 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         isLoading, log, setError,
         history, setPodcast: setPodcastInHistory, clearHistory,
         saveMediaInHistory, setSaveMediaInHistory, startQuickTest,
-        startContentPipeline, projectQueue, isQueueRunning,
+        startContentPipeline, projectQueue, completedPodcasts, isQueueRunning,
+        downloadAllCompletedProjects, isBatchExporting,
     } = usePodcastContext();
     
     const [projectTitleInput, setProjectTitleInput] = useState<string>('');
@@ -212,21 +213,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
         }, 100);
     };
 
-    // Функция для массового скачивания всех архивов
-    const handleDownloadAllZips = () => {
-        projectQueue.forEach(item => {
-            if (item.status === 'completed' && item.zipUrl) {
-                const link = document.createElement('a');
-                link.href = item.zipUrl;
-                link.download = item.zipName;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
 
-                revokeUrlAfterDownload(item.zipUrl);
-            }
-        });
-    };
 
     return (
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
@@ -314,6 +301,29 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                                 </div>
                             ))}
                         </div>
+                        
+                        {/* Batch Export Button */}
+                        {completedPodcasts.size > 0 && (
+                            <div className="mt-6 border-t border-slate-700 pt-4">
+                                <button
+                                    onClick={() => downloadAllCompletedProjects(Array.from(completedPodcasts.values()), log)}
+                                    disabled={isBatchExporting || completedPodcasts.size === 0}
+                                    className="w-full px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-700 hover:from-teal-500 hover:to-cyan-600 text-white font-bold rounded-xl transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                                >
+                                    {isBatchExporting ? (
+                                        <>
+                                            <Spinner className="w-5 h-5" />
+                                            <span>Упаковка проектов...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <DownloadIcon className="w-6 h-6" />
+                                            <span>📦 Скачать все проекты ({completedPodcasts.size})</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -533,43 +543,7 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                 </div>
             )}
 
-            {/* Новый блок для массового скачивания архивов */}
-            {projectQueue.length > 0 && (
-              <div className="mt-8">
-                <h4 className="text-lg font-semibold text-white mb-3">Готовые архивы для скачивания</h4>
-                <div className="space-y-2">
-                  {projectQueue.map((item) => (
-                    <div key={item.id} className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
-                      <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
-                        {getStatusIcon(item.status)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-slate-300 truncate">{item.title}</p>
-                        <p className="text-xs text-slate-500">{item.language}, {item.narrationMode}</p>
-                      </div>
-                      {item.status === 'completed' && item.zipUrl && (
-                        <a
-                          href={item.zipUrl}
-                          download={item.zipName}
-                          className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-bold"
-                          onClick={() => revokeUrlAfterDownload(item.zipUrl)}
-                        >
-                          Скачать архив
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {projectQueue.some(item => item.status === 'completed' && item.zipUrl) && (
-                  <button
-                    className="mt-6 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-bold rounded-lg hover:from-teal-400 hover:to-cyan-500"
-                    onClick={handleDownloadAllZips}
-                  >
-                    Скачать все видео
-                  </button>
-                )}
-              </div>
-            )}
+             
         </div>
     );
 };
