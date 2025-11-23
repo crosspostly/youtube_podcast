@@ -1,5 +1,5 @@
 import { Modality, GenerateContentResponse } from "@google/genai";
-import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept } from '../types';
+import type { LogEntry, YoutubeThumbnail, TextOptions, ThumbnailDesignConcept, BackgroundImage } from '../types';
 import { drawCanvas } from './canvasUtils';
 import { withRetries, getAiClient } from './apiUtils';
 
@@ -9,6 +9,52 @@ const STYLE_PROMPT_SUFFIX = ", cinematic, hyperrealistic, 8k, dramatic lighting,
 
 // Helper for delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Convert data URL to Blob
+ */
+export const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
+    const response = await fetch(dataUrl);
+    return response.blob();
+};
+
+/**
+ * Generate single image and return both data URL and blob
+ */
+export const regenerateSingleImageWithBlob = async (prompt: string, log: LogFunction): Promise<BackgroundImage> => {
+    const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
+    
+    log({ type: 'request', message: `Запрос одного изображения от gemini-2.5-flash-image`, data: { prompt: fullPrompt } });
+    const ai = getAiClient(log);
+    
+    const generateCall = () => ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+            parts: [{ text: fullPrompt }],
+        },
+        config: {
+            responseModalities: [Modality.IMAGE],
+        },
+    });
+
+    const response: GenerateContentResponse = await withRetries(generateCall, log);
+    
+    log({ type: 'response', message: 'Полный ответ от gemini-2.5-flash-image', data: response });
+
+    const part = response?.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+    if (part?.inlineData) {
+        const base64Image: string = part.inlineData.data;
+        const dataUrl = `data:image/png;base64,${base64Image}`;
+        const blob = await dataUrlToBlob(dataUrl);
+        
+        return {
+            url: dataUrl,
+            blob: blob,
+            prompt: prompt
+        };
+    }
+    throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
+};
 
 export const regenerateSingleImage = async (prompt: string, log: LogFunction): Promise<string> => {
     const fullPrompt = prompt + STYLE_PROMPT_SUFFIX;
@@ -37,6 +83,63 @@ export const regenerateSingleImage = async (prompt: string, log: LogFunction): P
         return `data:image/png;base64,${base64Image}`;
     }
     throw new Error("Не удалось найти данные изображения в ответе модели Gemini.");
+};
+
+/**
+ * Generate images with blobs for packaging
+ */
+export const generateImagesWithBlobs = async (
+    visualSearchPrompts: string[], 
+    imageCount: number, 
+    log: LogFunction, 
+    devMode: boolean = false
+): Promise<BackgroundImage[]> => {
+    const targetImageCount = imageCount > 0 ? imageCount : 3;
+    let finalPrompts = [...visualSearchPrompts];
+    if (finalPrompts.length === 0) {
+         log({ type: 'info', message: 'Промпты для изображений не предоставлены, пропуск генерации.' });
+        return [];
+    }
+    while (finalPrompts.length < targetImageCount) {
+        finalPrompts.push(...visualSearchPrompts.slice(0, targetImageCount - finalPrompts.length));
+    }
+    finalPrompts = finalPrompts.slice(0, targetImageCount);
+
+    log({ type: 'info', message: `Запуск генерации ${targetImageCount} изображений с blob'ами. Режим: ${devMode ? 'ПАРАЛЛЕЛЬНЫЙ (DEV)' : 'ПОСЛЕДОВАТЕЛЬНЫЙ'}` });
+
+    if (devMode) {
+        // PARALLEL MODE: Fire all requests with small staggered delays
+        const imagePromises = finalPrompts.map(async (prompt, index) => {
+            const staggerDelay = 2000 + (Math.random() * 5000) + (index * 1000);
+            await delay(staggerDelay);
+            
+            try {
+                const bgImage = await regenerateSingleImageWithBlob(prompt, log);
+                log({ type: 'info', message: `[DEV MODE] Изображение ${index + 1} готово с blob'ом.` });
+                return bgImage;
+            } catch (error) {
+                log({ type: 'error', message: `[DEV MODE] Ошибка изображения ${index + 1}.`, data: error });
+                return null;
+            }
+        });
+
+        const results = await Promise.all(imagePromises);
+        return results.filter((img): img is BackgroundImage => img !== null);
+
+    } else {
+        // SEQUENTIAL MODE (Safe)
+        const generatedImages: BackgroundImage[] = [];
+        for (let i = 0; i < finalPrompts.length; i++) {
+            try {
+                const bgImage = await regenerateSingleImageWithBlob(finalPrompts[i], log);
+                generatedImages.push(bgImage);
+                 log({ type: 'info', message: `Изображение ${i + 1}/${targetImageCount} успешно сгенерировано с blob'ом.` });
+            } catch (error) {
+                log({ type: 'error', message: `Не удалось сгенерировать изображение ${i + 1}. Пропуск.`, data: error });
+            }
+        }
+        return generatedImages;
+    }
 };
 
 export const generateStyleImages = async (visualSearchPrompts: string[], imageCount: number, log: LogFunction, devMode: boolean = false): Promise<string[]> => {
