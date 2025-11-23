@@ -15,35 +15,39 @@ const dataUrlToBlob = async (dataUrl: string): Promise<Blob> => {
     return response.blob();
 };
 
-export const packageProjectByChapters = async (
+export const packageProjectToFolder = async (
     podcast: Podcast,
+    zipFolder: JSZip,
     log: LogFunction
-): Promise<Blob> => {
-    log({ type: 'info', message: '🎬 Начало упаковки проекта по главам...' });
-    const zip = new JSZip();
+): Promise<void> => {
+    log({ type: 'info', message: `📦 Начало упаковки проекта: "${podcast.selectedTitle || podcast.topic}"` });
     const chapterDurations = await getChapterDurations(podcast.chapters);
     log({ type: 'info', message: `✅ Получены длительности ${chapterDurations.length} глав` });
+    
     for (let i = 0; i < podcast.chapters.length; i++) {
         const chapter = podcast.chapters[i];
         const chapterNum = String(i + 1).padStart(2, '0');
         const audioDuration = chapterDurations[i];
-        log({ type: 'info', message: `📁 Обработка главы ${chapterNum}: "${chapter.title}" (${audioDuration.toFixed(1)}s)` });
-        const chapterFolder = zip.folder(`chapters/chapter_${chapterNum}`);
+        log({ type: 'info', message: `  📁 Глава ${chapterNum}: "${chapter.title}" (${audioDuration.toFixed(1)}s)` });
+        const chapterFolder = zipFolder.folder(`chapters/chapter_${chapterNum}`);
         if (!chapterFolder) continue;
+        
         try {
             // 1. Add chapter audio (speech)
             if (chapter.audioBlob) {
                 chapterFolder.file('audio.wav', chapter.audioBlob);
-                log({ type: 'info', message: `  ✅ Аудио главы добавлено` });
+                log({ type: 'info', message: `    ✅ Аудио главы добавлено` });
             }
+            
             // 2. Generate and add chapter subtitles
             const chapterSrt = generateChapterSrt(chapter, 0);
             chapterFolder.file('subtitles.srt', chapterSrt);
-            log({ type: 'info', message: `  ✅ Субтитры сгенерированы` });
+            log({ type: 'info', message: `    ✅ Субтитры сгенерированы` });
+            
             // 3. Download and trim background music
             if (chapter.backgroundMusic) {
                 try {
-                    log({ type: 'info', message: `  🎵 Скачивание музыки: "${chapter.backgroundMusic.name}"` });
+                    log({ type: 'info', message: `    🎵 Скачивание музыки: "${chapter.backgroundMusic.name}"` });
                     const musicUrl = chapter.backgroundMusic.audio.replace(/^http:\/\//, 'https://');
                     const musicBlob = await downloadAndTrimAudio(
                         musicUrl,
@@ -52,11 +56,12 @@ export const packageProjectByChapters = async (
                         log
                     );
                     chapterFolder.file('music.wav', musicBlob);
-                    log({ type: 'info', message: `  ✅ Музыка добавлена и обрезана до ${audioDuration.toFixed(1)}s` });
+                    log({ type: 'info', message: `    ✅ Музыка добавлена и обрезана до ${audioDuration.toFixed(1)}s` });
                 } catch (e: any) {
-                    log({ type: 'error', message: `  ❌ Не удалось скачать музыку: ${e.message}` });
+                    log({ type: 'error', message: `    ❌ Не удалось скачать музыку: ${e.message}` });
                 }
             }
+            
             // 4. Add chapter images (handle both legacy and new format)
             const imagesFolder = chapterFolder.folder('images');
             let imageCount = 0;
@@ -71,7 +76,7 @@ export const packageProjectByChapters = async (
                     }
                 }
             } else if (chapter.images && chapter.images.length > 0) {
-                log({ type: 'info', message: `  ⚠️ Используется устаревший формат images (data URLs)` });
+                log({ type: 'info', message: `    ⚠️ Используется устаревший формат images (data URLs)` });
                 for (let imgIdx = 0; imgIdx < chapter.images.length; imgIdx++) {
                     const imgDataUrl = chapter.images[imgIdx];
                     try {
@@ -80,13 +85,14 @@ export const packageProjectByChapters = async (
                         imagesFolder?.file(`${imgNum}.png`, blob);
                         imageCount++;
                     } catch (e) {
-                        log({ type: 'error', message: `  ❌ Ошибка конвертации изображения ${imgIdx + 1}` });
+                        log({ type: 'error', message: `    ❌ Ошибка конвертации изображения ${imgIdx + 1}` });
                     }
                 }
             }
             if (imageCount > 0) {
-                log({ type: 'info', message: `  ✅ Добавлено ${imageCount} изображений` });
+                log({ type: 'info', message: `    ✅ Добавлено ${imageCount} изображений` });
             }
+            
             // 5. Download and trim SFX with precise timings
             const sfxFolder = chapterFolder.folder('sfx');
             const sfxTimings: SfxTiming[] = [];
@@ -98,7 +104,7 @@ export const packageProjectByChapters = async (
                     const sfxUrl = getBestSfxUrl(sfx);
                     if (sfxUrl) {
                         try {
-                            log({ type: 'info', message: `  🔊 Скачивание SFX: "${sfx.name}" @ ${sfxStartTime.toFixed(1)}s` });
+                            log({ type: 'info', message: `    🔊 Скачивание SFX: "${sfx.name}" @ ${sfxStartTime.toFixed(1)}s` });
                             const sfxBlob = await downloadAndTrimAudio(
                                 sfxUrl,
                                 MAX_SFX_DURATION,
@@ -115,9 +121,9 @@ export const packageProjectByChapters = async (
                                 volume: line.soundEffectVolume ?? 0.7,
                                 filePath: `sfx/${sfxFileName}`
                             });
-                            log({ type: 'info', message: `    ✅ SFX добавлен (${sfxDuration.toFixed(1)}s)` });
+                            log({ type: 'info', message: `      ✅ SFX добавлен (${sfxDuration.toFixed(1)}s)` });
                         } catch (e: any) {
-                            log({ type: 'error', message: `    ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
+                            log({ type: 'error', message: `      ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
                         }
                     }
                 } else if (line.text) {
@@ -126,8 +132,9 @@ export const packageProjectByChapters = async (
                 }
             }
             if (sfxTimings.length > 0) {
-                log({ type: 'info', message: `  ✅ Добавлено ${sfxTimings.length} звуковых эффектов` });
+                log({ type: 'info', message: `    ✅ Добавлено ${sfxTimings.length} звуковых эффектов` });
             }
+            
             // 6. Create chapter metadata
             const metadata: ChapterMetadata = {
                 chapterNumber: i + 1,
@@ -139,11 +146,12 @@ export const packageProjectByChapters = async (
                 sfxTimings: sfxTimings
             };
             chapterFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
-            log({ type: 'info', message: `  ✅ Метаданные главы созданы` });
+            log({ type: 'info', message: `    ✅ Метаданные главы созданы` });
         } catch (error: any) {
-            log({ type: 'error', message: `❌ Ошибка обработки главы ${chapterNum}: ${error.message}` });
+            log({ type: 'error', message: `  ❌ Ошибка обработки главы ${chapterNum}: ${error.message}` });
         }
     }
+    
     const projectMetadata = {
         title: podcast.selectedTitle || podcast.topic,
         totalChapters: podcast.chapters.length,
@@ -151,11 +159,23 @@ export const packageProjectByChapters = async (
         description: podcast.description,
         keywords: podcast.seoKeywords
     };
-    zip.file('project_metadata.json', JSON.stringify(projectMetadata, null, 2));
-    log({ type: 'info', message: '✅ Метаданные проекта созданы' });
+    zipFolder.file('project_metadata.json', JSON.stringify(projectMetadata, null, 2));
+    log({ type: 'info', message: `✅ Метаданные проекта созданы для "${podcast.selectedTitle || podcast.topic}"` });
+    
     const assemblyScript = generateChapterBasedAssemblyScript(podcast.chapters.length);
-    zip.file('assemble_video.bat', assemblyScript);
-    log({ type: 'info', message: '✅ Скрипт сборки видео добавлен' });
+    zipFolder.file('assemble_video.bat', assemblyScript);
+    log({ type: 'info', message: `✅ Скрипт сборки видео добавлен для "${podcast.selectedTitle || podcast.topic}"` });
+    
+    log({ type: 'info', message: `🎉 Упаковка проекта "${podcast.selectedTitle || podcast.topic}" завершена!` });
+};
+
+export const packageProjectByChapters = async (
+    podcast: Podcast,
+    log: LogFunction
+): Promise<Blob> => {
+    log({ type: 'info', message: '🎬 Начало упаковки проекта по главам...' });
+    const zip = new JSZip();
+    await packageProjectToFolder(podcast, zip, log);
     log({ type: 'info', message: '🎉 Упаковка завершена! Генерация ZIP...' });
     return zip.generateAsync({ type: 'blob' });
 };
