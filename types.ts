@@ -1,4 +1,3 @@
-
 export interface Source {
   uri: string;
   title: string;
@@ -41,13 +40,42 @@ export interface MusicTrack {
   audio: string; // URL
 }
 
+// NEW: Timing information for SFX in chapter-based packaging
+export interface SfxTiming {
+  name: string;
+  startTime: number;    // seconds from chapter start
+  duration: number;     // how long to play (max 3 sec)
+  volume: number;
+  filePath: string;     // relative path to SFX file
+}
+
+// NEW: Metadata for each chapter in packaged archive
+export interface ChapterMetadata {
+  chapterNumber: number;
+  title: string;
+  audioDuration: number;        // speech duration in seconds
+  imageDuration: number;        // how long to show each image
+  imageCount: number;
+  musicDuration?: number;       // music length (if present)
+  musicVolume?: number;
+  sfxTimings: SfxTiming[];      // precise timings for all effects
+}
+
+// NEW: Background image with blob for packaging
+export interface BackgroundImage {
+  url: string;
+  blob?: Blob;
+  prompt?: string;
+}
+
 export interface Chapter {
   id:string;
   title: string;
   script: ScriptLine[];
   musicSearchKeywords?: string;
   visualSearchPrompts?: string[]; // Prompts specific to this chapter
-  images?: string[]; // Generated images for this chapter
+  images?: string[]; // Generated images for this chapter (deprecated, use backgroundImages)
+  backgroundImages?: BackgroundImage[]; // NEW: Images with blobs for packaging
   audioBlob?: Blob;
   status: ChapterStatus;
   error?: string;
