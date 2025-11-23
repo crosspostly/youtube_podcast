@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.0",
-    "react": "^19.2.0",
     "@google/genai": "^1.29.0",
+    "@google/generative-ai": "^0.24.1",
+    "jszip": "^3.10.1",
     "lamejs": "1.2.1",
-    "jszip": "^3.10.1"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@types/jszip": "^3.4.1",

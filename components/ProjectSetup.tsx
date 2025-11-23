@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { NarrationMode, Voice, DetailedContentIdea, QueuedProject } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
@@ -205,6 +204,29 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
             case 'error': return <CloseIcon className="w-6 h-6 text-red-400" title="Ошибка" />;
         }
     }
+
+    // Функция для автоматического отзыва URL-адресов после загрузки
+    const revokeUrlAfterDownload = (url: string) => {
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+        }, 100);
+    };
+
+    // Функция для массового скачивания всех архивов
+    const handleDownloadAllZips = () => {
+        projectQueue.forEach(item => {
+            if (item.status === 'completed' && item.zipUrl) {
+                const link = document.createElement('a');
+                link.href = item.zipUrl;
+                link.download = item.zipName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                revokeUrlAfterDownload(item.zipUrl);
+            }
+        });
+    };
 
     return (
         <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
@@ -509,6 +531,44 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                     </div>
                     <div className="space-y-4">{history.map(item => <div key={item.id} onClick={() => setPodcastInHistory(item)} className="bg-slate-800/70 p-4 rounded-lg flex justify-between items-center cursor-pointer hover:bg-slate-800"><p className="font-semibold text-white truncate pr-4">{item.topic}</p><button className="text-cyan-400 hover:text-cyan-200 text-sm font-bold flex-shrink-0">Просмотр</button></div>)}</div>
                 </div>
+            )}
+
+            {/* Новый блок для массового скачивания архивов */}
+            {projectQueue.length > 0 && (
+              <div className="mt-8">
+                <h4 className="text-lg font-semibold text-white mb-3">Готовые архивы для скачивания</h4>
+                <div className="space-y-2">
+                  {projectQueue.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 p-3 bg-slate-800/50 rounded-lg">
+                      <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center">
+                        {getStatusIcon(item.status)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-slate-300 truncate">{item.title}</p>
+                        <p className="text-xs text-slate-500">{item.language}, {item.narrationMode}</p>
+                      </div>
+                      {item.status === 'completed' && item.zipUrl && (
+                        <a
+                          href={item.zipUrl}
+                          download={item.zipName}
+                          className="px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 font-bold"
+                          onClick={() => revokeUrlAfterDownload(item.zipUrl)}
+                        >
+                          Скачать архив
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {projectQueue.some(item => item.status === 'completed' && item.zipUrl) && (
+                  <button
+                    className="mt-6 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-600 text-white font-bold rounded-lg hover:from-teal-400 hover:to-cyan-500"
+                    onClick={handleDownloadAllZips}
+                  >
+                    Скачать все видео
+                  </button>
+                )}
+              </div>
             )}
         </div>
     );
