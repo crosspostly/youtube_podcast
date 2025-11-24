@@ -173,6 +173,7 @@ export const generateQuickTestBlueprint = async (topic: string, language: string
         
         log({ type: 'info', message: 'Lean blueprint for Quick Test successfully created.' });
         return {
+            title: data.title, // Add missing title property
             youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
             seoKeywords: data.seoKeywords,

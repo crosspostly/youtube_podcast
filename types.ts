@@ -143,6 +143,7 @@ export interface Voice {
 
 export interface Podcast {
   id: string;
+  title: string;
   topic: string;
   youtubeTitleOptions: string[];
   selectedTitle: string;

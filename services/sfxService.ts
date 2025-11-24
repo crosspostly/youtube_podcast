@@ -17,7 +17,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
  * @param log Функция логирования
  * @param retryWithFewerTerms Повторить с сокращённым запросом если не найдено
  */
-const performFreesoundSearch = async (
+export const performFreesoundSearch = async (
     searchTags: string,
     log: LogFunction,
     retryWithFewerTerms: boolean = true
