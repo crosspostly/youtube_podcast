@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine } from '../types';
 import { usePodcastContext } from '../context/PodcastContext';
@@ -40,6 +41,9 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     
     const [isUpdatingThumbnails, setIsUpdatingThumbnails] = useState(false);
 
+    // Track created object URLs to revoke them on unmount
+    const objectUrls = useRef<Set<string>>(new Set());
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (volumePopoverRef.current && !volumePopoverRef.current.contains(event.target as Node)) {
@@ -47,7 +51,12 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            // Clean up Blob URLs
+            objectUrls.current.forEach(url => URL.revokeObjectURL(url));
+            objectUrls.current.clear();
+        };
     }, []);
 
     // Sync local state with podcast state when it changes externally
@@ -369,6 +378,16 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
         }
     };
 
+    // Helper to create URL safely
+    const getSafeImageUrl = (img: { blob?: Blob; url: string }) => {
+        if (img.blob) {
+            const url = URL.createObjectURL(img.blob);
+            objectUrls.current.add(url);
+            return url;
+        }
+        return img.url;
+    };
+
     return (
         <div className="w-full max-w-6xl mx-auto pb-24">
             <audio ref={audioPlayerRef} className="hidden" />
@@ -566,22 +585,36 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         </div>
                         
                         {/* Chapter Images Section */}
-                        {chapter.images && chapter.images.length > 0 ? (
-                            <div className="px-4 pb-4">
-                                <h5 className="font-semibold text-slate-300 mb-2 text-sm">Визуализация главы ({chapter.images.length})</h5>
+                        <div className="px-4 pb-4">
+                            <h5 className="font-semibold text-slate-300 mb-2 text-sm">Визуализация главы ({chapter.backgroundImages?.length || chapter.images?.length || 0})</h5>
+                            {((chapter.backgroundImages && chapter.backgroundImages.length > 0) || (chapter.images && chapter.images.length > 0)) ? (
                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                                    {chapter.images.map((imgSrc, i) => (
-                                        <img key={i} src={imgSrc} alt={`Chapter visual ${i}`} className="rounded-md w-full h-28 object-cover border border-slate-700 hover:border-cyan-500 transition-all" />
+                                    {/* Handle BackgroundImages with Blobs */}
+                                    {chapter.backgroundImages?.map((img, i) => {
+                                        const imgSrc = getSafeImageUrl(img);
+                                        return (
+                                            <img 
+                                                key={`bg-${i}`} 
+                                                src={imgSrc} 
+                                                alt={`Chapter visual ${i}`} 
+                                                className="rounded-md w-full h-28 object-cover border border-slate-700 hover:border-cyan-500 transition-all"
+                                            />
+                                        );
+                                    })}
+                                    
+                                    {/* Handle Legacy Images (Strings) if backgroundImages is empty */}
+                                    {(!chapter.backgroundImages || chapter.backgroundImages.length === 0) && chapter.images?.map((imgSrc, i) => (
+                                        <img key={`legacy-${i}`} src={imgSrc} alt={`Chapter visual ${i}`} className="rounded-md w-full h-28 object-cover border border-slate-700 hover:border-cyan-500 transition-all" />
                                     ))}
                                 </div>
-                            </div>
-                        ) : (
-                            chapter.status === 'completed' && (
-                                <div className="px-4 pb-4 text-center text-sm text-slate-500 italic">
-                                    Изображения для этой главы не сгенерированы.
-                                </div>
-                            )
-                        )}
+                            ) : (
+                                chapter.status === 'completed' && (
+                                    <div className="text-center text-sm text-slate-500 italic">
+                                        Изображения для этой главы не сгенерированы.
+                                    </div>
+                                )
+                            )}
+                        </div>
 
                         {/* Full Script Display (Dialogue + SFX) */}
                         {chapter.script && chapter.script.length > 0 && (

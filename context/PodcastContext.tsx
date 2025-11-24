@@ -9,8 +9,9 @@ const useCombinedState = (defaultFont: string) => {
     // Load devMode from localStorage initially
     const [devMode, setDevModeState] = useState<boolean>(() => {
         try {
-            // Default to false if not explicitly set to 'true'.
-            return localStorage.getItem('devMode') === 'true';
+            const stored = localStorage.getItem('devMode');
+            // Only true if explicitly set to string "true"
+            return stored === 'true';
         } catch {
             return false;
         }

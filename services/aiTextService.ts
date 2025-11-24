@@ -77,7 +77,7 @@ export const generateContentPlan = async (count: number, log: LogFunction): Prom
     const prompt = getContentPlanPrompt(count);
     
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log);
+        const response = await generateContentWithFallback({ contents: prompt, config: { temperature: 0.9 } }, log);
         const data = await parseGeminiJsonResponse(response.text, log);
         
         if (!data.ideas || !Array.isArray(data.ideas) || data.ideas.length === 0) {
@@ -229,7 +229,7 @@ export const generateThumbnailDesignConcepts = async (topic: string, language: s
     const prompt = getThumbnailConceptsPrompt(topic, language);
 
     try {
-        const response = await generateContentWithFallback({ contents: prompt }, log);
+        const response = await generateContentWithFallback({ contents: prompt, config: { temperature: 1.0 } }, log);
         const data = await parseGeminiJsonResponse(response.text, log);
         if (!data.concepts || data.concepts.length === 0) {
             throw new Error("AI не смог сгенерировать дизайн-концепции.");

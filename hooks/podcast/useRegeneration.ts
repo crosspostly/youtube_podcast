@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { regenerateTextAssets } from '../../services/aiTextService';
 import { generateStyleImages, generateYoutubeThumbnails } from '../../services/imageService';
@@ -62,11 +63,18 @@ export const useRegeneration = (
             const chapterVisuals = podcast.chapters[0].visualSearchPrompts || [podcast.topic];
             const newImages = await generateStyleImages(chapterVisuals, podcast.initialImageCount, log, devMode);
             
+            log({ type: 'info', message: `📸 After regeneration: backgroundImages[0].blob size = ${newImages?.[0]?.blob?.size || 0} bytes` });
+
             setPodcast(p => {
-                 if(!p) return null;
-                 const updatedChapters = [...p.chapters];
-                 updatedChapters[0] = {...updatedChapters[0], images: newImages };
-                 return { ...p, chapters: updatedChapters };
+                if (!p) return null;
+                const updatedChapters = [...p.chapters];
+                const { images, ...restOfChapter } = updatedChapters[0]; // Remove legacy images field
+                // IMPORTANT: Save to backgroundImages with blobs
+                updatedChapters[0] = { ...restOfChapter, backgroundImages: newImages };
+
+                const newGeneratedImages = newImages.map(i => i.url);
+
+                return { ...p, chapters: updatedChapters, generatedImages: newGeneratedImages };
             });
             
             if (newImages.length > 0 && podcast.designConcepts) {

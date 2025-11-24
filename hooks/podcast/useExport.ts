@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from 'react';
 import JSZip from 'jszip';
 import { packageProjectByChapters, packageProjectToFolder } from '../../services/chapterPackager';
@@ -16,28 +17,58 @@ export const useExport = (
     const [isZipping, setIsZipping] = useState(false);
     const [isBatchExporting, setIsBatchExporting] = useState(false);
 
-    // combineAndDownload и generateSrt можно сохранить — они не мешают
-
     const downloadProjectAsZip = async () => {
-        if (!podcast || !podcast.chapters.every(c => c.status === 'completed')) {
-            log({ type: 'info', message: 'Экспорт ZIP отменен: не все главы имеют статус "completed".' });
+        // Visual feedback immediately
+        log({ type: 'info', message: `Запрошен экспорт ZIP...` });
+
+        if (!podcast) {
+            alert("Ошибка: Нет данных проекта для экспорта.");
             return;
         }
-        setIsZipping(true);
-        log({ type: 'info', message: `Начало chapter-based упаковки: ${podcast.selectedTitle}` });
+        
         try {
+            // Check for incomplete chapters
+            const incompleteChapters = podcast.chapters.filter(c => c.status !== 'completed');
+            if (incompleteChapters.length > 0) {
+                // Use window.confirm cautiously, log intention first
+                log({ type: 'info', message: `Проект содержит незавершенные главы: ${incompleteChapters.length}` });
+                
+                const confirmDownload = window.confirm(
+                    `Внимание: ${incompleteChapters.length} глав(ы) не завершены или содержат ошибки.\n\n` +
+                    `В ZIP-архив попадут только готовые материалы. Продолжить скачивание?`
+                );
+                
+                if (!confirmDownload) {
+                    log({ type: 'info', message: `Пользователь отменил экспорт.` });
+                    return;
+                }
+            }
+
+            setIsZipping(true);
+            log({ type: 'info', message: `Начало упаковки архива: ${podcast.selectedTitle}` });
+            
             const zipBlob = await packageProjectByChapters(podcast, log);
+            
+            if (!zipBlob || zipBlob.size === 0) {
+                throw new Error("Создан пустой ZIP-файл.");
+            }
+
             const url = URL.createObjectURL(zipBlob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `${podcast.selectedTitle.replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}_chapterpack.zip`;
+            a.download = `${(podcast.selectedTitle || 'project').replace(/[^a-z0-9а-яё]/gi, '_').toLowerCase()}_chapterpack.zip`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-        } catch (err) {
-            setError('Ошибка chapter-based упаковки!');
-            log({ type: 'error', message: 'Ошибка chapter-based пакетирования', data: err });
+            
+            log({ type: 'info', message: `✅ ZIP-архив успешно создан и скачан.` });
+
+        } catch (err: any) {
+            const errorMsg = err.message || 'Неизвестная ошибка';
+            setError(`Ошибка упаковки ZIP: ${errorMsg}`);
+            log({ type: 'error', message: 'Критическая ошибка при создании ZIP', data: err });
+            alert(`Не удалось создать архив: ${errorMsg}`);
         } finally {
             setIsZipping(false);
         }
@@ -89,7 +120,7 @@ export const useExport = (
                 const incompleteChapters = project.chapters.filter(c => c.status !== 'completed');
                 if (incompleteChapters.length > 0) {
                     log({ 
-                        type: 'warning', 
+                        type: 'info', 
                         message: `⚠️ [${i + 1}/${totalProjects}] Пропуск проекта "${project.selectedTitle || project.topic}": ${incompleteChapters.length} глав не завершены` 
                     });
                     continue;
@@ -156,7 +187,6 @@ export const useExport = (
     }
 };
 
-// manualTtsScript сохраним
     const manualTtsScript = useMemo(() => {
         if (!podcast) return 'Генерация сценария...';
         const completedChapters = podcast.chapters.filter(c => c.status === 'completed' && c.script?.length > 0);
@@ -169,8 +199,8 @@ export const useExport = (
         isGeneratingSrt,
         isZipping,
         isBatchExporting,
-        combineAndDownload: undefined, // старое не экспортируем
-        generateSrt: undefined, // если не используешь — убери
+        combineAndDownload: undefined, 
+        generateSrt: undefined,
         downloadProjectAsZip,
         downloadAllCompletedProjects,
         manualTtsScript

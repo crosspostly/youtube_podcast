@@ -3,13 +3,12 @@ import { useState, useCallback, useEffect } from 'react';
 import type { Podcast, LogEntry } from '../types';
 
 const log = (entry: Omit<LogEntry, 'timestamp'>) => {
-    // In a real app, this should be connected to a proper logging context/service.
     console.log(`[${entry.type}] ${entry.message}`, entry.data || '');
 };
 
-
 export const useHistory = () => {
     const [history, setHistory] = useState<Podcast[]>([]);
+    // We disable saving media by default and effectively enforce it to prevent app crashes
     const [saveMediaInHistory, setSaveMediaInHistory] = useState<boolean>(false);
 
     useEffect(() => {
@@ -20,52 +19,69 @@ export const useHistory = () => {
             }
         } catch (e) {
             console.error("Failed to load history from localStorage", e);
+            // If loading fails (likely due to corruption or size), clear it to restore app functionality
+            localStorage.removeItem('podcastHistory');
         }
     }, []);
 
     const updateHistoryWithPodcast = useCallback((podcastToSave: Podcast) => {
-        // This function will be the one updating localStorage
         const updateLocalStorage = (newHistory: Podcast[]) => {
+            // Create a lightweight version of the history for localStorage
             const serializableHistory = newHistory.map(p => {
                 const { chapters, ...podcastRest } = p;
+                
+                // Deep clean the podcast object to remove all Blob and Base64 image data
                 const serializablePodcast: any = {
                     ...podcastRest,
-                    chapters: chapters.map(({ audioBlob, images, ...chapterRest }) => {
-                         // Strip audioBlob always as it's too big
-                         const cleanChapter = { ...chapterRest };
-                         // Strip images from chapters unless saveMedia is on
-                         if (!saveMediaInHistory) {
-                             return cleanChapter;
-                         }
-                         // Even if saveMedia is on, storing base64 images in localStorage is risky. 
-                         // We keep it for now but it likely will hit quota soon.
-                         return { ...cleanChapter, images };
+                    chapters: chapters.map((chapter) => {
+                         // Destructure to separate heavy assets from metadata
+                         const { audioBlob, images, backgroundImages, ...chapterRest } = chapter;
+                         
+                         // Return only metadata. 
+                         // We deliberately DO NOT save images/blobs to localStorage anymore.
+                         // Saving 3MB+ strings crashes the browser storage reliably.
+                         return { 
+                             ...chapterRest,
+                             // Keep generatedImages array only if it contains URLs (not base64), 
+                             // but usually for AI gen it's base64/blob, so we strip it.
+                             // We can keep 'images' if they are short URLs, but to be safe we strip.
+                         };
                     })
                 };
         
-                if (!saveMediaInHistory) {
-                    delete serializablePodcast.generatedImages;
-                    delete serializablePodcast.youtubeThumbnails;
-                }
+                // Explicitly remove top-level heavy assets
+                delete serializablePodcast.generatedImages;
+                delete serializablePodcast.youtubeThumbnails;
+                delete serializablePodcast.designConcepts; 
         
                 return serializablePodcast;
             });
         
             try {
-                localStorage.setItem('podcastHistory', JSON.stringify(serializableHistory));
+                const jsonString = JSON.stringify(serializableHistory);
+                // Check size before saving (approximate)
+                if (jsonString.length > 4500000) {
+                    log({ type: 'error', message: 'Внимание: История слишком велика для сохранения. Старые проекты могут быть удалены.' });
+                    // In a real app, we would implement LRU eviction here.
+                }
+                localStorage.setItem('podcastHistory', jsonString);
             } catch (e) {
-                log({ type: 'error', message: 'Ошибка localStorage: хранилище переполнено. История не обновлена.', data: e });
+                // This is the specific fix for the user's "files > 1mb" error
+                log({ type: 'error', message: 'Ошибка сохранения истории: превышен лимит хранилища браузера. Медиа-файлы не сохранены.', data: e });
             }
         };
 
         setHistory(prevHistory => {
-            // Remove the old version if it exists and add the new one to the top
             const otherHistory = prevHistory.filter(p => p.id !== podcastToSave.id);
             const newHistory = [podcastToSave, ...otherHistory];
-            updateLocalStorage(newHistory);
-            return newHistory;
+            
+            // Limit history to last 10 items to prevent creeping growth
+            const trimmedHistory = newHistory.slice(0, 10);
+            
+            updateLocalStorage(trimmedHistory);
+            return trimmedHistory;
         });
-    }, [saveMediaInHistory]);
+    }, []);
     
     const clearHistory = () => {
         setHistory([]);
@@ -74,7 +90,7 @@ export const useHistory = () => {
 
     return {
         history,
-        setHistory, // Exposing setter for loading from history
+        setHistory, 
         updateHistoryWithPodcast,
         clearHistory,
         saveMediaInHistory,

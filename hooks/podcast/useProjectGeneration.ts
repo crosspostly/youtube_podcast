@@ -1,3 +1,4 @@
+
 import React, { useCallback } from 'react';
 import { generatePodcastBlueprint, generateQuickTestBlueprint, generateThumbnailDesignConcepts } from '../../services/aiTextService';
 import { generateChapterAudio } from '../../services/aiAudioService';
@@ -5,10 +6,11 @@ import { findMusicManually } from '../../services/musicService';
 import { findSfxForScript } from '../../services/sfxService';
 import { generateStyleImages, generateYoutubeThumbnails } from '../../services/imageService';
 import { searchStockPhotos, getOnePhotoFromEachStockService } from '../../services/stockPhotoService';
-import type { Podcast, Chapter, LogEntry, NarrationMode } from '../../types';
+import type { Podcast, Chapter, LogEntry, NarrationMode, BackgroundImage, SfxTiming } from '../../types';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
+const CHARS_PER_SECOND_SFX = 15;
 
 export const useProjectGeneration = (
     log: LogFunction,
@@ -42,6 +44,28 @@ export const useProjectGeneration = (
         const firstChapter = blueprint.chapters[0];
         const populatedScript = await findSfxForScript(firstChapter.script, log);
         firstChapter.script = populatedScript;
+
+        const sfxTimings: SfxTiming[] = [];
+        let currentTime = 0;
+        const sanitizeFileNameForSfx = (name: string) => name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').toLowerCase().substring(0, 50);
+
+        for (const line of populatedScript) {
+            if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+                sfxTimings.push({
+                    name: line.soundEffect.name,
+                    startTime: Math.round(currentTime * 100) / 100,
+                    duration: Math.min(3, (line.text.length / 50) || 2),
+                    volume: line.soundEffectVolume ?? 0.7,
+                    filePath: `sfx/${sanitizeFileNameForSfx(line.soundEffect.name)}.wav`
+                });
+                log({ type: 'info', message: `🔊 SFX timing: "${line.soundEffect.name}" @ ${currentTime.toFixed(2)}s` });
+            }
+            if (line.text && line.speaker.toUpperCase() !== 'SFX') {
+                currentTime += (line.text.length / CHARS_PER_SECOND_SFX);
+            }
+        }
+        firstChapter.sfxTimings = sfxTimings;
+        log({ type: 'info', message: `✅ Собрано ${sfxTimings.length} SFX-таймингов для metadata` });
         
         if (firstChapter.musicSearchKeywords) {
             const musicTracks = await findMusicManually(firstChapter.musicSearchKeywords, log);
@@ -85,17 +109,33 @@ export const useProjectGeneration = (
         const selectedTitle = blueprint.youtubeTitleOptions[0] || topic;
         
         updateStatus('Создание вариантов обложек для YouTube', 'in_progress');
-        const youtubeThumbnails = generatedImages.length > 0 ? await generateYoutubeThumbnails(generatedImages[0], selectedTitle, designConcepts, log, defaultFont) : [];
+        const thumbnailBaseImage = imageSource === 'ai' ? (generatedImages as BackgroundImage[])[0] : (generatedImages as string[])[0];
+        const youtubeThumbnails = generatedImages.length > 0 ? await generateYoutubeThumbnails(thumbnailBaseImage, selectedTitle, designConcepts, log, defaultFont) : [];
         updateStatus('Создание вариантов обложек для YouTube', 'completed');
         updateProgress(60); 
 
+        // Correctly construct the new podcast object, ensuring backgroundImages with blobs are saved
         const newPodcast: Podcast = {
             id: crypto.randomUUID(), ...blueprint, topic, selectedTitle, thumbnailText: selectedTitle, language,
-            chapters: [{ ...firstChapter, status: 'completed', audioBlob: firstChapterAudio, images: generatedImages }],
-            generatedImages, youtubeThumbnails: youtubeThumbnails || [], designConcepts: designConcepts || [],
+            chapters: [{ 
+                ...firstChapter, 
+                status: 'completed', 
+                audioBlob: firstChapterAudio,
+                // IMPORTANT: Explicitly assign backgroundImages to the chapter
+                ...(imageSource === 'ai' 
+                    ? { backgroundImages: generatedImages as BackgroundImage[] }
+                    : { images: generatedImages as string[] })
+            }],
+            // Ensure generatedImages at root are URLs for display/history
+            generatedImages: imageSource === 'ai' ? (generatedImages as BackgroundImage[]).map(i => i.url) : (generatedImages as string[]),
+            youtubeThumbnails: youtubeThumbnails || [], designConcepts: designConcepts || [],
             knowledgeBaseText, creativeFreedom, totalDurationMinutes, narrationMode, characterVoices: finalCharacterVoices,
             monologueVoice, selectedBgIndex: 0, backgroundMusicVolume: 0.12, initialImageCount: imagesPerChapter, imageSource,
         };
+
+        if (imageSource === 'ai') {
+            log({ type: 'info', message: `📸 After generation: backgroundImages[0].blob size = ${(generatedImages as BackgroundImage[])?.[0]?.blob?.size || 0} bytes` });
+        }
 
         const CHAPTER_DURATION_MIN = 5;
         const totalChapters = Math.max(1, Math.ceil(totalDurationMinutes / CHAPTER_DURATION_MIN));

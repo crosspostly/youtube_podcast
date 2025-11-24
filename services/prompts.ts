@@ -243,14 +243,15 @@ Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 }`;
 
 export const getThumbnailConceptsPrompt = (topic: string, language: string): string => `
-You are an expert in creating viral, high-CTR YouTube thumbnails (MrBeast style).
-    
+You are an expert in creating viral, high-CTR YouTube thumbnails.
 Topic: "${topic}". 
-    
-**CRITICAL:** Text MUST be perfectly readable. High contrast. Bold typography.
-Propose 3 distinct design concepts.
-    
-**CRITICAL INSTRUCTION: For 'fontFamily', suggest specific Google Fonts (e.g., 'Anton', 'Bebas Neue'). Response must be in ${language}.**
+
+**TASK:** Propose 3 **DISTINCTLY DIFFERENT** design concepts. They MUST NOT look alike.
+1.  **Concept 1:** High contrast, bold, shocking colors (e.g., Yellow/Black). Font: Impact, Anton.
+2.  **Concept 2:** Mysterious, atmospheric, serif fonts, dark palette (e.g., Red/DarkBlue). Font: Playfair Display, Roboto Slab.
+3.  **Concept 3:** Modern, minimal, clean sans-serif, neon accents. Font: Montserrat, Bebas Neue.
+
+**CRITICAL INSTRUCTION: For 'fontFamily', suggest specific Google Fonts (e.g., 'Anton', 'Bebas Neue', 'Playfair Display'). Response must be in ${language}.**
 
 Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -258,17 +259,40 @@ Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 {
   "concepts": [
     {
-      "name": "Concept name in ${language}",
-      "fontFamily": "Google Font Name",
-      // Updated default font size to prevent overlapping on long titles
-      "fontSize": 90,
+      "name": "Unique name for concept 1",
+      "fontFamily": "Anton",
+      "fontSize": 100,
       "textColor": "#FFFF00",
       "shadowColor": "#000000",
       "overlayOpacity": 0.3,
       "textTransform": "uppercase",
       "strokeColor": "#000000",
       "strokeWidth": 12,
-      "gradientColors": ["#startColorHex", "#endColorHex"]
+      "gradientColors": null
+    },
+    {
+      "name": "Unique name for concept 2",
+      "fontFamily": "Playfair Display",
+      "fontSize": 90,
+      "textColor": "#FFFFFF",
+      "shadowColor": "#550000",
+      "overlayOpacity": 0.6,
+      "textTransform": "none",
+      "strokeColor": "transparent",
+      "strokeWidth": 0,
+      "gradientColors": null
+    },
+    {
+      "name": "Unique name for concept 3",
+      "fontFamily": "Montserrat",
+      "fontSize": 110,
+      "textColor": "#00FFFF",
+      "shadowColor": "transparent",
+      "overlayOpacity": 0.4,
+      "textTransform": "uppercase",
+      "strokeColor": "#000000",
+      "strokeWidth": 5,
+      "gradientColors": ["#00FFFF", "#FF00FF"]
     }
   ]
 }`;

@@ -1,3 +1,4 @@
+
 // services/chapterPackager.ts
 import JSZip from 'jszip';
 import type { Podcast, Chapter, ChapterMetadata, SfxTiming, LogEntry } from '../types';
@@ -6,7 +7,7 @@ import { getChapterDurations } from './audioUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
-const CHARS_PER_SECOND = 15; // Reading speed for timing SFX
+const CHARS_PER_SECOND = 15; // Reading speed for timing SFX fallback
 const MAX_SFX_DURATION = 3; // Maximum SFX duration in seconds
 
 // Helper for legacy: convert data URL image to Blob
@@ -62,20 +63,46 @@ export const packageProjectToFolder = async (
                 }
             }
             
-            // 4. Add chapter images (handle both legacy and new format)
+            // 4. Add chapter images (Robust Blob Handling)
             const imagesFolder = chapterFolder.folder('images');
             let imageCount = 0;
             if (chapter.backgroundImages && chapter.backgroundImages.length > 0) {
                 // New format with blobs
                 for (let imgIdx = 0; imgIdx < chapter.backgroundImages.length; imgIdx++) {
                     const img = chapter.backgroundImages[imgIdx];
-                    if (img.blob) {
-                        const imgNum = String(imgIdx + 1).padStart(3, '0');
-                        imagesFolder?.file(`${imgNum}.png`, img.blob);
-                        imageCount++;
+                    
+                    if (img.blob && img.blob.size > 0) {
+                        try {
+                            const mimeType = img.blob.type || 'image/png';
+                            const ext = mimeType.split('/')[1] || 'png';
+                            const imgNum = String(imgIdx + 1).padStart(3, '0');
+                            const filename = `${imgNum}.${ext}`;
+                            
+                            imagesFolder?.file(filename, img.blob);
+                            imageCount++;
+                            log({ type: 'info', message: `    ✅ Изображение (Blob) добавлено: ${filename}` });
+                        } catch (e) {
+                            log({ type: 'error', message: `    ❌ Ошибка сохранения blob ${imgIdx + 1}` });
+                        }
+                    } else if (img.url && !img.blob) {
+                        // Fallback to fetching by URL if blob is missing
+                        try {
+                            log({ type: 'info', message: `    ⚠️ Blob утерян, скачиваю по URL ${imgIdx + 1}...` });
+                            const response = await fetchWithCorsFallback(img.url);
+                            if (response.ok) {
+                                const blob = await response.blob();
+                                const ext = blob.type.split('/')[1] || 'png';
+                                const imgNum = String(imgIdx + 1).padStart(3, '0');
+                                imagesFolder?.file(`${imgNum}.${ext}`, blob);
+                                imageCount++;
+                            }
+                        } catch (e) {
+                            log({ type: 'error', message: `    ❌ Ошибка скачивания изображения ${imgIdx + 1}` });
+                        }
                     }
                 }
             } else if (chapter.images && chapter.images.length > 0) {
+                // Legacy format
                 log({ type: 'info', message: `    ⚠️ Используется устаревший формат images (data URLs)` });
                 for (let imgIdx = 0; imgIdx < chapter.images.length; imgIdx++) {
                     const imgDataUrl = chapter.images[imgIdx];
@@ -89,61 +116,85 @@ export const packageProjectToFolder = async (
                     }
                 }
             }
-            if (imageCount > 0) {
-                log({ type: 'info', message: `    ✅ Добавлено ${imageCount} изображений` });
-            }
             
-            // 5. Download and trim SFX with precise timings
+            // 5. Download and trim SFX using stored timings
             const sfxFolder = chapterFolder.folder('sfx');
-            const sfxTimings: SfxTiming[] = [];
-            let timeCursor = 0;
-            for (const line of chapter.script) {
-                if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
-                    const sfx = line.soundEffect;
-                    const sfxStartTime = timeCursor;
+            // Prefer using pre-calculated timings if available
+            let sfxTimings = chapter.sfxTimings || [];
+            
+            // Fallback calculation if sfxTimings is missing (legacy/error recovery)
+            if (sfxTimings.length === 0) {
+                let timeCursor = 0;
+                for (const line of chapter.script) {
+                    if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+                        sfxTimings.push({
+                            name: line.soundEffect.name,
+                            startTime: Math.round(timeCursor * 100) / 100,
+                            duration: MAX_SFX_DURATION,
+                            volume: line.soundEffectVolume ?? 0.7,
+                            filePath: `sfx/${sanitizeFileName(line.soundEffect.name)}.wav`
+                        });
+                    } else if (line.text) {
+                        timeCursor += line.text.length / CHARS_PER_SECOND;
+                    }
+                }
+            }
+
+            const finalSfxTimings: SfxTiming[] = [];
+            
+            for (const timing of sfxTimings) {
+                // Find the SFX object in script to get URL (metadata only stores path)
+                const matchingLine = chapter.script.find(l => l.soundEffect?.name === timing.name);
+                const sfx = matchingLine?.soundEffect;
+                
+                if (sfx) {
                     const sfxUrl = getBestSfxUrl(sfx);
                     if (sfxUrl) {
                         try {
-                            log({ type: 'info', message: `    🔊 Скачивание SFX: "${sfx.name}" @ ${sfxStartTime.toFixed(1)}s` });
+                            log({ type: 'info', message: `    🔊 Скачивание SFX: "${sfx.name}"` });
                             const sfxBlob = await downloadAndTrimAudio(
                                 sfxUrl,
                                 MAX_SFX_DURATION,
                                 'sfx',
                                 log
                             );
-                            const sfxFileName = `${sanitizeFileName(sfx.name)}.wav`;
+                            // Use filename from timing or generate new one
+                            const sfxFileName = timing.filePath.split('/').pop() || `${sanitizeFileName(sfx.name)}.wav`;
                             sfxFolder?.file(sfxFileName, sfxBlob);
-                            const sfxDuration = Math.min(MAX_SFX_DURATION, audioDuration - sfxStartTime);
-                            sfxTimings.push({
-                                name: sfx.name,
-                                startTime: sfxStartTime,
-                                duration: sfxDuration,
-                                volume: line.soundEffectVolume ?? 0.7,
-                                filePath: `sfx/${sfxFileName}`
+                            
+                            finalSfxTimings.push({
+                                ...timing,
+                                duration: Math.min(MAX_SFX_DURATION, audioDuration - timing.startTime) // Clamp to chapter end
                             });
-                            log({ type: 'info', message: `      ✅ SFX добавлен (${sfxDuration.toFixed(1)}s)` });
                         } catch (e: any) {
                             log({ type: 'error', message: `      ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
                         }
                     }
-                } else if (line.text) {
-                    // Advance time cursor based on speech duration
-                    timeCursor += line.text.length / CHARS_PER_SECOND;
                 }
             }
-            if (sfxTimings.length > 0) {
-                log({ type: 'info', message: `    ✅ Добавлено ${sfxTimings.length} звуковых эффектов` });
+            
+            if (finalSfxTimings.length > 0) {
+                log({ type: 'info', message: `    ✅ Добавлено ${finalSfxTimings.length} звуковых эффектов` });
             }
             
             // 6. Create chapter metadata
+            // Correct Image Duration Logic: Audio Length / Image Count, clamped between 2s and 20s
+            let calculatedImageDuration = 5;
+            if (imageCount > 0 && audioDuration > 0) {
+                const rawDuration = audioDuration / imageCount;
+                calculatedImageDuration = Math.max(2, Math.min(20, rawDuration));
+                // Ensure the metadata uses float for better precision
+                log({ type: 'info', message: `    ⏱️ Image Duration: ${calculatedImageDuration.toFixed(2)}s (Raw: ${rawDuration.toFixed(2)}s)` });
+            }
+
             const metadata: ChapterMetadata = {
                 chapterNumber: i + 1,
                 title: chapter.title,
                 audioDuration: audioDuration,
-                imageDuration: imageCount > 0 ? audioDuration / imageCount : audioDuration,
+                imageDuration: calculatedImageDuration,
                 imageCount: imageCount,
                 musicVolume: chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume,
-                sfxTimings: sfxTimings
+                sfxTimings: finalSfxTimings
             };
             chapterFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
             log({ type: 'info', message: `    ✅ Метаданные главы созданы` });
@@ -352,6 +403,7 @@ const sanitizeFileName = (name: string): string => {
 
 const generateChapterBasedAssemblyScript = (chapterCount: number): string => {
     return `@echo off
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ===================================================
@@ -363,8 +415,7 @@ REM Check FFmpeg
 where ffmpeg >nul 2>nul
 if %errorlevel% neq 0 (
     echo [ERROR] FFmpeg not found! Install FFmpeg and add to PATH.
-    pause
-    exit /b 1
+    goto :error
 )
 
 REM Create temp folder
@@ -403,8 +454,8 @@ for /L %%i in (1,1,${chapterCount}) do (
     REM Get audio duration using ffprobe
     for /f %%d in ('ffprobe -v error -show_entries format=duration -of default^=noprint_wrappers^=1:nokey^=1 "!chapter_dir!\\audio.wav"') do set "duration=%%d"
     
-    REM Calculate image duration
-    powershell -Command "[math]::Round(!duration! / !img_count!, 2)" > temp_img_dur.txt
+    REM Calculate image duration - ensure minimum duration 2s
+    powershell -Command "$d = [math]::Round(!duration! / !img_count!, 2); if ($d -lt 2) { $d = 2 }; if ($d -gt 20) { $d = 20 }; Write-Output $d" > temp_img_dur.txt
     set /p img_duration=<temp_img_dur.txt
     del temp_img_dur.txt
     
@@ -474,6 +525,7 @@ if %errorlevel% equ 0 (
     echo.
 ) else (
     echo [ERROR] Failed to create final video
+    goto :error
 )
 
 REM Cleanup
@@ -485,5 +537,12 @@ del final_concat.txt 2>nul
 echo.
 echo Done!
 pause
+exit /b 0
+
+:error
+echo.
+echo [FATAL ERROR] An error occurred during assembly. Review output above.
+pause
+exit /b 1
 `;
 };

@@ -1,3 +1,4 @@
+
 import React, { useEffect, useCallback } from 'react';
 import { generateNextChapterScript } from '../../services/aiTextService';
 import { findSfxForScript } from '../../services/sfxService';
@@ -5,10 +6,12 @@ import { findMusicManually } from '../../services/musicService';
 import { generateStyleImages } from '../../services/imageService';
 import { searchStockPhotos } from '../../services/stockPhotoService';
 import { generateChapterAudio } from '../../services/aiAudioService';
-import type { Podcast, Chapter, LogEntry } from '../../types';
+import type { Podcast, Chapter, LogEntry, BackgroundImage, SfxTiming } from '../../types';
 
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>;
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
+
+const CHARS_PER_SECOND_SFX = 15;
 
 export const useChapterGeneration = (
     podcast: Podcast | null,
@@ -38,10 +41,34 @@ export const useChapterGeneration = (
             const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log);
             
             const populatedScript = await findSfxForScript(chapterScriptData.script, log);
+
+            // Calculate SFX Timings immediately
+            const sfxTimings: SfxTiming[] = [];
+            let currentTime = 0;
+            const sanitizeFileNameForSfx = (name: string) => name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').toLowerCase().substring(0, 50);
+
+            for (const line of populatedScript) {
+                if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
+                    sfxTimings.push({
+                        name: line.soundEffect.name,
+                        startTime: Math.round(currentTime * 100) / 100,
+                        duration: Math.min(3, (line.text.length / 50) || 2),
+                        volume: line.soundEffectVolume ?? 0.7,
+                        filePath: `sfx/${sanitizeFileNameForSfx(line.soundEffect.name)}.wav`
+                    });
+                    log({ type: 'info', message: `🔊 SFX timing: "${line.soundEffect.name}" @ ${currentTime.toFixed(2)}s` });
+                }
+                if (line.text && line.speaker.toUpperCase() !== 'SFX') {
+                    currentTime += (line.text.length / CHARS_PER_SECOND_SFX);
+                }
+            }
+            log({ type: 'info', message: `✅ Собрано ${sfxTimings.length} SFX-таймингов для metadata` });
+            
             const musicTracks = chapterScriptData.musicSearchKeywords ? await findMusicManually(chapterScriptData.musicSearchKeywords, log) : [];
             const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
             
-            updateChapterState(chapterId, 'audio_generating', { script: populatedScript, title: chapterScriptData.title, backgroundMusic });
+            // Save sfxTimings here
+            updateChapterState(chapterId, 'audio_generating', { script: populatedScript, title: chapterScriptData.title, backgroundMusic, sfxTimings });
             
             const chapterVisuals = chapterScriptData.visualSearchPrompts || [podcast.topic];
             const chapterImagesPromise = podcast.imageSource === 'ai'
@@ -53,7 +80,17 @@ export const useChapterGeneration = (
                  chapterImagesPromise
             ]);
 
-            updateChapterState(chapterId, 'completed', { audioBlob, images: chapterImages, visualSearchPrompts: chapterScriptData.visualSearchPrompts });
+            let chapterUpdate: Partial<Omit<Chapter, 'id'|'status'>> = { audioBlob, visualSearchPrompts: chapterScriptData.visualSearchPrompts };
+
+            if (podcast.imageSource === 'ai') {
+                // Explicitly save backgroundImages with blobs
+                chapterUpdate.backgroundImages = chapterImages as BackgroundImage[];
+                log({ type: 'info', message: `📸 After generation: backgroundImages[0].blob size = ${(chapterImages as BackgroundImage[])?.[0]?.blob?.size || 0} bytes` });
+            } else {
+                chapterUpdate.images = chapterImages as string[];
+            }
+
+            updateChapterState(chapterId, 'completed', chapterUpdate);
 
         } catch (err: any) {
             const errorMessage = err.message || 'Неизвестная ошибка при генерации главы.';

@@ -135,10 +135,6 @@ export const drawCanvas = async (
     const maxWidth = canvas.width * 0.9;
     
     // IMPROVED LINE HEIGHT CALCULATION
-    // 1. Use a slightly larger base multiplier (1.15)
-    // 2. CRITICAL: Add 2.5x the stroke width. 
-    //    Stroke extends outwards by half its width on top AND bottom. 
-    //    We need to clear the bottom stroke of line 1 AND the top stroke of line 2.
     const lineHeight = (options.fontSize * 1.15) + (strokeWidth * 2.5);
     
     wrapAndDrawText(ctx, textToDraw, options.position.x, options.position.y, maxWidth, lineHeight);

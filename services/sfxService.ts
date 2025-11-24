@@ -11,18 +11,43 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const performFreesoundSearch = async (searchTags: string, log: LogFunction, retryWithFewerTerms: boolean = true): Promise<SoundEffect[]> => {
+/**
+ * Выполнить текстовый поиск по Freesound с fallback и чисткой ключевых слов.
+ * @param searchTags Ключевые слова для поиска
+ * @param log Функция логирования
+ * @param retryWithFewerTerms Повторить с сокращённым запросом если не найдено
+ */
+const performFreesoundSearch = async (
+    searchTags: string,
+    log: LogFunction,
+    retryWithFewerTerms: boolean = true
+): Promise<SoundEffect[]> => {
     const apiKey = getApiKey('freesound');
-    // Clean tags: remove punctuation, extra spaces
-    const cleanTags = searchTags.replace(/[^\w\s]/gi, '').trim().replace(/\s+/g, ' ');
-    
+    const cleanTags = searchTags
+        .replace(/[^\w\s-]/gi, '')         // удаляем пунктуацию
+        .replace(/\s+/g, ' ')             // множественные пробелы одним
+        .trim();
+
     if (!cleanTags || !apiKey) {
         if (!apiKey) log({ type: 'info', message: 'Freesound API key не предоставлен.' });
         return [];
     }
 
+    // Recursive fallback helper
+    const tryFallback = () => {
+        if (retryWithFewerTerms) {
+            const words = cleanTags.split(' ');
+            if (words.length > 1) {
+                const shorterQuery = words.slice(0, -1).join(' ');
+                log({ type: 'info', message: `🔄 Попытка упрощенного поиска: "${shorterQuery}"` });
+                return performFreesoundSearch(shorterQuery, log, true);
+            }
+        }
+        return Promise.resolve([]);
+    };
+
     const searchUrl = `${FREESOUND_API_URL}?query=${encodeURIComponent(cleanTags)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
-    log({ type: 'request', message: `Запрос SFX с Freesound (Query: "${cleanTags}")`, data: { url: searchUrl } });
+    log({ type: 'request', message: `Запрос SFX с Freesound (Query: "${cleanTags}")` });
 
     try {
         const response = await fetchWithCorsFallback(searchUrl, {
@@ -30,63 +55,53 @@ const performFreesoundSearch = async (searchTags: string, log: LogFunction, retr
             headers: { 'Authorization': `Token ${apiKey}` },
             mode: 'cors'
         });
-        
+
         if (!response.ok) {
-            const errorText = await response.text();
-            log({ 
-                type: 'error', 
-                message: `Freesound API Error. Status: ${response.status} ${response.statusText}`, 
-                data: { body: errorText, headers: Object.fromEntries(response.headers.entries()) } 
+            log({
+                type: 'error',
+                message: `Freesound API Error: ${response.status} ${response.statusText}.`
             });
-            return [];
+            // On API error (like 400 Bad Request due to complex query), try fallback
+            return tryFallback();
         }
-        
+
         const data = await response.json();
-        
+
         if (!data || !data.results || data.results.length === 0) {
             log({ type: 'info', message: `Freesound: Ничего не найдено по запросу "${cleanTags}".` });
-            
-            // Fallback strategy: If no results and multiple words, try removing the last word
-            if (retryWithFewerTerms) {
-                const words = cleanTags.split(' ');
-                if (words.length > 1) {
-                    const shorterQuery = words.slice(0, -1).join(' ');
-                    log({ type: 'info', message: `Попытка упрощенного поиска: "${shorterQuery}"` });
-                    return performFreesoundSearch(shorterQuery, log, true);
-                }
-            }
-            return [];
+            // On empty results, try fallback
+            return tryFallback();
         }
-        
-        return data.results.map((sfx: any) => ({
-            ...sfx,
-            previews: {
-                ...sfx.previews,
-                'preview-hq-mp3': sfx.previews['preview-hq-mp3'].replace(/^http:\/\//, 'https://')
-            }
-        }));
 
+        // Возвращаем только валидные результаты с https и mp3 preview
+        return data.results
+            .filter((sfx: any) => sfx.previews && sfx.previews['preview-hq-mp3'])
+            .map((sfx: any) => ({
+                ...sfx,
+                previews: {
+                    ...sfx.previews,
+                    'preview-hq-mp3': sfx.previews['preview-hq-mp3'].replace(/^http:\/\//, 'https://')
+                }
+            }));
     } catch (error: any) {
         const errorMsg = error.message || String(error);
-        // Check for common "AdBlock" or "Network blocked" errors
-        if (errorMsg === 'Failed to fetch' || error.name === 'TypeError') {
-             log({ 
-                type: 'error', 
-                message: 'СЕТЕВАЯ ОШИБКА: Запрос к Freesound заблокирован. Отключите AdBlock, uBlock Origin или Privacy Badger для этого сайта.', 
-                data: { error: errorMsg, hint: "Браузер заблокировал запрос до его отправки." } 
-            });
-        } else {
-            log({ type: 'error', message: 'Ошибка при запросе к Freesound.', data: error });
-        }
-        return [];
+        log({ 
+            type: 'error', 
+            message: `Сбой запроса к Freesound ("${cleanTags}").`, 
+            data: errorMsg 
+        });
+        // On network/fetch error, try fallback as the query might be malformed for the proxy
+        return tryFallback();
     }
 };
 
+/** Ручной поиск SFX по ключевым словам */
 export const findSfxManually = async (keywords: string, log: LogFunction): Promise<SoundEffect[]> => {
     log({ type: 'info', message: `Ручной поиск SFX по ключевым словам: ${keywords}` });
     return performFreesoundSearch(keywords, log);
 };
 
+/** Автоматический подбор SFX через ИИ-описание */
 export const findSfxWithAi = async (description: string, log: LogFunction): Promise<SoundEffect[]> => {
     log({ type: 'info', message: 'Запрос к ИИ для подбора ключевых слов для SFX.' });
     try {
@@ -95,12 +110,13 @@ export const findSfxWithAi = async (description: string, log: LogFunction): Prom
         const keywords = keywordsResponse.text.trim();
         log({ type: 'info', message: `ИИ предложил ключевые слова для SFX: ${keywords}` });
         return performFreesoundSearch(keywords, log);
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error });
-        throw new Error('Не удалось подобрать SFX.');
+    } catch (error: any) {
+        log({ type: 'error', message: 'Ошибка в процессе поиска SFX с ИИ.', data: error.message || error });
+        return [];
     }
 };
 
+/** Автоматически подобрать и подставить SFX во все SFX-реплики сценария */
 export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): Promise<ScriptLine[]> => {
     const newScript = [...script];
     let requestCount = 0;
@@ -108,8 +124,8 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): 
         const line = newScript[i];
         if (line.speaker.toUpperCase() === 'SFX' && line.searchKeywords) {
             if (requestCount > 0) {
-                log({ type: 'info', message: 'Задержка 1.5с перед следующим запросом к Freesound...' });
-                await delay(1500);
+                // Небольшая задержка, чтобы не спамить API
+                await delay(1000);
             }
             requestCount++;
             try {
@@ -120,8 +136,8 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): 
                 } else {
                     log({ type: 'info', message: `SFX не найден для: ${line.text}` });
                 }
-            } catch (e) { 
-                log({type: 'error', message: `Не удалось автоматически найти SFX для "${line.text}"`, data: e});
+            } catch (e) {
+                log({ type: 'error', message: `Не удалось автоматически найти SFX для "${line.text}"`, data: e });
             }
         }
     }

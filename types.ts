@@ -79,6 +79,7 @@ export interface Chapter {
   error?: string;
   backgroundMusic?: MusicTrack;
   backgroundMusicVolume?: number;
+  sfxTimings?: SfxTiming[];
 }
 
 export interface TextOptions {

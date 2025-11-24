@@ -18,7 +18,8 @@ const searchJamendo = async (query: string, clientId: string, log: LogFunction):
     log({ type: 'request', message: `Запрос музыки с Jamendo: ${query}`, data: { url: searchUrl } });
 
     try {
-        const jamendoResponse = await fetchWithCorsFallback(searchUrl, { mode: 'cors' });
+        // Use CORS fallback
+        const jamendoResponse = await fetchWithCorsFallback(searchUrl);
         
         if (!jamendoResponse.ok) {
             log({ type: 'error', message: `Jamendo API error: ${jamendoResponse.statusText}` });
