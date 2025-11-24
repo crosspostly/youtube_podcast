@@ -9,8 +9,8 @@ const useCombinedState = (defaultFont: string) => {
     // Load devMode from localStorage initially
     const [devMode, setDevModeState] = useState<boolean>(() => {
         try {
-            const stored = localStorage.getItem('devMode');
-            // Only true if explicitly set to string "true"
+            const stored = localStorage.getItem('developerMode');
+            // Only true if explicitly set to string "true", otherwise default to false
             return stored === 'true';
         } catch {
             return false;
@@ -20,7 +20,7 @@ const useCombinedState = (defaultFont: string) => {
     const setDevMode = (value: boolean) => {
         setDevModeState(value);
         try {
-            localStorage.setItem('devMode', String(value));
+            localStorage.setItem('developerMode', String(value));
         } catch (e) {
             console.error("Failed to save devMode to localStorage", e);
         }

@@ -35,7 +35,55 @@ export const loadGoogleFont = async (fontFamily: string): Promise<void> => {
     }
 };
 
-// Function to wrap text and draw it
+// Enhanced function to fit text within canvas bounds with automatic font scaling
+const fitTextToCanvas = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+    maxHeight: number,
+    initialFontSize: number,
+    fontFamily: string
+): { fontSize: number; lines: string[] } => {
+    let fontSize = initialFontSize;
+    let lines: string[] = [];
+    
+    // Binary search for optimal font size
+    while (fontSize > 16) { // Minimum font size
+        ctx.font = `900 ${fontSize}px "${fontFamily}"`;
+        lines = wrapText(ctx, text, maxWidth);
+        
+        const totalHeight = lines.length * (fontSize * 1.15);
+        if (totalHeight <= maxHeight) break;
+        
+        fontSize -= 2;
+    }
+    
+    return { fontSize, lines };
+};
+
+// Enhanced text wrapping function
+const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = words[0];
+    
+    for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + ' ' + words[i];
+        const metrics = ctx.measureText(testLine);
+        
+        if (metrics.width > maxWidth) {
+            lines.push(currentLine);
+            currentLine = words[i];
+        } else {
+            currentLine = testLine;
+        }
+    }
+    lines.push(currentLine);
+    
+    return lines;
+};
+
+// Function to wrap text and draw it (legacy, kept for compatibility)
 const wrapAndDrawText = (context: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) => {
     const words = text.split(' ');
     let line = '';
@@ -133,11 +181,47 @@ export const drawCanvas = async (
     }
     
     const maxWidth = canvas.width * 0.9;
+    const maxHeight = canvas.height * 0.8; // Leave 20% margin top/bottom
+    
+    // Use enhanced text fitting with automatic scaling
+    const { fontSize: fittedFontSize, lines } = fitTextToCanvas(
+        ctx, 
+        textToDraw, 
+        maxWidth, 
+        maxHeight, 
+        options.fontSize, 
+        options.fontFamily
+    );
+    
+    // Update font size to the fitted size
+    ctx.font = `900 ${fittedFontSize}px "${options.fontFamily}"`;
     
     // IMPROVED LINE HEIGHT CALCULATION
-    const lineHeight = (options.fontSize * 1.15) + (strokeWidth * 2.5);
+    const lineHeight = (fittedFontSize * 1.15) + (strokeWidth * 2.5);
     
-    wrapAndDrawText(ctx, textToDraw, options.position.x, options.position.y, maxWidth, lineHeight);
+    // Draw fitted text with proper alignment
+    const totalHeight = lines.length * lineHeight;
+    let currentY = options.position.y - totalHeight / 2 + lineHeight / 2;
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmedLine = lines[i].trim();
+        
+        // Apply text alignment
+        let drawX = options.position.x;
+        if (options.textAlign === 'center') {
+            const metrics = ctx.measureText(trimmedLine);
+            drawX = options.position.x - metrics.width / 2;
+        } else if (options.textAlign === 'right') {
+            const metrics = ctx.measureText(trimmedLine);
+            drawX = options.position.x - metrics.width;
+        }
+        
+        if (ctx.lineWidth > 0) {
+            ctx.strokeText(trimmedLine, drawX, currentY);
+        }
+        ctx.fillText(trimmedLine, drawX, currentY);
+        currentY += lineHeight;
+    }
 
     // Reset shadow for next draw operations
     ctx.shadowColor = 'transparent';

@@ -161,10 +161,12 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
             
             if (musicBuffer) {
                 const musicGainNode = offlineContext.createGain();
-                const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume;
+                const chapterVolume = chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume ?? 0.2;
                 
                 musicGainNode.gain.value = chapterVolume;
                 musicGainNode.connect(offlineContext.destination);
+                
+                console.log(`🎵 Music "${chapter.backgroundMusic.name}" volume: ${(chapterVolume * 100).toFixed(0)}%`);
                 
                 const crossfadeDuration = 1.5;
                 const fadeInStartTime = speechTimeCursor;
@@ -272,8 +274,11 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
             if (sfxBuffer) {
                 try {
                     const sfxGainNode = offlineContext.createGain();
-                    sfxGainNode.gain.value = line.soundEffectVolume ?? 0.7; // Default volume 70%
+                    const sfxVolume = line.soundEffectVolume ?? 0.2; // Default volume 20% (much quieter)
+                    sfxGainNode.gain.value = sfxVolume;
                     sfxGainNode.connect(offlineContext.destination);
+                    
+                    console.log(`🔊 SFX "${sfx.name}" volume: ${(sfxVolume * 100).toFixed(0)}%`);
 
                     const sfxSource = offlineContext.createBufferSource();
                     sfxSource.buffer = sfxBuffer;

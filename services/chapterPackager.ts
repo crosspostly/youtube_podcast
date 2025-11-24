@@ -225,15 +225,84 @@ export const packageProjectToFolder = async (
         }
     }
     
+    // 6. Export YouTube Thumbnails
+    if (podcast.youtubeThumbnails && podcast.youtubeThumbnails.length > 0) {
+        const thumbnailsFolder = zipFolder.folder('thumbnails');
+        log({ type: 'info', message: `📸 Экспорт обложек YouTube...` });
+        
+        for (let i = 0; i < podcast.youtubeThumbnails.length; i++) {
+            const thumbnail = podcast.youtubeThumbnails[i];
+            try {
+                const blob = await dataUrlToBlob(thumbnail.dataUrl);
+                const sanitizedName = sanitizeFileName(thumbnail.styleName);
+                const fileName = `thumbnail_${String(i + 1).padStart(2, '0')}_${sanitizedName}.png`;
+                
+                thumbnailsFolder?.file(fileName, blob);
+                log({ 
+                    type: 'info', 
+                    message: `    ✅ Обложка сохранена: ${fileName} (${(blob.size / 1024).toFixed(1)}KB)` 
+                });
+            } catch (e: any) {
+                log({ 
+                    type: 'error', 
+                    message: `    ❌ Ошибка сохранения обложки ${i + 1}: ${e.message}` 
+                });
+            }
+        }
+        
+        log({ 
+            type: 'info', 
+            message: `✅ Экспортировано ${podcast.youtubeThumbnails.length} обложек YouTube` 
+        });
+    }
+
+    // 7. Enhanced project metadata with YouTube data
     const projectMetadata = {
         title: podcast.selectedTitle || podcast.topic,
         totalChapters: podcast.chapters.length,
         totalDuration: chapterDurations.reduce((sum, d) => sum + d, 0),
         description: podcast.description,
-        keywords: podcast.seoKeywords
+        keywords: podcast.seoKeywords,
+        
+        // YouTube metadata
+        youtube: {
+            titleOptions: podcast.youtubeTitleOptions,
+            selectedTitle: podcast.selectedTitle,
+            description: podcast.description,
+            tags: podcast.seoKeywords,
+            thumbnailCount: podcast.youtubeThumbnails?.length || 0,
+            language: podcast.language
+        }
     };
     zipFolder.file('project_metadata.json', JSON.stringify(projectMetadata, null, 2));
-    log({ type: 'info', message: `✅ Метаданные проекта созданы для "${podcast.selectedTitle || podcast.topic}"` });
+    log({ type: 'info', message: `✅ YouTube метаданные добавлены в project_metadata.json` });
+
+    // 8. Create YouTube upload info file
+    const youtubeInfo = `
+===========================================
+YouTube Upload Information
+===========================================
+
+📌 Title:
+${podcast.selectedTitle || podcast.topic}
+
+📝 Description:
+${podcast.description}
+
+🏷️ Tags:
+${podcast.seoKeywords.join(', ')}
+
+🎨 Thumbnails Available:
+${podcast.youtubeThumbnails?.map((t, i) => `  ${i + 1}. ${t.styleName}`).join('\n') || '  No thumbnails'}
+
+⏱️ Video Duration: ${Math.ceil(chapterDurations.reduce((sum, d) => sum + d, 0) / 60)} minutes
+
+📂 Video File: final_video.mp4
+📸 Thumbnails Folder: thumbnails/
+`;
+
+    zipFolder.file('youtube_upload_info.txt', youtubeInfo);
+    log({ type: 'info', message: `✅ YouTube upload info создан` });
     
     const assemblyScript = generateChapterBasedAssemblyScript(podcast.chapters.length);
     zipFolder.file('assemble_video.bat', assemblyScript);

@@ -165,7 +165,7 @@ export interface Podcast {
   monologueVoice: string;
   selectedBgIndex: number;
   initialImageCount: number;
-  backgroundMusicVolume: number;
+  backgroundMusicVolume: number; // Default should be 0.2 (20%)
   imageSource: 'ai' | 'stock';
   thumbnailText: string;
 }
