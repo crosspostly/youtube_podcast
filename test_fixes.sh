@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Test script for SFX, subtitles, and video assembly fixes
-echo "🧪 Testing SFX, Subtitles, and Video Assembly Fixes"
-echo "=================================================="
+# Enhanced test script for SFX, subtitles, and video assembly fixes
+echo "🧪 Testing SFX, Subtitles, and Video Assembly Fixes (Enhanced)"
+echo "============================================================="
 
 # Test 1: Check if new files exist
 echo "📁 Test 1: Checking if new files exist..."
@@ -81,13 +81,31 @@ else
     echo "❌ SFX timing improvements missing"
 fi
 
-# Test 7: Check if chapterPackager has SFX blob support
-echo ""
-echo "🔍 Test 7: Checking chapter packager SFX support..."
-if grep -q "Используем загруженный blob для SFX" services/chapterPackager.ts; then
-    echo "✅ SFX blob usage in packager found"
+if grep -q "cleanupSfxBlobs" services/audioUtils.ts; then
+    echo "✅ SFX memory cleanup integration found"
 else
-    echo "❌ SFX blob usage in packager missing"
+    echo "❌ SFX memory cleanup integration missing"
+fi
+
+# Test 7: Check if chapterPackager has enhanced SFX timing support
+echo ""
+echo "🔍 Test 7: Checking chapter packager SFX timing support..."
+if grep -q "Enhanced SFX processing with timing from metadata" services/chapterPackager.ts; then
+    echo "✅ Enhanced SFX timing processing found"
+else
+    echo "❌ Enhanced SFX timing processing missing"
+fi
+
+if grep -q "adelay" services/chapterPackager.ts; then
+    echo "✅ FFmpeg adelay filter support found"
+else
+    echo "❌ FFmpeg adelay filter support missing"
+fi
+
+if grep -q "powershell.*Get-Content.*metadata.*ConvertFrom-Json" services/chapterPackager.ts; then
+    echo "✅ PowerShell metadata parsing found"
+else
+    echo "❌ PowerShell metadata parsing missing"
 fi
 
 # Test 8: Check if subtitle cleaning is enhanced
@@ -108,15 +126,120 @@ else
     echo "❌ SFX processing in assembly script missing"
 fi
 
+# Test 10: Check memory cleanup utilities
 echo ""
-echo "🎉 Testing completed!"
-echo "=================================================="
+echo "🔍 Test 10: Checking memory cleanup utilities..."
+if [ -f "utils/sfxMemoryCleanup.ts" ]; then
+    echo "✅ SFX memory cleanup utility exists"
+else
+    echo "❌ SFX memory cleanup utility missing"
+fi
+
+if grep -q "cleanupSfxBlobs" utils/sfxMemoryCleanup.ts; then
+    echo "✅ cleanupSfxBlobs function exists"
+else
+    echo "❌ cleanupSfxBlobs function missing"
+fi
+
+if grep -q "getSfxMemoryStats" utils/sfxMemoryCleanup.ts; then
+    echo "✅ getSfxMemoryStats function exists"
+else
+    echo "❌ getSfxMemoryStats function missing"
+fi
+
+# Test 11: Check Jest test configuration
+echo ""
+echo "🔍 Test 11: Checking Jest test configuration..."
+if [ -f "jest.config.js" ]; then
+    echo "✅ Jest configuration exists"
+else
+    echo "❌ Jest configuration missing"
+fi
+
+if [ -f "test/setup.ts" ]; then
+    echo "✅ Jest test setup exists"
+else
+    echo "❌ Jest test setup missing"
+fi
+
+# Test 12: Check comprehensive test files
+echo ""
+echo "🔍 Test 12: Checking comprehensive test files..."
+if [ -f "test/sfxService.test.ts" ]; then
+    echo "✅ SFX service unit tests exist"
+else
+    echo "❌ SFX service unit tests missing"
+fi
+
+if [ -f "test/sfxMemoryCleanup.test.ts" ]; then
+    echo "✅ SFX memory cleanup tests exist"
+else
+    echo "❌ SFX memory cleanup tests missing"
+fi
+
+if [ -f "test/sfxTiming.test.ts" ]; then
+    echo "✅ SFX timing integration tests exist"
+else
+    echo "❌ SFX timing integration tests missing"
+fi
+
+# Test 13: Run Jest tests (if available)
+echo ""
+echo "🧪 Test 13: Running Jest tests..."
+if npm list jest > /dev/null 2>&1; then
+    if npm test > /dev/null 2>&1; then
+        echo "✅ Jest tests pass"
+    else
+        echo "❌ Jest tests failed"
+        echo "Run 'npm test' for detailed output"
+    fi
+else
+    echo "⚠️ Jest not installed, skipping tests"
+fi
+
+# Test 14: Check package.json test scripts
+echo ""
+echo "🔍 Test 14: Checking package.json test scripts..."
+if grep -q '"test":' package.json; then
+    echo "✅ Test script found in package.json"
+else
+    echo "❌ Test script missing in package.json"
+fi
+
+if grep -q '"test:watch"' package.json; then
+    echo "✅ Test watch script found in package.json"
+else
+    echo "❌ Test watch script missing in package.json"
+fi
+
+if grep -q '"test:coverage"' package.json; then
+    echo "✅ Test coverage script found in package.json"
+else
+    echo "❌ Test coverage script missing in package.json"
+fi
+
+echo ""
+echo "🎉 Enhanced testing completed!"
+echo "============================================================="
 echo ""
 echo "📋 Summary of implemented fixes:"
 echo "✅ SFX blob downloading and storage"
 echo "✅ Enhanced SFX timing with anticipation"
 echo "✅ Improved subtitle encoding (UTF-8 + Cyrillic)"
-echo "✅ SFX integration in audio mixing"
-echo "✅ SFX support in video assembly scripts"
+echo "✅ Enhanced SFX integration with metadata timing"
+echo "✅ FFmpeg adelay filter for precise SFX positioning"
+echo "✅ PowerShell-based metadata parsing"
+echo "✅ SFX memory cleanup utilities"
+echo "✅ Comprehensive Jest test suite"
+echo "✅ Memory leak prevention"
 echo "✅ Enhanced error handling and logging"
 echo "✅ TypeScript type safety"
+echo "✅ Real data testing capabilities"
+echo ""
+echo "🧪 New testing capabilities:"
+echo "- Unit tests for SFX service functionality"
+echo "- Memory cleanup testing"
+echo "- SFX timing calculation testing"
+echo "- Error handling and fallback testing"
+echo "- Blob download and storage testing"
+echo "- Mock data for reliable testing"

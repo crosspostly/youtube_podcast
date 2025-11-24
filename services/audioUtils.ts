@@ -2,6 +2,7 @@
 import { Mp3Encoder, WavHeader } from 'lamejs';
 import type { Podcast, LogEntry, Chapter } from '../types';
 import { fetchWithCorsFallback } from './apiUtils';
+import { cleanupSfxBlobs } from '../utils/sfxMemoryCleanup';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -294,7 +295,17 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
     }
 
     const renderedBuffer = await offlineContext.startRendering();
-    return audioBufferToWavBlob(renderedBuffer);
+    const resultBlob = audioBufferToWavBlob(renderedBuffer);
+    
+    // 🆕 Memory cleanup: Clear SFX blobs after audio processing
+    try {
+        const cleanedCount = cleanupSfxBlobs(podcast);
+        console.log(`🧹 Cleaned ${cleanedCount} SFX blobs after audio processing`);
+    } catch (e) {
+        console.warn('Failed to cleanup SFX blobs:', e);
+    }
+    
+    return resultBlob;
 };
 
 export const convertWavToMp3 = async (wavBlob: Blob, log: LogFunction): Promise<Blob> => {

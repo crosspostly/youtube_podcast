@@ -518,28 +518,82 @@ for /L %%i in (1,1,${chapterCount}) do (
             )
         )
         
-        REM Simple audio mixing: add all SFX to main audio
+        REM Enhanced SFX processing with timing from metadata
         set "sfx_inputs="
         set "sfx_input_count=2"
+        set "sfx_filter="
+        set "sfx_delay_filter="
+        
+        REM Build SFX inputs and collect timing information
         for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
             set "sfx_inputs=!sfx_inputs! -i \"%%f\""
             set /a sfx_input_count+=1
         )
         
-        REM Mix audio with SFX
+        REM Parse SFX timings from metadata.json and create adelay filters
+        if exist "!chapter_dir!\\metadata.json" (
+            echo [INFO] Parsing SFX timings from metadata...
+            REM Use PowerShell to parse JSON and create timing filters
+            powershell -Command ^
+                "$metadata = Get-Content '!chapter_dir!\metadata.json' -Raw | ConvertFrom-Json; ^
+                $sfxIndex = 0; ^
+                $sfxFiles = Get-ChildItem '!chapter_dir!\sfx\*.wav' | Sort-Object Name; ^
+                foreach ($timing in $metadata.sfxTimings) { ^
+                    if ($sfxIndex -lt $sfxFiles.Count) { ^
+                        $delayMs = [math]::Round($timing.startTime * 1000); ^
+                        $volume = if ($timing.volume) { $timing.volume } else { 0.3 }; ^
+                        Write-Output \"[!sfx_input_count!a]adelay=!delayMs|!delayMs!,volume=!volume![sfx!sfxIndex!a]\"; ^
+                        $sfxIndex++; ^
+                        $script:sfx_input_count++; ^
+                    } ^
+                }" > temp_sfx_filters.txt 2>nul
+            
+            REM Read generated filters
+            setlocal enabledelayedexpansion
+            if exist temp_sfx_filters.txt (
+                set "first_sfx=1"
+                for /f "usebackq tokens=*" %%a in (temp_sfx_filters.txt) do (
+                    if !first_sfx! equ 1 (
+                        set "sfx_filter=%%a"
+                        set "first_sfx=0"
+                    ) else (
+                        set "sfx_filter=!sfx_filter!;%%a"
+                    )
+                )
+                echo [INFO] Applied SFX timing filters
+            )
+            endlocal
+            del temp_sfx_filters.txt 2>nul
+        )
+        
+        REM Mix audio with SFX using timing if available, otherwise simple mix
         if !sfx_count! equ 1 (
             set "inputs=!inputs! !sfx_inputs!"
-            set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
+            if defined sfx_filter (
+                set "filter_complex=!filter_complex!;!sfx_filter!;[1:a][sfx0a]amix=inputs=2:duration=first[a]"
+            ) else (
+                set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
+            )
             set "maps=-map [v] -map [a]"
         ) else if !sfx_count! gtr 1 (
             set "inputs=!inputs! !sfx_inputs!"
-            set "amix_inputs=!sfx_input_count!"
-            set "filter_complex=!filter_complex!;"
-            REM Build complex amix filter for multiple SFX
-            for /L %%n in (1,1,!sfx_count!) do (
-                set "filter_complex=!filter_complex![%%n:a]"
+            if defined sfx_filter (
+                REM Mix all timed SFX with main audio
+                set "mix_inputs=[1:a]"
+                for /L %%n in (0,1,!sfx_count!) do (
+                    set "mix_inputs=!mix_inputs![sfx%%na]"
+                )
+                set /a total_inputs=!sfx_count!+1
+                set "filter_complex=!filter_complex!;!sfx_filter!;!mix_inputs!amix=inputs=!total_inputs!:duration=first[a]"
+            ) else (
+                REM Simple mix without timing
+                set "amix_inputs=!sfx_input_count!"
+                set "filter_complex=!filter_complex!;"
+                for /L %%n in (1,1,!sfx_count!) do (
+                    set "filter_complex=!filter_complex![%%n:a]"
+                )
+                set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
             )
-            set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
             set "maps=-map [v] -map [a]"
         )
     ) else (
