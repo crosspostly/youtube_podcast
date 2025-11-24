@@ -95,6 +95,67 @@ const performFreesoundSearch = async (
     }
 };
 
+/** Найти и скачать SFX с загрузкой blob */
+export const findAndDownloadSfx = async (
+    keywords: string,
+    log: LogFunction
+): Promise<SoundEffect[]> => {
+    log({ type: 'info', message: `🔊 Поиск и загрузка SFX: "${keywords}"` });
+    
+    try {
+        // Шаг 1: Найти SFX
+        const foundSfx = await performFreesoundSearch(keywords, log);
+        
+        if (foundSfx.length === 0) {
+            log({ type: 'info', message: `⚠️  SFX не найден: "${keywords}"` });
+            return [];
+        }
+        
+        // Шаг 2: Скачать блоб для каждого найденного SFX
+        const downloadedSfx: SoundEffect[] = [];
+        for (const sfx of foundSfx) {
+            try {
+                if (sfx.previews?.['preview-hq-mp3']) {
+                    const response = await fetch(sfx.previews['preview-hq-mp3']);
+                    if (response.ok) {
+                        const blob = await response.blob();
+                        downloadedSfx.push({
+                            ...sfx,
+                            blob: blob,  // ← КЛЮЧЕВО: blob добавлен!
+                            downloaded: true,
+                            downloadTime: new Date().getTime()
+                        });
+                        log({ 
+                            type: 'info', 
+                            message: `✅ SFX скачан: "${sfx.name}" (${(blob.size / 1024).toFixed(1)}KB)` 
+                        });
+                    } else {
+                        throw new Error(`HTTP ${response.status}`);
+                    }
+                } else {
+                    throw new Error('No preview URL available');
+                }
+            } catch (e) {
+                log({ 
+                    type: 'info',  // Исправлено с 'warn' на 'info'
+                    message: `⚠️  Не удалось скачать SFX "${sfx.name}", но ссылка сохранена`, 
+                    data: e 
+                });
+                // Fallback: вернуть с ссылкой без блоба
+                downloadedSfx.push({
+                    ...sfx,
+                    downloaded: false
+                });
+            }
+        }
+        
+        return downloadedSfx;
+    } catch (error: any) {
+        log({ type: 'error', message: 'Ошибка при поиске SFX', data: error });
+        return [];
+    }
+};
+
 /** Ручной поиск SFX по ключевым словам */
 export const findSfxManually = async (keywords: string, log: LogFunction): Promise<SoundEffect[]> => {
     log({ type: 'info', message: `Ручной поиск SFX по ключевым словам: ${keywords}` });
@@ -120,6 +181,7 @@ export const findSfxWithAi = async (description: string, log: LogFunction): Prom
 export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): Promise<ScriptLine[]> => {
     const newScript = [...script];
     let requestCount = 0;
+    
     for (let i = 0; i < newScript.length; i++) {
         const line = newScript[i];
         if (line.speaker.toUpperCase() === 'SFX' && line.searchKeywords) {
@@ -128,11 +190,29 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): 
                 await delay(1000);
             }
             requestCount++;
+            
             try {
-                const sfxTracks = await findSfxManually(line.searchKeywords, log);
-                if (sfxTracks.length > 0) {
-                    newScript[i] = { ...line, soundEffect: sfxTracks[0], soundEffectVolume: 0.5 };
-                    log({ type: 'info', message: `SFX найден: ${sfxTracks[0].name}` });
+                // ✅ НОВОЕ: используем findAndDownloadSfx вместо findSfxManually
+                const sfxTracks = await findAndDownloadSfx(line.searchKeywords, log);
+                
+                if (sfxTracks.length > 0 && sfxTracks[0].blob) {
+                    newScript[i] = { 
+                        ...line, 
+                        soundEffect: sfxTracks[0],
+                        soundEffectBlob: sfxTracks[0].blob,  // ← добавлено!
+                        soundEffectVolume: 0.6,
+                        soundEffectDownloaded: true
+                    };
+                    log({ type: 'info', message: `✅ SFX найден и скачан: ${sfxTracks[0].name}` });
+                } else if (sfxTracks.length > 0) {
+                    // Fallback: есть ссылка, но нет блоба
+                    newScript[i] = { 
+                        ...line, 
+                        soundEffect: sfxTracks[0],
+                        soundEffectVolume: 0.6,
+                        soundEffectDownloaded: false
+                    };
+                    log({ type: 'info', message: `⚠️  SFX найден (только ссылка): ${sfxTracks[0].name}` });
                 } else {
                     log({ type: 'info', message: `SFX не найден для: ${line.text}` });
                 }
@@ -141,5 +221,6 @@ export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): 
             }
         }
     }
+    
     return newScript;
 };

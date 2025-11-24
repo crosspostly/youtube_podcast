@@ -21,6 +21,9 @@ export interface SoundEffect {
     };
     license: string;
     username: string;
+    blob?: Blob;           // 🆕 blob для загруженного SFX
+    downloaded?: boolean;  // 🆕 флаг успешной загрузки
+    downloadTime?: number; // 🆕 время загрузки для кеширования
 }
 
 export interface ScriptLine {
@@ -29,6 +32,8 @@ export interface ScriptLine {
   searchKeywords?: string;
   soundEffect?: SoundEffect;
   soundEffectVolume?: number;
+  soundEffectBlob?: Blob;           // 🆕 blob для загруженного SFX
+  soundEffectDownloaded?: boolean;  // 🆕 флаг успешной загрузки
 }
 
 export type ChapterStatus = 'pending' | 'script_generating' | 'audio_generating' | 'completed' | 'error';

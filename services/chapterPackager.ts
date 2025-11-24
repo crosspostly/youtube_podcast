@@ -117,7 +117,7 @@ export const packageProjectToFolder = async (
                 }
             }
             
-            // 5. Download and trim SFX using stored timings
+            // 5. Download and trim SFX using stored timings and blobs
             const sfxFolder = chapterFolder.folder('sfx');
             // Prefer using pre-calculated timings if available
             let sfxTimings = chapter.sfxTimings || [];
@@ -143,38 +143,60 @@ export const packageProjectToFolder = async (
             const finalSfxTimings: SfxTiming[] = [];
             
             for (const timing of sfxTimings) {
-                // Find the SFX object in script to get URL (metadata only stores path)
+                // Find the SFX object in script to get URL and blob
                 const matchingLine = chapter.script.find(l => l.soundEffect?.name === timing.name);
                 const sfx = matchingLine?.soundEffect;
+                const sfxBlob = matchingLine?.soundEffectBlob;
                 
                 if (sfx) {
-                    const sfxUrl = getBestSfxUrl(sfx);
-                    if (sfxUrl) {
-                        try {
-                            log({ type: 'info', message: `    🔊 Скачивание SFX: "${sfx.name}"` });
-                            const sfxBlob = await downloadAndTrimAudio(
-                                sfxUrl,
-                                MAX_SFX_DURATION,
-                                'sfx',
-                                log
-                            );
-                            // Use filename from timing or generate new one
-                            const sfxFileName = timing.filePath.split('/').pop() || `${sanitizeFileName(sfx.name)}.wav`;
-                            sfxFolder?.file(sfxFileName, sfxBlob);
-                            
-                            finalSfxTimings.push({
-                                ...timing,
-                                duration: Math.min(MAX_SFX_DURATION, audioDuration - timing.startTime) // Clamp to chapter end
-                            });
-                        } catch (e: any) {
-                            log({ type: 'error', message: `      ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
+                    let sfxBlobToUse: Blob | null = null;
+                    
+                    // 🆕 Проверяем сначала blob в ScriptLine
+                    if (sfxBlob && sfxBlob.size > 0) {
+                        sfxBlobToUse = sfxBlob;
+                        log({ type: 'info', message: `    🔊 Используем загруженный blob для SFX: "${sfx.name}" (${(sfxBlob.size / 1024).toFixed(1)}KB)` });
+                    } 
+                    // Fallback: пробуем blob в самом SoundEffect
+                    else if (sfx.blob && sfx.blob.size > 0) {
+                        sfxBlobToUse = sfx.blob;
+                        log({ type: 'info', message: `    🔊 Используем blob из SoundEffect: "${sfx.name}" (${(sfx.blob.size / 1024).toFixed(1)}KB)` });
+                    }
+                    // Иначе скачиваем по URL
+                    else {
+                        const sfxUrl = getBestSfxUrl(sfx);
+                        if (sfxUrl) {
+                            try {
+                                log({ type: 'info', message: `    🔊 Скачивание SFX по URL: "${sfx.name}"` });
+                                sfxBlobToUse = await downloadAndTrimAudio(
+                                    sfxUrl,
+                                    MAX_SFX_DURATION,
+                                    'sfx',
+                                    log
+                                );
+                            } catch (e: any) {
+                                log({ type: 'error', message: `      ❌ Не удалось скачать SFX "${sfx.name}": ${e.message}` });
+                            }
                         }
+                    }
+                    
+                    // Если получили blob (из любого источника)
+                    if (sfxBlobToUse) {
+                        // Use filename from timing or generate new one
+                        const sfxFileName = timing.filePath.split('/').pop() || `${sanitizeFileName(sfx.name)}.wav`;
+                        sfxFolder?.file(sfxFileName, sfxBlobToUse);
+                        
+                        finalSfxTimings.push({
+                            ...timing,
+                            duration: Math.min(MAX_SFX_DURATION, audioDuration - timing.startTime) // Clamp to chapter end
+                        });
                     }
                 }
             }
             
             if (finalSfxTimings.length > 0) {
                 log({ type: 'info', message: `    ✅ Добавлено ${finalSfxTimings.length} звуковых эффектов` });
+            } else {
+                log({ type: 'info', message: `    ⚠️ SFX не найдены или не загружены` });
             }
             
             // 6. Create chapter metadata
@@ -336,6 +358,7 @@ const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
 
 const cleanSubtitleText = (text: string): string => {
     return text
+        // Заменяем распространенные проблемные символы
         .replace(/â€"/g, '—')
         .replace(/â€"/g, '–')
         .replace(/â€œ/g, '"')
@@ -343,7 +366,11 @@ const cleanSubtitleText = (text: string): string => {
         .replace(/â€™/g, "'")
         .replace(/â€˜/g, "'")
         .replace(/â€¦/g, '...')
-        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        // Удаляем контрольные символы, оставляя ASCII + Cyrillic + базовую пунктуацию
+        .replace(/[^\x00-\x7F\u0400-\u04FF0-9\s\n\r\-\:\,\.\!\?\;\(\)\[\]\{\}\"\'\àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]/g, '')
+        // Удаляем специфические контрольные символы
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+        // Нормализуем пробелы
         .replace(/\s+/g, ' ')
         .trim();
 };
@@ -407,7 +434,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ===================================================
-echo Chapter-Based Video Assembly (High Quality)
+echo Chapter-Based Video Assembly (High Quality + SFX)
 echo ===================================================
 echo.
 
@@ -472,18 +499,65 @@ for /L %%i in (1,1,${chapterCount}) do (
     set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i \"!chapter_dir!\\audio.wav\""
     set "maps=-map [v] -map 1:a"
     
-    REM Add music if exists
-    if exist "!chapter_dir!\\music.wav" (
-        set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
-        set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first:dropout_transition=2[a]"
-        set "maps=-map [v] -map [a]"
+    REM 🆕 ADD SFX PROCESSING
+    set "sfx_count=0"
+    for %%f in ("!chapter_dir!\\sfx\\*.wav") do set /a sfx_count+=1
+    
+    if !sfx_count! gtr 0 (
+        echo [INFO] Found !sfx_count! SFX files, mixing with audio...
+        
+        REM Get SFX timings from metadata
+        set "sfx_filter="
+        for /f "usebackq tokens=*" %%a in ("!chapter_dir!\\metadata.json") do (
+            set "json_line=%%a"
+            REM Simple parsing for SFX timings (basic implementation)
+            echo !json_line! | findstr /C:"sfxTimings" >nul
+            if !errorlevel! equ 0 (
+                REM Found SFX section - will be processed in advanced version
+                echo [INFO] SFX metadata detected
+            )
+        )
+        
+        REM Simple audio mixing: add all SFX to main audio
+        set "sfx_inputs="
+        set "sfx_input_count=2"
+        for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
+            set "sfx_inputs=!sfx_inputs! -i \"%%f\""
+            set /a sfx_input_count+=1
+        )
+        
+        REM Mix audio with SFX
+        if !sfx_count! equ 1 (
+            set "inputs=!inputs! !sfx_inputs!"
+            set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
+            set "maps=-map [v] -map [a]"
+        ) else if !sfx_count! gtr 1 (
+            set "inputs=!inputs! !sfx_inputs!"
+            set "amix_inputs=!sfx_input_count!"
+            set "filter_complex=!filter_complex!;"
+            REM Build complex amix filter for multiple SFX
+            for /L %%n in (1,1,!sfx_count!) do (
+                set "filter_complex=!filter_complex![%%n:a]"
+            )
+            set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
+            set "maps=-map [v] -map [a]"
+        )
     ) else (
+        echo [INFO] No SFX files found, using audio only
         set "filter_complex=!filter_complex!;[1:a]acopy[a]"
         set "maps=-map [v] -map [a]"
     )
     
-    REM Apply subtitles
-    set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
+    REM Add music if exists (after SFX mixing)
+    if exist "!chapter_dir!\\music.wav" (
+        echo [INFO] Adding background music...
+        set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
+        set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
+        set "maps=-map [v] -map [final_audio]"
+    )
+    
+    REM Apply subtitles with UTF-8 encoding
+    set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
     
     REM Execute FFmpeg
     ffmpeg -y !inputs! ^

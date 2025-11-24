@@ -192,46 +192,79 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
         speechTimeCursor += speechBuffer.duration;
     }
 
-    // Layer 2: Sound Effects
+    // Layer 2: Sound Effects with Enhanced Blob Support
     let estimatedTimeCursor = 0;
     const CHARS_PER_SECOND = 15; // Estimated reading speed for timing SFX
+    const PAUSE_BETWEEN_LINES = 0.5;  // пауза между репликами (сек)
+    const SFX_ANTICIPATION = 0.2;     // SFX чуть раньше произнесения (сек)
+    const WORDS_PER_SECOND = 2.5;      // средняя скорость речи (точнее, чем chars/15)
     const allScriptLines = podcast.chapters.flatMap(c => c.script);
 
     for (const line of allScriptLines) {
         if (line.speaker.toUpperCase() !== 'SFX' && line.text) {
-             estimatedTimeCursor += Math.max(1, line.text.length / CHARS_PER_SECOND);
+            // Word-based duration calculation for better accuracy
+            const wordCount = line.text.split(/\s+/).length;
+            const estimatedDuration = Math.max(1, wordCount / WORDS_PER_SECOND);
+            estimatedTimeCursor += estimatedDuration + PAUSE_BETWEEN_LINES;
         } else if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {
             const sfx = line.soundEffect;
-            
-            // List of candidates to try in order. 
-            // HQ MP3 is preferred, then OGG, then LQ MP3.
-            // Safe access with optional chaining in case API returned partial object
-            const urlsToTry = [
-                sfx.previews?.['preview-hq-mp3'],
-                sfx.previews?.['preview-hq-ogg'],
-                sfx.previews?.['preview-lq-mp3'],
-                sfx.previews?.['preview-lq-ogg']
-            ].filter(url => !!url).map(url => url?.replace(/^http:\/\//, 'https://') || '');
-            
             let sfxBuffer: AudioBuffer | null = null;
-
-            // Try fetching each candidate URL until one works
-            for (const sfxUrl of urlsToTry) {
-                if(!sfxUrl) continue;
+            
+            // 🆕 Проверяем сначала blob в ScriptLine
+            if (line.soundEffectBlob && line.soundEffectBlob.size > 0) {
                 try {
-                    const sfxResponse = await fetchWithCorsFallback(sfxUrl);
-                    if (!sfxResponse.ok) continue;
-
-                    const contentType = sfxResponse.headers.get('content-type');
-                    if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
-                        continue; 
-                    }
-
-                    const sfxArrayBuffer = await sfxResponse.arrayBuffer();
+                    const sfxArrayBuffer = await line.soundEffectBlob.arrayBuffer();
                     sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
-                    if(sfxBuffer) break; // Success
+                    console.log(`✅ Using pre-downloaded blob for SFX: ${sfx.name} (${(line.soundEffectBlob.size / 1024).toFixed(1)}KB)`);
                 } catch (e) {
-                    console.warn(`Failed to fetch/decode SFX candidate: ${sfxUrl}`, e);
+                    console.warn(`Failed to decode SFX blob: ${sfx.name}`, e);
+                }
+            }
+            
+            // Fallback: пробуем blob в самом SoundEffect
+            if (!sfxBuffer && sfx.blob && sfx.blob.size > 0) {
+                try {
+                    const sfxArrayBuffer = await sfx.blob.arrayBuffer();
+                    sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
+                    console.log(`✅ Using SoundEffect blob for SFX: ${sfx.name} (${(sfx.blob.size / 1024).toFixed(1)}KB)`);
+                } catch (e) {
+                    console.warn(`Failed to decode SoundEffect blob: ${sfx.name}`, e);
+                }
+            }
+            
+            // Final fallback: скачиваем по URL
+            if (!sfxBuffer) {
+                // List of candidates to try in order. 
+                // HQ MP3 is preferred, then OGG, then LQ MP3.
+                // Safe access with optional chaining in case API returned partial object
+                const urlsToTry = [
+                    sfx.previews?.['preview-hq-mp3'],
+                    sfx.previews?.['preview-hq-ogg'],
+                    sfx.previews?.['preview-lq-mp3'],
+                    sfx.previews?.['preview-lq-ogg']
+                ].filter(url => !!url).map(url => url?.replace(/^http:\/\//, 'https://') || '');
+
+                // Try fetching each candidate URL until one works
+                for (const sfxUrl of urlsToTry) {
+                    if(!sfxUrl) continue;
+                    try {
+                        const sfxResponse = await fetchWithCorsFallback(sfxUrl);
+                        if (!sfxResponse.ok) continue;
+
+                        const contentType = sfxResponse.headers.get('content-type');
+                        if (contentType && (contentType.includes('text/html') || contentType.includes('application/json'))) {
+                            continue; 
+                        }
+
+                        const sfxArrayBuffer = await sfxResponse.arrayBuffer();
+                        sfxBuffer = await audioContext.decodeAudioData(sfxArrayBuffer);
+                        if(sfxBuffer) {
+                            console.log(`✅ Downloaded and decoded SFX: ${sfx.name} from URL`);
+                            break; // Success
+                        }
+                    } catch (e) {
+                        console.warn(`Failed to fetch/decode SFX candidate: ${sfxUrl}`, e);
+                    }
                 }
             }
 
@@ -245,14 +278,17 @@ export const combineAndMixAudio = async (podcast: Podcast): Promise<Blob> => {
                     sfxSource.buffer = sfxBuffer;
                     sfxSource.connect(sfxGainNode);
                     
-                    // Ensure start time is not negative
-                    const startTime = Math.min(estimatedTimeCursor, totalDuration - sfxBuffer.duration);
+                    // Enhanced timing with anticipation for better sync
+                    const adjustedTime = Math.max(0, estimatedTimeCursor - SFX_ANTICIPATION);
+                    const startTime = Math.min(adjustedTime, totalDuration - sfxBuffer.duration);
                     sfxSource.start(Math.max(0, startTime));
+                    
+                    console.log(`🔊 SFX scheduled: ${sfx.name} at ${startTime.toFixed(2)}s (duration: ${sfxBuffer.duration.toFixed(2)}s)`);
                 } catch(e) {
                      console.error(`Error scheduling SFX: ${sfx.name}`, e);
                 }
             } else {
-                console.error(`Не удалось обработать SFX: ${sfx.name}`);
+                console.error(`❌ Не удалось обработать SFX: ${sfx.name} - нет blob и не удалось скачать`);
             }
         }
     }
