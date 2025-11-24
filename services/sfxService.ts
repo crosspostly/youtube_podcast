@@ -319,47 +319,53 @@ export const findSfxWithAi = async (description: string, log: LogFunction): Prom
 /** Автоматически подобрать и подставить SFX во все SFX-реплики сценария */
 export const findSfxForScript = async (script: ScriptLine[], log: LogFunction): Promise<ScriptLine[]> => {
     const newScript = [...script];
-    let requestCount = 0;
     
-    for (let i = 0; i < newScript.length; i++) {
-        const line = newScript[i];
-        if (line.speaker.toUpperCase() === 'SFX' && line.searchKeywords) {
-            if (requestCount > 0) {
-                // Небольшая задержка, чтобы не спамить API
-                await delay(1000);
-            }
-            requestCount++;
-            
-            try {
-                // ✅ НОВОЕ: используем findAndDownloadSfx вместо findSfxManually
-                const sfxTracks = await findAndDownloadSfx(line.searchKeywords, log);
-                
-                if (sfxTracks.length > 0 && sfxTracks[0].blob) {
-                    newScript[i] = { 
-                        ...line, 
-                        soundEffect: sfxTracks[0],
-                        soundEffectBlob: sfxTracks[0].blob,  // ← добавлено!
-                        soundEffectVolume: 0.6,
-                        soundEffectDownloaded: true
-                    };
-                    log({ type: 'info', message: `✅ SFX найден и скачан: ${sfxTracks[0].name}` });
-                } else if (sfxTracks.length > 0) {
-                    // Fallback: есть ссылка, но нет блоба
-                    newScript[i] = { 
-                        ...line, 
-                        soundEffect: sfxTracks[0],
-                        soundEffectVolume: 0.6,
-                        soundEffectDownloaded: false
-                    };
-                    log({ type: 'info', message: `⚠️  SFX найден (только ссылка): ${sfxTracks[0].name}` });
-                } else {
-                    log({ type: 'info', message: `SFX не найден для: ${line.text}` });
-                }
-            } catch (e) {
-                log({ type: 'error', message: `Не удалось автоматически найти SFX для "${line.text}"`, data: e });
-            }
-        }
+    // Найти все SFX строки, которые нужно обработать
+    const sfxLines = newScript
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => line.speaker.toUpperCase() === 'SFX' && line.searchKeywords);
+    
+    if (sfxLines.length === 0) {
+        log({ type: 'info', message: '🔊 SFX строк для обработки не найдено' });
+        return newScript;
     }
+    
+    log({ type: 'info', message: `🔊 Поиск ${sfxLines.length} SFX параллельно...` });
+    
+    // ✅ ПАРАЛЛЕЛЬНО искать все SFX
+    const sfxPromises = sfxLines.map(({ line }) => 
+        findAndDownloadSfx(line.searchKeywords!, log)
+    );
+    
+    const sfxResults = await Promise.all(sfxPromises);
+    
+    // Применить результаты
+    sfxLines.forEach(({ line, index }, i) => {
+        const sfxTracks = sfxResults[i];
+        if (sfxTracks.length > 0 && sfxTracks[0].blob) {
+            newScript[index] = { 
+                ...line, 
+                soundEffect: sfxTracks[0],
+                soundEffectBlob: sfxTracks[0].blob,
+                soundEffectVolume: 0.6,
+                soundEffectDownloaded: true
+            };
+            log({ type: 'info', message: `✅ SFX найден и скачан: ${sfxTracks[0].name}` });
+        } else if (sfxTracks.length > 0) {
+            // Fallback: есть ссылка, но нет блоба
+            newScript[index] = { 
+                ...line, 
+                soundEffect: sfxTracks[0],
+                soundEffectVolume: 0.6,
+                soundEffectDownloaded: false
+            };
+            log({ type: 'info', message: `⚠️  SFX найден (только ссылка): ${sfxTracks[0].name}` });
+        } else {
+            log({ type: 'info', message: `SFX не найден для: ${line.text}` });
+        }
+    });
+    
+    log({ type: 'info', message: `✅ Найдено ${sfxResults.filter(r => r.length > 0).length}/${sfxLines.length} SFX` });
     
     return newScript;
 };
