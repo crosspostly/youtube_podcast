@@ -40,7 +40,22 @@ export const useChapterGeneration = (
             updateChapterState(chapterId, 'script_generating');
             const chapterScriptData = await generateNextChapterScript(podcast.topic, podcast.selectedTitle, podcast.characters, podcast.chapters.slice(0, chapterIndex), chapterIndex, podcast.knowledgeBaseText || '', podcast.creativeFreedom, podcast.language, log);
             
-            const populatedScript = await findSfxForScript(chapterScriptData.script, log);
+            // Save initial script state
+            updateChapterState(chapterId, 'audio_generating', { script: chapterScriptData.script, title: chapterScriptData.title });
+            
+            // Start image generation promise
+            const chapterVisuals = chapterScriptData.visualSearchPrompts || [podcast.topic];
+            const chapterImagesPromise = podcast.imageSource === 'ai'
+                 ? generateStyleImages(chapterVisuals, podcast.initialImageCount, log, devMode)
+                 : searchStockPhotos(chapterVisuals[0] || podcast.topic, log);
+            
+            // ✅ ПАРАЛЛЕЛЬНО: SFX обработка и генерация изображений
+            log({ type: 'info', message: `⚡ Параллельный поиск SFX и генерация картинок...` });
+            
+            const [populatedScript, chapterImages] = await Promise.all([
+                findSfxForScript(chapterScriptData.script, log),
+                chapterImagesPromise
+            ]);
 
             // Calculate SFX Timings immediately
             const sfxTimings: SfxTiming[] = [];
@@ -67,18 +82,11 @@ export const useChapterGeneration = (
             const musicTracks = chapterScriptData.musicSearchKeywords ? await findMusicManually(chapterScriptData.musicSearchKeywords, log) : [];
             const backgroundMusic = musicTracks.length > 0 ? musicTracks[0] : undefined;
             
-            // Save sfxTimings here
+            // Save sfxTimings and images here
             updateChapterState(chapterId, 'audio_generating', { script: populatedScript, title: chapterScriptData.title, backgroundMusic, sfxTimings });
-            
-            const chapterVisuals = chapterScriptData.visualSearchPrompts || [podcast.topic];
-            const chapterImagesPromise = podcast.imageSource === 'ai'
-                 ? generateStyleImages(chapterVisuals, podcast.initialImageCount, log, devMode)
-                 : searchStockPhotos(chapterVisuals[0] || podcast.topic, log);
 
-            const [audioBlob, chapterImages] = await Promise.all([
-                 generateChapterAudio(populatedScript, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log),
-                 chapterImagesPromise
-            ]);
+            // Generate audio (now that we have the populated script with SFX)
+            const audioBlob = await generateChapterAudio(populatedScript, podcast.narrationMode, podcast.characterVoices, podcast.monologueVoice, log);
 
             let chapterUpdate: Partial<Omit<Chapter, 'id'|'status'>> = { audioBlob, visualSearchPrompts: chapterScriptData.visualSearchPrompts };
 
