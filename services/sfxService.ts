@@ -8,11 +8,120 @@ import { fetchWithCorsFallback } from './apiUtils';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
-const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/text/';
+// ✅ НОВОЕ: Актуальный API endpoint
+const FREESOUND_API_URL = 'https://freesound.org/apiv2/search/';
+const MAX_SFX_DURATION = 10; // секунд
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// ✅ НОВОЕ: Кэширование результатов
+const sfxCache = new Map<string, { 
+    results: SoundEffect[], 
+    timestamp: number 
+}>();
+
+const CACHE_TTL = 60 * 60 * 1000; // 1 час
+
 /**
- * Выполнить текстовый поиск по Freesound с fallback и чисткой ключевых слов.
+ * ✅ НОВОЕ: Интеллектуальное упрощение запроса:
+ * 1. Удалить стоп-слова (the, a, sound, noise, effect, sfx)
+ * 2. Выделить приоритетные ключевые слова (взрывы, звуки природы, механика)
+ * 3. Взять 1-2 самых важных слова для тегов
+ */
+const simplifySearchQuery = (query: string): { tags: string[], keywords: string[] } => {
+    // Стоп-слова
+    const stopWords = new Set([
+        'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'sound', 'noise', 'audio', 'sfx', 'effect'
+    ]);
+    
+    // Приоритетные категории SFX
+    const priorityWords = new Set([
+        // Взрывы и удары
+        'explosion', 'boom', 'crash', 'bang', 'slam', 'hit', 'impact',
+        // Воздух и ветер
+        'whoosh', 'swoosh', 'wind', 'air', 'blow',
+        // Двери и механизмы
+        'door', 'gate', 'lock', 'unlock', 'open', 'close', 'creak',
+        // Шаги и движение
+        'footstep', 'walk', 'run', 'step',
+        // Вода
+        'water', 'splash', 'drip', 'pour', 'rain', 'wave',
+        // Материалы
+        'metal', 'wood', 'glass', 'stone', 'plastic',
+        // Электроника
+        'beep', 'bleep', 'alarm', 'bell', 'chime', 'buzz',
+        // Интерфейс
+        'click', 'switch', 'button', 'press',
+        // Атмосфера
+        'drone', 'hum', 'rumble', 'ambient',
+        // Погода
+        'thunder', 'lightning', 'storm',
+        // Транспорт
+        'car', 'vehicle', 'engine', 'motor',
+        // Оружие
+        'gun', 'shot', 'fire', 'weapon'
+    ]);
+    
+    const words = query
+        .toLowerCase()
+        .replace(/[^\w\s-]/g, '')
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word));
+    
+    // Разделить на теги (приоритетные) и ключевые слова (остальные)
+    const tags = words.filter(word => priorityWords.has(word));
+    const keywords = words.filter(word => !priorityWords.has(word)).slice(0, 2);
+    
+    // Если нет приоритетных слов, взять первые 2 слова как теги
+    if (tags.length === 0) {
+        return { 
+            tags: words.slice(0, 2), 
+            keywords: [] 
+        };
+    }
+    
+    return { tags, keywords };
+};
+
+/**
+ * ✅ НОВОЕ: Построить URL поиска с использованием filter (быстрее и точнее)
+ */
+const buildSearchUrl = (
+    tags: string[],
+    keywords: string[],
+    apiKey: string
+): string => {
+    // Строим filter
+    const filterParts: string[] = [];
+    
+    // Добавляем теги
+    tags.forEach(tag => {
+        filterParts.push(`tag:${tag}`);
+    });
+    
+    // Ограничиваем длительность (SFX короткие)
+    filterParts.push(`duration:[0 TO ${MAX_SFX_DURATION}]`);
+    
+    const filter = filterParts.join(' ');
+    
+    const params = new URLSearchParams({
+        filter: filter,
+        fields: 'id,name,previews,license,username,duration,tags',
+        sort: 'rating_desc', // ✅ По рейтингу, не по relevance
+        page_size: '15',
+        token: apiKey
+    });
+    
+    // Query только для дополнительных ключевых слов
+    if (keywords.length > 0) {
+        params.append('query', keywords.join(' '));
+    }
+    
+    return `${FREESOUND_API_URL}?${params.toString()}`;
+};
+
+/**
+ * ✅ ОБНОВЛЁННАЯ: Выполнить оптимизированный поиск по Freesound
  * @param searchTags Ключевые слова для поиска
  * @param log Функция логирования
  * @param retryWithFewerTerms Повторить с сокращённым запросом если не найдено
@@ -23,59 +132,83 @@ export const performFreesoundSearch = async (
     retryWithFewerTerms: boolean = true
 ): Promise<SoundEffect[]> => {
     const apiKey = getApiKey('freesound');
-    const cleanTags = searchTags
-        .replace(/[^\w\s-]/gi, '')         // удаляем пунктуацию
-        .replace(/\s+/g, ' ')             // множественные пробелы одним
-        .trim();
-
-    if (!cleanTags || !apiKey) {
+    
+    if (!searchTags || !apiKey) {
         if (!apiKey) log({ type: 'info', message: 'Freesound API key не предоставлен.' });
         return [];
     }
-
-    // Recursive fallback helper
-    const tryFallback = () => {
-        if (retryWithFewerTerms) {
-            const words = cleanTags.split(' ');
-            if (words.length > 1) {
-                const shorterQuery = words.slice(0, -1).join(' ');
-                log({ type: 'info', message: `🔄 Попытка упрощенного поиска: "${shorterQuery}"` });
-                return performFreesoundSearch(shorterQuery, log, true);
-            }
+    
+    // ✅ НОВОЕ: Проверка кэша
+    const cacheKey = searchTags.toLowerCase().trim();
+    const cached = sfxCache.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+        log({ 
+            type: 'info', 
+            message: `💾 SFX из кэша: "${searchTags}" (${cached.results.length} шт.)` 
+        });
+        return cached.results;
+    }
+    
+    // ✅ НОВОЕ: Умное упрощение
+    const { tags, keywords } = simplifySearchQuery(searchTags);
+    
+    log({ 
+        type: 'info', 
+        message: `🔍 Поиск SFX: tags=[${tags.join(', ')}] keywords=[${keywords.join(', ')}]` 
+    });
+    
+    // Fallback: если не нашли, пробуем с одним тегом
+    const tryFallback = async (): Promise<SoundEffect[]> => {
+        if (!retryWithFewerTerms) return [];
+        
+        if (tags.length > 1) {
+            const singleTag = tags[0];
+            log({ type: 'info', message: `🔄 Упрощаем до одного тега: "${singleTag}"` });
+            return performFreesoundSearch(singleTag, log, false);
         }
-        return Promise.resolve([]);
+        
+        return [];
     };
-
-    const searchUrl = `${FREESOUND_API_URL}?query=${encodeURIComponent(cleanTags)}&fields=id,name,previews,license,username&sort=relevance&page_size=15`;
-    log({ type: 'request', message: `Запрос SFX с Freesound (Query: "${cleanTags}")` });
-
+    
     try {
+        const searchUrl = buildSearchUrl(tags, keywords, apiKey);
+        
         const response = await fetchWithCorsFallback(searchUrl, {
             method: 'GET',
-            headers: { 'Authorization': `Token ${apiKey}` },
             mode: 'cors'
         });
-
+        
         if (!response.ok) {
             log({
                 type: 'error',
-                message: `Freesound API Error: ${response.status} ${response.statusText}.`
+                message: `Freesound API Error: ${response.status} ${response.statusText}`
             });
-            // On API error (like 400 Bad Request due to complex query), try fallback
             return tryFallback();
         }
-
+        
         const data = await response.json();
-
+        
         if (!data || !data.results || data.results.length === 0) {
-            log({ type: 'info', message: `Freesound: Ничего не найдено по запросу "${cleanTags}".` });
-            // On empty results, try fallback
+            log({ 
+                type: 'info', 
+                message: `Freesound: Ничего не найдено. Упрощаем запрос...` 
+            });
             return tryFallback();
         }
-
-        // Возвращаем только валидные результаты с https и mp3 preview
-        return data.results
-            .filter((sfx: any) => sfx.previews && sfx.previews['preview-hq-mp3'])
+        
+        log({ 
+            type: 'info', 
+            message: `✅ Найдено ${data.results.length} SFX за 1 запрос` 
+        });
+        
+        // Фильтруем результаты
+        const validResults = data.results
+            .filter((sfx: any) => 
+                sfx.previews && 
+                sfx.previews['preview-hq-mp3'] &&
+                sfx.duration <= MAX_SFX_DURATION
+            )
             .map((sfx: any) => ({
                 ...sfx,
                 previews: {
@@ -83,14 +216,20 @@ export const performFreesoundSearch = async (
                     'preview-hq-mp3': sfx.previews['preview-hq-mp3'].replace(/^http:\/\//, 'https://')
                 }
             }));
+        
+        // ✅ НОВОЕ: Сохраняем в кэш
+        sfxCache.set(cacheKey, { 
+            results: validResults, 
+            timestamp: Date.now() 
+        });
+        
+        return validResults;
+        
     } catch (error: any) {
-        const errorMsg = error.message || String(error);
         log({ 
             type: 'error', 
-            message: `Сбой запроса к Freesound ("${cleanTags}").`, 
-            data: errorMsg 
+            message: `Сбой запроса к Freesound: ${error.message}` 
         });
-        // On network/fetch error, try fallback as the query might be malformed for the proxy
         return tryFallback();
     }
 };

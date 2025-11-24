@@ -21,6 +21,8 @@ export interface SoundEffect {
     };
     license: string;
     username: string;
+    duration?: number;    // ✅ НОВОЕ: длительность SFX из Freesound API
+    tags?: string[];      // ✅ НОВОЕ: теги из Freesound API
     blob?: Blob;           // 🆕 blob для загруженного SFX
     downloaded?: boolean;  // 🆕 флаг успешной загрузки
     downloadTime?: number; // 🆕 время загрузки для кеширования
