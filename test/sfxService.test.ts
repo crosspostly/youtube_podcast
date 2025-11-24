@@ -1,5 +1,5 @@
 // test/sfxService.test.ts
-import { findAndDownloadSfx } from '../services/sfxService';
+import { findAndDownloadSfx, performFreesoundSearch } from '../services/sfxService';
 import type { LogEntry } from '../types';
 
 // Mock fetch

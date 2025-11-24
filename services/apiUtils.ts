@@ -98,7 +98,16 @@ export const fetchWithCorsFallback = async (url: string, options: RequestInit = 
         lastError = e;
     }
 
-    // 2. Proxy Strategies
+    // 2. Local API Proxy (for development)
+    try {
+        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+        const response = await fetch(proxyUrl, options);
+        if (isValidResponse(response)) return response;
+    } catch (e) {
+        lastError = e;
+    }
+
+    // 3. External Proxy Strategies
     const encodedUrl = encodeURIComponent(url);
     
     // Updated Proxy List - Ordered by reliability for binary data

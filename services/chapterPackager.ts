@@ -427,7 +427,7 @@ const audioBufferToWavBlob = (buffer: AudioBuffer): Blob => {
 
 const cleanSubtitleText = (text: string): string => {
     return text
-        // Заменяем распространенные проблемные символы
+        // Fix common mojibake (encoding corruption) issues
         .replace(/â€"/g, '—')
         .replace(/â€"/g, '–')
         .replace(/â€œ/g, '"')
@@ -435,12 +435,16 @@ const cleanSubtitleText = (text: string): string => {
         .replace(/â€™/g, "'")
         .replace(/â€˜/g, "'")
         .replace(/â€¦/g, '...')
-        // Удаляем контрольные символы, оставляя ASCII + Cyrillic + базовую пунктуацию
-        .replace(/[^\x00-\x7F\u0400-\u04FF0-9\s\n\r\-\:\,\.\!\?\;\(\)\[\]\{\}\"\'\àáâãäåæçèéêëìíîïðñòóôõö÷øùúûüýþÿ]/g, '')
-        // Удаляем специфические контрольные символы
+        .replace(/â€\x9D/g, '"')
+        .replace(/â€\x9C/g, '"')
+        .replace(/â€\x99/g, "'")
+        .replace(/â€\x98/g, "'")
+        // Remove control characters except newline, carriage return, and tab
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-        // Нормализуем пробелы
-        .replace(/\s+/g, ' ')
+        // Normalize whitespace but preserve line structure
+        .replace(/[ \t]+/g, ' ')
+        // Remove excessive line breaks
+        .replace(/\n{3,}/g, '\n\n')
         .trim();
 };
 

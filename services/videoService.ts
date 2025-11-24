@@ -4,6 +4,22 @@ import type { Podcast, Chapter, LogEntry } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => null;
 
+// Helper function to get real audio duration
+const getAudioDuration = (blob: Blob): Promise<number> => {
+    return new Promise((resolve) => {
+        const audio = new Audio();
+        audio.src = URL.createObjectURL(blob);
+        audio.onloadedmetadata = () => {
+            URL.revokeObjectURL(audio.src);
+            resolve(audio.duration);
+        };
+        audio.onerror = () => {
+            URL.revokeObjectURL(audio.src);
+            resolve(30); // Fallback to 30 seconds on error
+        };
+    });
+};
+
 export const createVideoInBrowser = async (
     podcast: Podcast,
     log: LogFunction
@@ -26,7 +42,11 @@ export const createVideoInBrowser = async (
     
     // Load FFmpeg
     try {
-        await ffmpeg.load();
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        await ffmpeg.load({
+            coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+            wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
         log({ type: 'info', message: '✅ FFmpeg загружен' });
     } catch (error) {
         throw new Error(`Не удалось загрузить FFmpeg: ${error}`);
@@ -56,8 +76,12 @@ export const createVideoInBrowser = async (
                     if (img.blob) {
                         imageBlob = img.blob;
                     } else if (img.url) {
-                        // Fetch image from URL
-                        const response = await fetch(img.url);
+                        // Fetch image from URL via proxy to avoid CORS issues
+                        const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(img.url)}`;
+                        const response = await fetch(proxyUrl);
+                        if (!response.ok) {
+                            throw new Error(`Failed to fetch image: ${response.statusText}`);
+                        }
                         imageBlob = await response.blob();
                     } else {
                         log({ 
@@ -92,6 +116,13 @@ export const createVideoInBrowser = async (
             }
 
             try {
+                // Get real audio duration
+                const audioDuration = await getAudioDuration(chapter.audioBlob);
+                log({ 
+                    type: 'info', 
+                    message: `    📏 Длительность аудио главы ${i + 1}: ${audioDuration.toFixed(1)}с` 
+                });
+
                 // Create concat file for images
                 const concatList = Array.from({ length: imageCount }, (_, j) => 
                     `file 'chapter_${i}_img_${j}.png'`
@@ -99,8 +130,7 @@ export const createVideoInBrowser = async (
                 
                 await ffmpeg.writeFile(`concat_${i}.txt`, concatList);
 
-                // Calculate image duration (aim for 5-10 seconds per image)
-                const audioDuration = 30; // Default estimate
+                // Calculate image duration based on real audio duration
                 const imageDuration = Math.max(2, Math.min(10, audioDuration / imageCount));
 
                 // Create chapter video
