@@ -4,6 +4,7 @@ import { Podcast, YoutubeThumbnail, Chapter, MusicTrack, SoundEffect, ScriptLine
 import { usePodcastContext } from '../context/PodcastContext';
 import Spinner from './Spinner';
 import { ChapterIcon, RedoIcon, DownloadIcon, ImageIcon, CopyIcon, CheckIcon, ScriptIcon, EditIcon, UserCircleIcon, PlayIcon, PauseIcon, BookOpenIcon, WrenchIcon, SpeakerWaveIcon, SubtitleIcon, SearchIcon, CloseIcon, TitleIcon, DescriptionIcon } from './Icons';
+import { createVideoInBrowser } from '../services/videoService';
 
 interface PodcastStudioProps {
     onEditThumbnail: (thumbnail: YoutubeThumbnail) => void;
@@ -40,6 +41,8 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const [customVideoTitle, setCustomVideoTitle] = useState('');
     
     const [isUpdatingThumbnails, setIsUpdatingThumbnails] = useState(false);
+    const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number>(0);
+    const [isCreatingVideo, setIsCreatingVideo] = useState(false);
 
     // Track created object URLs to revoke them on unmount
     const objectUrls = useRef<Set<string>>(new Set());
@@ -87,6 +90,73 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             await updateThumbnailText(newText);
         } finally {
             setIsUpdatingThumbnails(false);
+        }
+    };
+
+    // Handler for selecting thumbnail design
+    const handleSelectDesign = (index: number) => {
+        setSelectedThumbnailIndex(index);
+        // Update the selected thumbnail as the primary one
+        if (podcast?.youtubeThumbnails?.[index]) {
+            // This could be used to set a "primary" thumbnail if needed
+            console.log(`Selected design: ${podcast.youtubeThumbnails[index].styleName}`);
+        }
+    };
+
+    // Handler for video creation
+    const handleCreateVideo = async () => {
+        if (!podcast) return;
+        
+        setIsCreatingVideo(true);
+        try {
+            const videoBlob = await createVideoInBrowser(podcast, (entry) => {
+                // Log function - could be integrated with existing log system
+                console.log(entry.message);
+            });
+            
+            // Download video
+            const url = URL.createObjectURL(videoBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${podcast.selectedTitle || 'video'}.mp4`;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log('🎉 Видео успешно скачано!');
+        } catch (error: any) {
+            console.error('❌ Ошибка создания видео:', error.message);
+        } finally {
+            setIsCreatingVideo(false);
+        }
+    };
+
+    // Handler for SFX preview with proper volume control and stop functionality
+    const handleSfxPreview = (url: string, volume: number = 0.2) => {
+        if (!audioPlayerRef.current) return;
+        const audio = audioPlayerRef.current;
+        const isCurrentlyPlaying = !audio.paused && audio.src === url;
+
+        if (isCurrentlyPlaying) {
+            audio.pause();
+            audio.currentTime = 0;
+        } else {
+            audio.pause();
+            audio.currentTime = 0;
+            
+            // Use proxy for SFX URLs to avoid CORS issues
+            const proxyUrl = url ? `/api/audio-proxy?url=${encodeURIComponent(url)}` : '';
+            audio.src = proxyUrl;
+            audio.volume = Math.max(0, Math.min(1, volume)); // Clamp between 0 and 1
+            
+            const playPromise = audio.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.error("SFX playback failed:", error);
+                });
+            }
         }
     };
 
@@ -366,18 +436,6 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
     const allChaptersDone = podcast.chapters.every(c => c.status === 'completed');
     const isQueueActive = !allChaptersDone && podcast.chapters.some(c => c.status !== 'error');
 
-    const handleSfxPreview = (url: string | undefined, volume: number) => {
-        if (!url || !audioPlayerRef.current) return;
-        const audio = audioPlayerRef.current;
-        audio.pause();
-        audio.src = url;
-        audio.volume = volume;
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => console.error("SFX playback failed:", error));
-        }
-    };
-
     // Helper to create URL safely
     const getSafeImageUrl = (img: { blob?: Blob; url: string }) => {
         if (img.blob) {
@@ -638,12 +696,12 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                             <p className="text-xs text-cyan-400 truncate pl-10">{line.soundEffect?.name || 'Не выбран'}</p>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews?.['preview-hq-mp3'], line.soundEffectVolume ?? 0.7)} className="p-1.5 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-3 h-3"/></button>}
+                                                            {line.soundEffect && <button onClick={() => handleSfxPreview(line.soundEffect!.previews?.['preview-hq-mp3'], line.soundEffectVolume ?? 0.2)} className="p-1.5 bg-cyan-600/80 rounded-full text-white hover:bg-cyan-700"><PlayIcon className="w-3 h-3"/></button>}
                                                             <button onClick={() => setSfxModalLine({ chapterId: chapter.id, line, lineIndex })} className="p-1.5 bg-indigo-600/80 rounded-full text-white hover:bg-indigo-700"><EditIcon className="w-3 h-3"/></button>
                                                         </div>
                                                         <div className="flex items-center gap-2">
                                                             <SpeakerWaveIcon className="w-3 h-3 text-slate-400"/>
-                                                            <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.7} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number(e.target.value))} className="w-full h-1"/>
+                                                            <input type="range" min="0" max="1" step="0.05" value={line.soundEffectVolume ?? 0.2} onChange={(e) => setSfxVolume(chapter.id, lineIndex, Number(e.target.value))} className="w-full h-1"/>
                                                         </div>
                                                     </div>
                                                 ) : (
@@ -665,7 +723,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
 
             <div className="mb-8 p-6 bg-slate-900/60 backdrop-blur-lg rounded-2xl border border-slate-700 shadow-2xl shadow-black/20">
                 <h3 className="text-xl font-bold text-white flex items-center gap-3 mb-4"><WrenchIcon /> Инструменты</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     <button onClick={regenerateText} disabled={isRegeneratingText} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
                         {isRegeneratingText ? <Spinner className="w-6 h-6"/> : <ScriptIcon />}
                         <span className="font-semibold text-sm">Обновить текст</span>
@@ -678,9 +736,17 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                         {isRegeneratingAudio ? <Spinner className="w-6 h-6"/> : <SpeakerWaveIcon />}
                         <span className="font-semibold text-sm">Переозвучить всё</span>
                     </button>
-                    <button onClick={regenerateProject} disabled={isLoading} className="flex flex-col items-center justify-center gap-2 p-4 bg-red-900/50 rounded-lg hover:bg-red-900/80 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors text-red-300">
-                        <RedoIcon />
-                        <span className="font-semibold text-sm">Пересоздать проект</span>
+                    <button onClick={downloadProjectAsZip} disabled={isZipping} className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-800 rounded-lg hover:bg-slate-700 disabled:bg-slate-700 disabled:cursor-not-allowed transition-colors">
+                        {isZipping ? <Spinner className="w-6 h-6"/> : <DownloadIcon />}
+                        <span className="font-semibold text-sm">Скачать архив</span>
+                    </button>
+                    <button onClick={handleCreateVideo} disabled={isCreatingVideo || !podcast?.chapters.some(c => c.audioBlob)} className="flex flex-col items-center justify-center gap-2 p-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 disabled:from-slate-600 disabled:to-slate-600 disabled:cursor-not-allowed transition-all">
+                        {isCreatingVideo ? <Spinner className="w-6 h-6"/> : (
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121.708 6.38l-3.5 7A1 1 0 0118.293 15H7a1 1 0 01-.704-.292l-3.5-7a1 1 0 011.452-.896L11 9.5V4a1 1 0 012 0v5.5l3.95-1.976a1 1 0 01.55.024z" />
+                            </svg>
+                        )}
+                        <span className="font-semibold text-sm">Создать ролик</span>
                     </button>
                 </div>
             </div>
@@ -736,16 +802,46 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                     {isUpdatingThumbnails && <Spinner className="w-4 h-4" />}
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {podcast.youtubeThumbnails.map((thumbnail) => (
-                                        <div key={thumbnail.styleName} className="group relative cursor-pointer rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-500 transition-all" onClick={() => onEditThumbnail(thumbnail)}>
-                                            <img src={thumbnail.dataUrl} alt={thumbnail.styleName} className={`w-full aspect-video object-cover transition-opacity ${isUpdatingThumbnails ? 'opacity-50' : 'opacity-100'}`} />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
-                                                <EditIcon className="w-8 h-8 text-white mb-2" />
-                                                <span className="text-white font-bold text-sm">Редактировать</span>
+                                    {podcast.youtubeThumbnails.map((thumbnail, index) => (
+                                        <div key={thumbnail.styleName} className="group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                                            selectedThumbnailIndex === index 
+                                                ? 'border-cyan-500 ring-2 ring-cyan-500/50' 
+                                                : 'border-slate-700 hover:border-cyan-500'
+                                        }">
+                                            <div className="relative">
+                                                <img 
+                                                    src={thumbnail.dataUrl} 
+                                                    alt={thumbnail.styleName} 
+                                                    className={`w-full aspect-video object-cover transition-opacity ${isUpdatingThumbnails ? 'opacity-50' : 'opacity-100'}`} 
+                                                />
+                                                {selectedThumbnailIndex === index && (
+                                                    <div className="absolute top-2 right-2 w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
+                                                        <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </div>
+                                                )}
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onEditThumbnail(thumbnail);
+                                                        }}
+                                                        className="p-3 bg-white/90 rounded-full mb-2 hover:bg-white transition-colors"
+                                                    >
+                                                        <EditIcon className="w-6 h-6 text-slate-800" />
+                                                    </button>
+                                                    <span className="text-white font-bold text-sm">Редактировать</span>
+                                                </div>
+                                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm">
+                                                    <p className="text-xs text-white font-semibold text-center">{thumbnail.styleName}</p>
+                                                </div>
                                             </div>
-                                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm">
-                                                <p className="text-xs text-white font-semibold text-center">{thumbnail.styleName}</p>
-                                            </div>
+                                            <button
+                                                onClick={() => handleSelectDesign(index)}
+                                                className="absolute inset-0 w-full h-full opacity-0"
+                                                aria-label={`Select ${thumbnail.styleName} design`}
+                                            />
                                         </div>
                                     ))}
                                 </div>
