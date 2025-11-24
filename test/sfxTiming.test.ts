@@ -1,6 +1,7 @@
 // test/sfxTiming.test.ts
 import { combineAndMixAudio } from '../services/audioUtils';
 import { createMockPodcast, createMockChapter, createMockScriptLine, createMockSoundEffect } from './testHelpers';
+import type { Podcast } from '../types';
 
 // Mock the memory cleanup function
 jest.mock('../utils/sfxMemoryCleanup', () => ({
@@ -260,21 +261,19 @@ describe('SFX Timing Tests', () => {
     });
 
     it('should handle empty podcast gracefully', async () => {
-      const emptyPodcast: Podcast = {
+      const emptyPodcast = createMockPodcast({
         id: 'empty',
         title: 'Empty',
-        backgroundMusicVolume: 0.3,
         chapters: []
-      };
+      });
 
       await expect(combineAndMixAudio(emptyPodcast)).rejects.toThrow('Нет аудиофайлов для сборки');
     });
 
     it('should handle chapters without audio blobs', async () => {
-      const noAudioPodcast: Podcast = {
+      const noAudioPodcast = createMockPodcast({
         id: 'no-audio',
         title: 'No Audio',
-        backgroundMusicVolume: 0.3,
         chapters: [
           {
             id: 'no-audio-chapter',
@@ -285,7 +284,7 @@ describe('SFX Timing Tests', () => {
             ]
           }
         ]
-      };
+      });
 
       await expect(combineAndMixAudio(noAudioPodcast)).rejects.toThrow('Нет аудиофайлов для сборки');
     });

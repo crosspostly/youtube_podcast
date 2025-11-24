@@ -112,6 +112,7 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
             const videoBlob = await createVideoInBrowser(podcast, (entry) => {
                 // Log function - could be integrated with existing log system
                 console.log(entry.message);
+                return null;
             });
             
             // Download video

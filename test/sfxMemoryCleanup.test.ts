@@ -1,6 +1,7 @@
 // test/sfxMemoryCleanup.test.ts
 import { cleanupSfxBlobs, cleanupChapterSfxBlobs, getSfxMemoryStats } from '../utils/sfxMemoryCleanup';
 import { createMockPodcast, createMockChapter, createMockScriptLine, createMockSoundEffect } from './testHelpers';
+import type { Podcast, Chapter } from '../types';
 
 describe('SFX Memory Cleanup Tests', () => {
   let mockPodcast: Podcast;
@@ -171,12 +172,11 @@ describe('SFX Memory Cleanup Tests', () => {
     });
 
     it('should return zero stats for empty podcast', () => {
-      const emptyPodcast: Podcast = {
+      const emptyPodcast = createMockPodcast({
         id: 'empty',
         title: 'Empty',
-        chapters: [],
-        backgroundMusicVolume: 0.3
-      };
+        chapters: []
+      });
 
       const stats = getSfxMemoryStats(emptyPodcast);
       expect(stats.count).toBe(0);

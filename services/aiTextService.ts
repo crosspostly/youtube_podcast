@@ -141,6 +141,7 @@ export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText:
         
         log({ type: 'info', message: 'Концепция подкаста и первая глава успешно созданы.' });
         return {
+            title: data.topic,
             youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
             seoKeywords: data.seoKeywords,

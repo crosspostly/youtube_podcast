@@ -24,6 +24,11 @@ export const createMockPodcast = (overrides: Partial<Podcast> = {}): Podcast => 
     narrationMode: 'dialogue',
     thumbnailText: 'Test Thumbnail',
     backgroundMusicVolume: 0.3,
+    characterVoices: {},
+    monologueVoice: 'default',
+    selectedBgIndex: 0,
+    initialImageCount: 3,
+    imageSource: 'ai',
     ...overrides
   };
 };
