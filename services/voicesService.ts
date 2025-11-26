@@ -44,10 +44,10 @@ export const discoverAdditionalVoices = async (log: LogFunction): Promise<Voice[
             log({ type: 'info', message: `Testing voice: ${voiceName}` });
             
             // Try a minimal TTS request to test if the voice exists
-            const model = ai.getGenerativeModel({ model: 'gemini-2.5-flash-preview-tts' });
             const testText = "Test";
             
-            const result = await model.generateContent({
+            const result = await ai.models.generateContent({
+                model: 'gemini-2.5-flash-preview-tts',
                 contents: [{ parts: [{ text: testText }] }],
                 config: {
                     responseModalities: ["AUDIO" as const],
