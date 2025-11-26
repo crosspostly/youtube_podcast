@@ -4,7 +4,7 @@ import { usePodcastContext } from '../context/PodcastContext';
 import { googleSearchForKnowledge, generateContentPlan } from '../services/aiTextService';
 import { previewVoice } from '../services/aiAudioService';
 import { getVoiceFromCache, saveVoiceToCache } from '../services/dbService';
-import { VOICES } from '../config/voices';
+import { useAvailableVoices } from '../hooks/useAvailableVoices';
 import Spinner from './Spinner';
 import { HistoryIcon, TrashIcon, SearchIcon, PlayIcon, PauseIcon, BeakerIcon, ImageIcon, LightbulbIcon, CheckIcon, CloseIcon, DownloadIcon } from './Icons';
 
@@ -84,14 +84,17 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
     
     const isAnythingLoading = isLoading || isQueueRunning;
 
+    // Dynamic voices hook
+    const { voices, loading: voicesLoading, error: voicesError, refreshVoices } = useAvailableVoices(log);
+
     const filteredLanguages = useMemo(() => 
         languages.filter(l => l.name.toLowerCase().includes(langSearchTerm.toLowerCase())),
     [langSearchTerm]);
 
     const filteredVoices = useMemo(() => {
-        if (voiceFilter === 'all') return VOICES;
-        return VOICES.filter(v => v.gender === voiceFilter);
-    }, [voiceFilter]);
+        if (voiceFilter === 'all') return voices;
+        return voices.filter(v => v.gender === voiceFilter);
+    }, [voices, voiceFilter]);
     
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -434,22 +437,62 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                     </div>
 
                     <div>
-                        <label className="block text-lg font-medium text-slate-200 mb-2">Фильтр голосов</label>
+                        <div className="flex items-center justify-between mb-2">
+                            <label className="block text-lg font-medium text-slate-200">Фильтр голосов</label>
+                            <div className="flex items-center gap-2">
+                                {voicesLoading && <Spinner className="w-4 h-4 text-cyan-400" />}
+                                <button 
+                                    onClick={refreshVoices} 
+                                    disabled={voicesLoading}
+                                    className="text-xs text-cyan-400 hover:text-cyan-300 disabled:text-slate-500"
+                                    title="Обновить список голосов"
+                                >
+                                    🔄
+                                </button>
+                            </div>
+                        </div>
+                        {voicesError && (
+                            <div className="mb-2 p-2 bg-red-900/30 border border-red-700 rounded text-red-300 text-sm">
+                                Ошибка загрузки голосов: {voicesError}
+                            </div>
+                        )}
                         <div className="flex gap-2 rounded-lg bg-slate-900 p-1">
                             <button onClick={() => setVoiceFilter('all')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'all' ? 'bg-cyan-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-700'}`}>Все</button>
                             <button onClick={() => setVoiceFilter('male')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'male' ? 'bg-cyan-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-700'}`}>Мужские</button>
                             <button onClick={() => setVoiceFilter('female')} className={`flex-1 px-3 py-1 text-sm rounded-md transition-colors ${voiceFilter === 'female' ? 'bg-cyan-600 text-white font-semibold' : 'text-slate-300 hover:bg-slate-700'}`}>Женские</button>
                         </div>
+                        {voices.length > 0 && (
+                            <div className="mt-2 text-xs text-slate-400">
+                                Доступно голосов: {filteredVoices.length} из {voices.length}
+                            </div>
+                        )}
                     </div>
                     
                     {narrationMode === 'monologue' && (
                         <div>
                             <label className="block text-lg font-medium text-slate-200 mb-2">Голос рассказчика</label>
                             <div className="flex items-center gap-4">
-                                <select value={monologueVoice} onChange={e => setMonologueVoice(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
-                                    {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                <select 
+                                    value={monologueVoice} 
+                                    onChange={e => setMonologueVoice(e.target.value)} 
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white disabled:bg-slate-800"
+                                    disabled={voicesLoading || voices.length === 0}
+                                >
+                                    {voicesLoading ? (
+                                        <option>Загрузка голосов...</option>
+                                    ) : voicesError ? (
+                                        <option>Ошибка загрузки голосов</option>
+                                    ) : voices.length === 0 ? (
+                                        <option>Голоса не доступны</option>
+                                    ) : (
+                                        filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)
+                                    )}
                                 </select>
-                                <button onClick={() => handlePreviewVoice(monologueVoice)} disabled={!!previewingVoice} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500">
+                                <button 
+                                    onClick={() => handlePreviewVoice(monologueVoice)} 
+                                    disabled={!!previewingVoice || voicesLoading || voices.length === 0} 
+                                    className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500"
+                                >
                                     {previewingVoice === monologueVoice ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
                                 </button>
                             </div>
@@ -460,11 +503,28 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                             <div>
                                 <label className="block text-lg font-medium text-slate-200 mb-2">Голос персонажа 1</label>
                                 <div className="flex items-center gap-4">
-                                    <select value={characterVoices.character1} onChange={e => setCharacterVoices(p => ({...p, character1: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
+                                    <select 
+                                        value={characterVoices.character1} 
+                                        onChange={e => setCharacterVoices(p => ({...p, character1: e.target.value}))} 
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white disabled:bg-slate-800"
+                                        disabled={voicesLoading || voices.length === 0}
+                                    >
                                         <option value="auto">✨ Автоматический (ИИ подберет сам)</option>
-                                        {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                        {voicesLoading ? (
+                                            <option>Загрузка голосов...</option>
+                                        ) : voicesError ? (
+                                            <option>Ошибка загрузки голосов</option>
+                                        ) : voices.length === 0 ? (
+                                            <option>Голоса не доступны</option>
+                                        ) : (
+                                            filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)
+                                        )}
                                     </select>
-                                    <button onClick={() => handlePreviewVoice(characterVoices.character1)} disabled={!!previewingVoice || characterVoices.character1 === 'auto'} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500">
+                                    <button 
+                                        onClick={() => handlePreviewVoice(characterVoices.character1)} 
+                                        disabled={!!previewingVoice || characterVoices.character1 === 'auto' || voicesLoading || voices.length === 0} 
+                                        className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500"
+                                    >
                                         {previewingVoice === characterVoices.character1 ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
                                     </button>
                                 </div>
@@ -472,11 +532,28 @@ const ProjectSetup: React.FC<ProjectSetupProps> = ({ onStartProject, onOpenDesig
                             <div>
                                 <label className="block text-lg font-medium text-slate-200 mb-2">Голос персонажа 2</label>
                                 <div className="flex items-center gap-4">
-                                    <select value={characterVoices.character2} onChange={e => setCharacterVoices(p => ({...p, character2: e.target.value}))} className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white">
+                                    <select 
+                                        value={characterVoices.character2} 
+                                        onChange={e => setCharacterVoices(p => ({...p, character2: e.target.value}))} 
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-md p-2 text-white disabled:bg-slate-800"
+                                        disabled={voicesLoading || voices.length === 0}
+                                    >
                                         <option value="auto">✨ Автоматический (ИИ подберет сам)</option>
-                                        {filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)}
+                                        {voicesLoading ? (
+                                            <option>Загрузка голосов...</option>
+                                        ) : voicesError ? (
+                                            <option>Ошибка загрузки голосов</option>
+                                        ) : voices.length === 0 ? (
+                                            <option>Голоса не доступны</option>
+                                        ) : (
+                                            filteredVoices.map(v => <option key={v.id} value={v.id}>{v.name} ({v.description})</option>)
+                                        )}
                                     </select>
-                                    <button onClick={() => handlePreviewVoice(characterVoices.character2)} disabled={!!previewingVoice || characterVoices.character2 === 'auto'} className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500">
+                                    <button 
+                                        onClick={() => handlePreviewVoice(characterVoices.character2)} 
+                                        disabled={!!previewingVoice || characterVoices.character2 === 'auto' || voicesLoading || voices.length === 0} 
+                                        className="p-2 bg-cyan-600 rounded-full text-white hover:bg-cyan-700 disabled:bg-slate-500"
+                                    >
                                             {previewingVoice === characterVoices.character2 ? <Spinner className="w-5 h-5"/> : <PlayIcon className="w-5 h-5"/>}
                                     </button>
                                 </div>
