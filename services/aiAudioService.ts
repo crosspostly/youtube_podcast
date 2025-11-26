@@ -26,7 +26,7 @@ const generateAudioWithRetries = async (
     log: LogFunction
 ): Promise<GenerateContentResponse> => {
     const ai = getAiClient(log);
-    const model = 'gemini-2.5-flash-preview-tts';
+    const model = 'gemini-2.0-flash-tts';
     try {
         log({ type: 'request', message: `Attempting audio generation with model: ${model}` });
         const generateCall = () => ai.models.generateContent({ model, ...params });
