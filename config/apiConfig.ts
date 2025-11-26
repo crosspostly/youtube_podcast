@@ -43,7 +43,7 @@ export const getApiKey = (service: ApiService): string => {
   if (envKey?.trim()) {
     return envKey.trim();
   }
-    
+
   // 2. Проверяем localStorage (пользовательские настройки)
   try {
     const storageKey = `apiKey_${service}`;
@@ -56,7 +56,19 @@ export const getApiKey = (service: ApiService): string => {
   }
 
   // 3. Используем fallback ключ
-  return FALLBACK_KEYS[service];
+  const fallbackKey = FALLBACK_KEYS[service];
+
+  // Special handling for Gemini to provide better error guidance
+  if (service === 'gemini' && !fallbackKey) {
+    console.warn(
+      'Gemini API key is missing. Please:\n' +
+      '1. Create a .env file in the project root with: API_KEY=your_key_here\n' +
+      '2. Or enter your API key through the UI (click the key icon in the top right)\n' +
+      '3. Get your key from: https://aistudio.google.com/apikey'
+    );
+  }
+
+  return fallbackKey;
 };
 
 /**
