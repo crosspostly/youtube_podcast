@@ -511,196 +511,231 @@ echo Chapter-Based Video Assembly (High Quality + SFX)
 echo ===================================================
 echo.
 
-REM Check FFmpeg
-where ffmpeg >nul 2>nul
-if %errorlevel% neq 0 (
-    echo [ERROR] FFmpeg not found! Install FFmpeg and add to PATH.
-    goto :error
-)
+REM Check FFmpeg and FFprobe
+    where ffmpeg >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo [ERROR] FFmpeg not found! Install FFmpeg and add to PATH.
+        goto :error
+    )
 
-REM Create temp folder
-mkdir temp_videos 2>nul
+    where ffprobe >nul 2>nul
+    if %errorlevel% neq 0 (
+        echo [ERROR] FFprobe not found! Install FFmpeg and add to PATH.
+        goto :error
+    )
 
-REM Process each chapter
-for /L %%i in (1,1,${chapterCount}) do (
-    set "chapter_num=0%%i"
-    set "chapter_num=!chapter_num:~-2!"
-    set "chapter_dir=chapters\\chapter_!chapter_num!"
-    
-    echo.
-    echo [INFO] Processing Chapter !chapter_num!...
-    
-    REM Check if chapter exists
-    if not exist "!chapter_dir!" (
-        echo [WARNING] Chapter !chapter_num! not found, skipping...
-        goto :skip_chapter
-    )
-    
-    REM Read metadata
-    if not exist "!chapter_dir!\\metadata.json" (
-        echo [ERROR] Metadata missing for chapter !chapter_num!
-        goto :skip_chapter
-    )
-    
-    REM Create image concat file
-    set "img_count=0"
-    for %%f in ("!chapter_dir!\\images\\*.png") do set /a img_count+=1
-    
-    if !img_count! equ 0 (
-        echo [WARNING] No images found for chapter !chapter_num!
-        goto :skip_chapter
-    )
-    
-    REM Get audio duration using ffprobe
-    for /f %%d in ('ffprobe -v error -show_entries format=duration -of default^=noprint_wrappers^=1:nokey^=1 "!chapter_dir!\\audio.wav"') do set "duration=%%d"
-    
-    REM Calculate image duration - ensure minimum duration 2s
-    powershell -Command "$d = [math]::Round(!duration! / !img_count!, 2); if ($d -lt 2) { $d = 2 }; if ($d -gt 20) { $d = 20 }; Write-Output $d" > temp_img_dur.txt
-    set /p img_duration=<temp_img_dur.txt
-    del temp_img_dur.txt
-    
-    echo [INFO] Chapter duration: !duration!s, Image duration: !img_duration!s each
-    
-    REM Create concat file
-    (for %%f in ("!chapter_dir!\\images\\*.png") do (
-        echo file '%%f'
-        echo duration !img_duration!
-    )) > temp_concat_!chapter_num!.txt
-    
-    REM Build FFmpeg command with filters
-    set "filter_complex=[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v]"
-    set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i \"!chapter_dir!\\audio.wav\""
-    set "maps=-map [v] -map 1:a"
+    REM Create temp folder
+    mkdir temp_videos 2>nul
+
+    REM Process each chapter
+    for /L %%i in (1,1,${chapterCount}) do (
+        set "chapter_num=0%%i"
+        set "chapter_num=!chapter_num:~-2!"
+        set "chapter_dir=chapters\\chapter_!chapter_num!"
+
+        echo.
+        echo [INFO] Processing Chapter !chapter_num!...
+
+        REM Check if chapter exists
+        if not exist "!chapter_dir!" (
+            echo [WARNING] Chapter !chapter_num! not found, skipping...
+            goto :skip_chapter
+        )
+
+        REM Read metadata
+        if not exist "!chapter_dir!\\metadata.json" (
+            echo [ERROR] Metadata missing for chapter !chapter_num!
+            goto :skip_chapter
+        )
+
+        REM Check if audio exists
+        if not exist "!chapter_dir!\\audio.wav" (
+            echo [ERROR] Audio file not found for chapter !chapter_num!
+            goto :skip_chapter
+        )
+
+        REM Create image concat file with CORRECT last image handling
+        set "total_images=0"
+
+        REM First pass - count images (both .png and .jpg)
+        for %%f in ("!chapter_dir!\\images\\*.png" "!chapter_dir!\\images\\*.jpg") do (
+            set /a total_images+=1
+        )
+
+        if !total_images! equ 0 (
+            echo [ERROR] No images found for chapter !chapter_num!
+            goto :skip_chapter
+        )
+
+        REM Get audio duration using ffprobe
+        for /f %%d in ('ffprobe -v error -show_entries format=duration -of default^=noprint_wrappers^=1:nokey^=1 "!chapter_dir!\\audio.wav" 2^>nul') do set "duration=%%d"
+
+        if "!duration!"=="" (
+            echo [ERROR] Could not determine audio duration for chapter !chapter_num!
+            goto :skip_chapter
+        )
+
+        REM Calculate image duration with error handling
+        powershell -Command "$d = [math]::Round(!duration! / !total_images!, 2); if ($d -lt 2) { $d = 2 }; if ($d -gt 20) { $d = 20 }; Write-Output $d" > temp_img_dur.txt 2>nul
+        if %errorlevel% neq 0 (
+            echo [ERROR] Failed to calculate image duration for chapter !chapter_num!
+            del temp_img_dur.txt 2>nul
+            goto :skip_chapter
+        )
+        set /p img_duration=<temp_img_dur.txt
+        del temp_img_dur.txt
+
+        if "!img_duration!"=="" (
+            echo [ERROR] Invalid image duration calculated for chapter !chapter_num!
+            goto :skip_chapter
+        )
+
+        echo [INFO] Chapter duration: !duration!s, Images: !total_images!, Image duration: !img_duration!s each
+
+        REM Second pass - create concat file with proper duration handling
+        set "image_index=0"
+        (for %%f in ("!chapter_dir!\\images\\*.png" "!chapter_dir!\\images\\*.jpg") do (
+            set /a image_index+=1
+            echo file '%%f'
+            if !image_index! lss !total_images! (
+                echo duration !img_duration!
+            )
+        )) > temp_concat_!chapter_num!.txt
+        
+        REM Build FFmpeg command with filters
+        set "filter_complex=[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v]"
+        set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i \"!chapter_dir!\\audio.wav\""
+        set "maps=-map [v] -map 1:a"
     
     REM 🆕 ADD SFX PROCESSING
-    set "sfx_count=0"
-    for %%f in ("!chapter_dir!\\sfx\\*.wav") do set /a sfx_count+=1
+        set "sfx_count=0"
+        for %%f in ("!chapter_dir!\\sfx\\*.wav") do set /a sfx_count+=1
     
     if !sfx_count! gtr 0 (
-        echo [INFO] Found !sfx_count! SFX files, mixing with audio...
-        
-        REM Get SFX timings from metadata
-        set "sfx_filter="
-        for /f "usebackq tokens=*" %%a in ("!chapter_dir!\\metadata.json") do (
-            set "json_line=%%a"
-            REM Simple parsing for SFX timings (basic implementation)
-            echo !json_line! | findstr /C:"sfxTimings" >nul
-            if !errorlevel! equ 0 (
-                REM Found SFX section - will be processed in advanced version
-                echo [INFO] SFX metadata detected
-            )
-        )
-        
-        REM Enhanced SFX processing with timing from metadata
-        set "sfx_inputs="
-        set "sfx_input_count=2"
-        set "sfx_filter="
-        set "sfx_delay_filter="
-        
-        REM Build SFX inputs and collect timing information
-        for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
-            set "sfx_inputs=!sfx_inputs! -i \"%%f\""
-            set /a sfx_input_count+=1
-        )
-        
-        REM Parse SFX timings from metadata.json and create adelay filters
-        if exist "!chapter_dir!\\metadata.json" (
-            echo [INFO] Parsing SFX timings from metadata...
-            REM Use PowerShell to parse JSON and create timing filters
-            powershell -Command ^
-                "$metadata = Get-Content '!chapter_dir!\metadata.json' -Raw | ConvertFrom-Json; ^
-                $sfxIndex = 0; ^
-                $sfxFiles = Get-ChildItem '!chapter_dir!\sfx\*.wav' | Sort-Object Name; ^
-                foreach ($timing in $metadata.sfxTimings) { ^
-                    if ($sfxIndex -lt $sfxFiles.Count) { ^
-                        $delayMs = [math]::Round($timing.startTime * 1000); ^
-                        $volume = if ($timing.volume) { $timing.volume } else { 0.3 }; ^
-                        Write-Output \"[!sfx_input_count!a]adelay=!delayMs|!delayMs!,volume=!volume![sfx!sfxIndex!a]\"; ^
-                        $sfxIndex++; ^
-                        $script:sfx_input_count++; ^
-                    } ^
-                }" > temp_sfx_filters.txt 2>nul
+            echo [INFO] Found !sfx_count! SFX files, mixing with audio...
             
-            REM Read generated filters
-            setlocal enabledelayedexpansion
-            if exist temp_sfx_filters.txt (
-                set "first_sfx=1"
-                for /f "usebackq tokens=*" %%a in (temp_sfx_filters.txt) do (
-                    if !first_sfx! equ 1 (
-                        set "sfx_filter=%%a"
-                        set "first_sfx=0"
-                    ) else (
-                        set "sfx_filter=!sfx_filter!;%%a"
-                    )
+            REM Get SFX timings from metadata
+            set "sfx_filter="
+            for /f "usebackq tokens=*" %%a in ("!chapter_dir!\\metadata.json") do (
+                set "json_line=%%a"
+                REM Simple parsing for SFX timings (basic implementation)
+                echo !json_line! | findstr /C:"sfxTimings" >nul
+                if !errorlevel! equ 0 (
+                    REM Found SFX section - will be processed in advanced version
+                    echo [INFO] SFX metadata detected
                 )
-                echo [INFO] Applied SFX timing filters
             )
-            endlocal
-            del temp_sfx_filters.txt 2>nul
+            
+            REM Enhanced SFX processing with timing from metadata
+            set "sfx_inputs="
+            set "sfx_input_count=2"
+            set "sfx_filter="
+            set "sfx_delay_filter="
+            
+            REM Build SFX inputs and collect timing information
+            for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
+                set "sfx_inputs=!sfx_inputs! -i \"%%f\""
+                set /a sfx_input_count+=1
+            )
+            
+            REM Parse SFX timings from metadata.json and create adelay filters
+            if exist "!chapter_dir!\\metadata.json" (
+                echo [INFO] Parsing SFX timings from metadata...
+                REM Use PowerShell to parse JSON and create timing filters
+                powershell -Command ^
+                    "$metadata = Get-Content '!chapter_dir!\metadata.json' -Raw | ConvertFrom-Json; ^
+                    $sfxIndex = 0; ^
+                    $sfxFiles = Get-ChildItem '!chapter_dir!\sfx\*.wav' | Sort-Object Name; ^
+                    foreach ($timing in $metadata.sfxTimings) { ^
+                        if ($sfxIndex -lt $sfxFiles.Count) { ^
+                            $delayMs = [math]::Round($timing.startTime * 1000); ^
+                            $volume = if ($timing.volume) { $timing.volume } else { 0.3 }; ^
+                            Write-Output \"[!sfx_input_count!a]adelay=!delayMs|!delayMs!,volume=!volume![sfx!sfxIndex!a]\"; ^
+                            $sfxIndex++; ^
+                            $script:sfx_input_count++; ^
+                        } ^
+                    }" > temp_sfx_filters.txt 2>nul
+                
+                REM Read generated filters
+                setlocal enabledelayedexpansion
+                if exist temp_sfx_filters.txt (
+                    set "first_sfx=1"
+                    for /f "usebackq tokens=*" %%a in (temp_sfx_filters.txt) do (
+                        if !first_sfx! equ 1 (
+                            set "sfx_filter=%%a"
+                            set "first_sfx=0"
+                        ) else (
+                            set "sfx_filter=!sfx_filter!;%%a"
+                        )
+                    )
+                    echo [INFO] Applied SFX timing filters
+                )
+                endlocal
+                del temp_sfx_filters.txt 2>nul
+            )
+            
+            REM Mix audio with SFX using timing if available, otherwise simple mix
+            if !sfx_count! equ 1 (
+                set "inputs=!inputs! !sfx_inputs!"
+                if defined sfx_filter (
+                    set "filter_complex=!filter_complex!;!sfx_filter!;[1:a][sfx0a]amix=inputs=2:duration=first[a]"
+                ) else (
+                    set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
+                )
+                set "maps=-map [v] -map [a]"
+            ) else if !sfx_count! gtr 1 (
+                set "inputs=!inputs! !sfx_inputs!"
+                if defined sfx_filter (
+                    REM Mix all timed SFX with main audio
+                    set "mix_inputs=[1:a]"
+                    for /L %%n in (0,1,!sfx_count!) do (
+                        set "mix_inputs=!mix_inputs![sfx%%na]"
+                    )
+                    set /a total_inputs=!sfx_count!+1
+                    set "filter_complex=!filter_complex!;!sfx_filter!;!mix_inputs!amix=inputs=!total_inputs!:duration=first[a]"
+                ) else (
+                    REM Simple mix without timing
+                    set "amix_inputs=!sfx_input_count!"
+                    set "filter_complex=!filter_complex!;"
+                    for /L %%n in (1,1,!sfx_count!) do (
+                        set "filter_complex=!filter_complex![%%n:a]"
+                    )
+                    set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
+                )
+                set "maps=-map [v] -map [a]"
+            )
+        ) else (
+            echo [INFO] No SFX files found, using audio only
+            set "filter_complex=!filter_complex!;[1:a]acopy[a]"
+            set "maps=-map [v] -map [a]"
         )
         
-        REM Mix audio with SFX using timing if available, otherwise simple mix
-        if !sfx_count! equ 1 (
-            set "inputs=!inputs! !sfx_inputs!"
-            if defined sfx_filter (
-                set "filter_complex=!filter_complex!;!sfx_filter!;[1:a][sfx0a]amix=inputs=2:duration=first[a]"
-            ) else (
-                set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
-            )
-            set "maps=-map [v] -map [a]"
-        ) else if !sfx_count! gtr 1 (
-            set "inputs=!inputs! !sfx_inputs!"
-            if defined sfx_filter (
-                REM Mix all timed SFX with main audio
-                set "mix_inputs=[1:a]"
-                for /L %%n in (0,1,!sfx_count!) do (
-                    set "mix_inputs=!mix_inputs![sfx%%na]"
-                )
-                set /a total_inputs=!sfx_count!+1
-                set "filter_complex=!filter_complex!;!sfx_filter!;!mix_inputs!amix=inputs=!total_inputs!:duration=first[a]"
-            ) else (
-                REM Simple mix without timing
-                set "amix_inputs=!sfx_input_count!"
-                set "filter_complex=!filter_complex!;"
-                for /L %%n in (1,1,!sfx_count!) do (
-                    set "filter_complex=!filter_complex![%%n:a]"
-                )
-                set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
-            )
-            set "maps=-map [v] -map [a]"
+        REM Add music if exists (after SFX mixing)
+        if exist "!chapter_dir!\\music.wav" (
+            echo [INFO] Adding background music...
+            set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
+            set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
+            set "maps=-map [v] -map [final_audio]"
         )
-    ) else (
-        echo [INFO] No SFX files found, using audio only
-        set "filter_complex=!filter_complex!;[1:a]acopy[a]"
-        set "maps=-map [v] -map [a]"
-    )
-    
-    REM Add music if exists (after SFX mixing)
-    if exist "!chapter_dir!\\music.wav" (
-        echo [INFO] Adding background music...
-        set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
-        set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
-        set "maps=-map [v] -map [final_audio]"
-    )
-    
-    REM Apply subtitles with UTF-8 encoding
-    set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
-    
-    REM Execute FFmpeg
-    ffmpeg -y !inputs! ^
-        -filter_complex "!filter_complex!" ^
-        !maps! ^
-        -vf "!subtitle_filter!" ^
-        -c:v libx264 -preset medium -crf 20 ^
-        -c:a aac -b:a 192k ^
-        -shortest ^
-        temp_videos\\chapter_!chapter_num!.mp4
-    
-    if %errorlevel% neq 0 (
-        echo [ERROR] Failed to process chapter !chapter_num!
-    ) else (
-        echo [SUCCESS] Chapter !chapter_num! complete
-    )
+        
+        REM Apply subtitles with UTF-8 encoding
+        set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
+        
+        REM Execute FFmpeg
+        ffmpeg -y !inputs! ^
+            -filter_complex "!filter_complex!" ^
+            !maps! ^
+            -vf "!subtitle_filter!" ^
+            -c:v libx264 -preset medium -crf 20 ^
+            -c:a aac -b:a 192k ^
+            -shortest ^
+            temp_videos\\chapter_!chapter_num!.mp4
+        
+        if %errorlevel% neq 0 (
+            echo [ERROR] Failed to process chapter !chapter_num!
+        ) else (
+            echo [SUCCESS] Chapter !chapter_num! complete
+        )
     
     :skip_chapter
 )
