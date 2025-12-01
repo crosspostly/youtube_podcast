@@ -1,4 +1,3 @@
-
 // services/aiTextService.ts
 import { GenerateContentResponse } from "@google/genai";
 import { getAiClient, withRetries } from './apiUtils';
@@ -9,6 +8,58 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
 const PRIMARY_TEXT_MODEL = 'gemini-flash-lite-latest';
 const FALLBACK_TEXT_MODEL = 'gemini-2.5-flash';
+
+// SCRIPT LENGTH CONSTRAINTS
+const MIN_SCRIPT_LENGTH = 8500; // Minimum characters for 7-8 minutes
+const TARGET_SCRIPT_LENGTH = 9000; // Target length
+const MAX_SCRIPT_LENGTH = 10000; // Maximum acceptable length
+const MAX_REGENERATION_ATTEMPTS = 3; // Maximum attempts to get proper length
+
+/**
+ * Calculate total text length of script (excluding SFX lines)
+ */
+const calculateScriptTextLength = (script: any[]): number => {
+    return script
+        .filter(line => line.speaker.toUpperCase() !== 'SFX')
+        .reduce((total, line) => total + (line.text?.length || 0), 0);
+};
+
+/**
+ * Validate if script meets minimum length requirements
+ */
+const validateScriptLength = (script: any[], chapterNumber: number, log: LogFunction): boolean => {
+    const textLength = calculateScriptTextLength(script);
+    const dialogueLines = script.filter(line => line.speaker.toUpperCase() !== 'SFX').length;
+    
+    log({ 
+        type: 'info', 
+        message: `📊 Глава ${chapterNumber} - Проверка длины: ${textLength} символов (${dialogueLines} реплик)`,
+        data: { textLength, dialogueLines, minRequired: MIN_SCRIPT_LENGTH }
+    });
+    
+    if (textLength < MIN_SCRIPT_LENGTH) {
+        log({ 
+            type: 'warning', 
+            message: `⚠️ Глава ${chapterNumber} слишком короткая: ${textLength} < ${MIN_SCRIPT_LENGTH} символов. Требуется регенерация.`,
+        });
+        return false;
+    }
+    
+    if (textLength > MAX_SCRIPT_LENGTH) {
+        log({ 
+            type: 'warning', 
+            message: `⚠️ Глава ${chapterNumber} слишком длинная: ${textLength} > ${MAX_SCRIPT_LENGTH} символов. Рекомендуется сократить.`,
+        });
+        // Still acceptable, just a warning
+    }
+    
+    log({ 
+        type: 'info', 
+        message: `✅ Глава ${chapterNumber} прошла проверку длины: ${textLength} символов`,
+    });
+    
+    return true;
+};
 
 /**
  * Wrapper for generateContent that includes both retries and model fallback.
@@ -119,41 +170,79 @@ export const googleSearchForKnowledge = async (question: string, log: LogFunctio
 type BlueprintResult = Omit<Podcast, 'id' | 'topic' | 'selectedTitle' | 'chapters' | 'totalDurationMinutes' | 'creativeFreedom' | 'knowledgeBaseText' | 'language' | 'designConcepts' | 'narrationMode' | 'characterVoices' | 'monologueVoice' | 'selectedBgIndex' | 'backgroundMusicVolume' | 'initialImageCount' | 'imageSource' | 'thumbnailText'> & { chapters: Chapter[] };
 
 export const generatePodcastBlueprint = async (topic: string, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction): Promise<BlueprintResult> => {
-    log({ type: 'info', message: 'Начало генерации концепции подкаста и первой главы.' });
+    log({ type: 'info', message: '🎬 Начало генерации концепции подкаста и первой главы.' });
     const prompt = getBlueprintPrompt(topic, knowledgeBaseText, creativeFreedom, language);
     
-    try {
-        const config = knowledgeBaseText ? {} : { tools: [{ googleSearch: {} }] };
-        const response = await generateContentWithFallback({ contents: prompt, config }, log);
-        const data = await parseGeminiJsonResponse(response.text, log);
+    let attempt = 0;
+    let lastData: any = null;
+    
+    while (attempt < MAX_REGENERATION_ATTEMPTS) {
+        attempt++;
+        
+        try {
+            log({ type: 'info', message: `📝 Попытка ${attempt}/${MAX_REGENERATION_ATTEMPTS} генерации первой главы...` });
+            
+            const config = knowledgeBaseText ? {} : { tools: [{ googleSearch: {} }] };
+            const response = await generateContentWithFallback({ contents: prompt, config }, log);
+            const data = await parseGeminiJsonResponse(response.text, log);
+            lastData = data;
 
-        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        const sources: Source[] = knowledgeBaseText ? [] : Array.from(new Map<string, Source>(groundingChunks.map((c: any) => c.web).filter((w: any) => w?.uri).map((w: any) => [w.uri, { uri: w.uri, title: w.title?.trim() || w.uri }])).values());
-        
-        const firstChapter: Chapter = {
-            id: crypto.randomUUID(),
-            title: data.chapter.title,
-            script: data.chapter.script,
-            musicSearchKeywords: data.chapter.musicSearchKeywords,
-            visualSearchPrompts: data.visualSearchPrompts || [],
-            status: 'pending',
-        };
-        
-        log({ type: 'info', message: 'Концепция подкаста и первая глава успешно созданы.' });
-        return {
-            title: data.topic,
-            youtubeTitleOptions: data.youtubeTitleOptions,
-            description: data.description,
-            seoKeywords: data.seoKeywords,
-            visualSearchPrompts: data.visualSearchPrompts,
-            characters: data.characters,
-            sources,
-            chapters: [firstChapter]
-        };
-    } catch (error) {
-        log({ type: 'error', message: 'Ошибка при создании концепции подкаста', data: error });
-        throw error;
+            // Validate script length
+            if (!validateScriptLength(data.chapter.script, 1, log)) {
+                if (attempt < MAX_REGENERATION_ATTEMPTS) {
+                    const currentLength = calculateScriptTextLength(data.chapter.script);
+                    const deficit = MIN_SCRIPT_LENGTH - currentLength;
+                    log({ 
+                        type: 'warning', 
+                        message: `🔄 Глава слишком короткая (нехватка ${deficit} символов). Повторная генерация...` 
+                    });
+                    continue; // Retry generation
+                } else {
+                    log({ 
+                        type: 'warning', 
+                        message: `⚠️ Достигнут лимит попыток (${MAX_REGENERATION_ATTEMPTS}). Использую последний результат, хоть он и короткий.` 
+                    });
+                    // Use the last generated data even if short
+                }
+            }
+
+            const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+            const sources: Source[] = knowledgeBaseText ? [] : Array.from(new Map<string, Source>(groundingChunks.map((c: any) => c.web).filter((w: any) => w?.uri).map((w: any) => [w.uri, { uri: w.uri, title: w.title?.trim() || w.uri }])).values());
+            
+            const firstChapter: Chapter = {
+                id: crypto.randomUUID(),
+                title: data.chapter.title,
+                script: data.chapter.script,
+                musicSearchKeywords: data.chapter.musicSearchKeywords,
+                visualSearchPrompts: data.visualSearchPrompts || [],
+                status: 'pending',
+            };
+            
+            const scriptLength = calculateScriptTextLength(data.chapter.script);
+            log({ type: 'info', message: `✅ Концепция подкаста и первая глава успешно созданы (${scriptLength} символов).` });
+            
+            return {
+                title: data.topic,
+                youtubeTitleOptions: data.youtubeTitleOptions,
+                description: data.description,
+                seoKeywords: data.seoKeywords,
+                visualSearchPrompts: data.visualSearchPrompts,
+                characters: data.characters,
+                sources,
+                chapters: [firstChapter]
+            };
+            
+        } catch (error) {
+            if (attempt >= MAX_REGENERATION_ATTEMPTS) {
+                log({ type: 'error', message: 'Ошибка при создании концепции подкаста после всех попыток', data: error });
+                throw error;
+            }
+            log({ type: 'warning', message: `Попытка ${attempt} не удалась, повторяю...`, data: error });
+        }
     }
+    
+    // Fallback: should never reach here, but TypeScript requires it
+    throw new Error('Не удалось создать концепцию подкаста после всех попыток');
 };
 
 export const generateQuickTestBlueprint = async (topic: string, language: string, log: LogFunction): Promise<BlueprintResult> => {
@@ -174,7 +263,7 @@ export const generateQuickTestBlueprint = async (topic: string, language: string
         
         log({ type: 'info', message: 'Lean blueprint for Quick Test successfully created.' });
         return {
-            title: data.title, // Add missing title property
+            title: data.title,
             youtubeTitleOptions: data.youtubeTitleOptions,
             description: data.description,
             seoKeywords: data.seoKeywords,
@@ -205,25 +294,91 @@ export const regenerateTextAssets = async (topic: string, creativeFreedom: boole
 };
 
 export const generateNextChapterScript = async (topic: string, podcastTitle: string, characters: Character[], previousChapters: Chapter[], chapterIndex: number, knowledgeBaseText: string, creativeFreedom: boolean, language: string, log: LogFunction): Promise<Omit<Chapter, 'id' | 'status'>> => {
-    log({ type: 'info', message: `Начало генерации сценария для главы ${chapterIndex + 1}` });
+    log({ type: 'info', message: `🎬 Начало генерации сценария для главы ${chapterIndex + 1}` });
     const previousSummary = previousChapters.map((c, i) => `Chapter ${i+1}: ${c.title} - ${c.script.slice(0, 2).map(s => s.text).join(' ')}...`).join('\n');
     const prompt = getNextChapterPrompt(topic, podcastTitle, characters, previousSummary, chapterIndex, knowledgeBaseText, creativeFreedom, language);
     
-    try {
-        const response = await generateContentWithFallback({ contents: prompt }, log);
-        const data = await parseGeminiJsonResponse(response.text, log);
+    let attempt = 0;
+    let lastData: any = null;
+    
+    while (attempt < MAX_REGENERATION_ATTEMPTS) {
+        attempt++;
+        
+        try {
+            log({ type: 'info', message: `📝 Попытка ${attempt}/${MAX_REGENERATION_ATTEMPTS} генерации главы ${chapterIndex + 1}...` });
+            
+            const response = await generateContentWithFallback({ contents: prompt }, log);
+            const data = await parseGeminiJsonResponse(response.text, log);
+            lastData = data;
 
-        log({ type: 'info', message: `Сценарий для главы ${chapterIndex + 1} успешно создан.` });
-        return {
-            title: data.title,
-            script: data.script,
-            musicSearchKeywords: data.musicSearchKeywords,
-            visualSearchPrompts: data.visualSearchPrompts, // Now getting visual prompts for this chapter
-        };
-    } catch (error) {
-        log({ type: 'error', message: `Ошибка при генерации сценария для главы ${chapterIndex + 1}`, data: error });
-        throw error;
+            // Validate script length
+            if (!validateScriptLength(data.script, chapterIndex + 1, log)) {
+                if (attempt < MAX_REGENERATION_ATTEMPTS) {
+                    const currentLength = calculateScriptTextLength(data.script);
+                    const deficit = MIN_SCRIPT_LENGTH - currentLength;
+                    log({ 
+                        type: 'warning', 
+                        message: `🔄 Глава ${chapterIndex + 1} слишком короткая (нехватка ${deficit} символов). Повторная генерация с более строгими инструкциями...` 
+                    });
+                    
+                    // Add length enforcement to the prompt
+                    const enhancedPrompt = prompt + `\n\n**CRITICAL LENGTH REQUIREMENT**: The script MUST be at least ${MIN_SCRIPT_LENGTH} characters of dialogue text (excluding SFX). Current attempt was too short. Add more dialogue exchanges, expand explanations, and deepen the conversation to reach the required length.`;
+                    
+                    const retryResponse = await generateContentWithFallback({ contents: enhancedPrompt }, log);
+                    const retryData = await parseGeminiJsonResponse(retryResponse.text, log);
+                    lastData = retryData;
+                    
+                    if (validateScriptLength(retryData.script, chapterIndex + 1, log)) {
+                        // Success after enhancement
+                        log({ type: 'info', message: `✅ Глава ${chapterIndex + 1} успешно создана после усиления промпта` });
+                        return {
+                            title: retryData.title,
+                            script: retryData.script,
+                            musicSearchKeywords: retryData.musicSearchKeywords,
+                            visualSearchPrompts: retryData.visualSearchPrompts,
+                        };
+                    }
+                    
+                    continue; // Still too short, try again
+                } else {
+                    log({ 
+                        type: 'warning', 
+                        message: `⚠️ Достигнут лимит попыток для главы ${chapterIndex + 1}. Использую последний результат.` 
+                    });
+                }
+            }
+
+            const scriptLength = calculateScriptTextLength(data.script);
+            log({ type: 'info', message: `✅ Сценарий для главы ${chapterIndex + 1} успешно создан (${scriptLength} символов).` });
+            
+            return {
+                title: data.title,
+                script: data.script,
+                musicSearchKeywords: data.musicSearchKeywords,
+                visualSearchPrompts: data.visualSearchPrompts,
+            };
+            
+        } catch (error) {
+            if (attempt >= MAX_REGENERATION_ATTEMPTS) {
+                log({ type: 'error', message: `Ошибка при генерации главы ${chapterIndex + 1} после всех попыток`, data: error });
+                throw error;
+            }
+            log({ type: 'warning', message: `Попытка ${attempt} для главы ${chapterIndex + 1} не удалась, повторяю...`, data: error });
+        }
     }
+    
+    // Fallback: return last data if we exhausted all attempts
+    if (lastData) {
+        log({ type: 'warning', message: `⚠️ Возврат последнего результата для главы ${chapterIndex + 1} (может быть коротким)` });
+        return {
+            title: lastData.title,
+            script: lastData.script,
+            musicSearchKeywords: lastData.musicSearchKeywords,
+            visualSearchPrompts: lastData.visualSearchPrompts || [],
+        };
+    }
+    
+    throw new Error(`Не удалось создать главу ${chapterIndex + 1} после всех попыток`);
 };
 
 export const generateThumbnailDesignConcepts = async (topic: string, language: string, log: LogFunction): Promise<ThumbnailDesignConcept[]> => {
