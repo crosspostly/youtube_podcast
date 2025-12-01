@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { Podcast, Chapter, ChapterMetadata, SfxTiming, LogEntry } from '../types';
 import { fetchWithCorsFallback } from './apiUtils';
 import { getChapterDurations } from './audioUtils';
+import SENIOR_OPTIMIZED_AUDIO from './audioOptimization';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -200,13 +201,15 @@ export const packageProjectToFolder = async (
             }
             
             // 6. Create chapter metadata
-            // Correct Image Duration Logic: Audio Length / Image Count, clamped between 2s and 20s
+            // ✅ UPDATED: Senior-optimized image pacing
+            // Min 5s (was 2s) - gives time to process visual details
+            // Max 20s - prevents boredom
             let calculatedImageDuration = 5;
             if (imageCount > 0 && audioDuration > 0) {
                 const rawDuration = audioDuration / imageCount;
-                calculatedImageDuration = Math.max(2, Math.min(20, rawDuration));
+                calculatedImageDuration = Math.max(5, Math.min(20, rawDuration));
                 // Ensure the metadata uses float for better precision
-                log({ type: 'info', message: `    ⏱️ Image Duration: ${calculatedImageDuration.toFixed(2)}s (Raw: ${rawDuration.toFixed(2)}s)` });
+                log({ type: 'info', message: `    ⏱️ Image Duration (senior-optimized): ${calculatedImageDuration.toFixed(2)}s (Raw: ${rawDuration.toFixed(2)}s)` });
             }
 
             const metadata: ChapterMetadata = {
@@ -215,11 +218,16 @@ export const packageProjectToFolder = async (
                 audioDuration: audioDuration,
                 imageDuration: calculatedImageDuration,
                 imageCount: imageCount,
-                musicVolume: chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume,
-                sfxTimings: finalSfxTimings
+                musicVolume: SENIOR_OPTIMIZED_AUDIO.mixLevels.music,
+                sfxTimings: finalSfxTimings.map(timing => ({
+                    ...timing,
+                    volume: timing.name.toLowerCase().includes('sudden') || timing.name.toLowerCase().includes('loud')
+                        ? SENIOR_OPTIMIZED_AUDIO.mixLevels.sfxSudden
+                        : SENIOR_OPTIMIZED_AUDIO.mixLevels.sfxAtmospheric
+                }))
             };
             chapterFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
-            log({ type: 'info', message: `    ✅ Метаданные главы созданы` });
+            log({ type: 'info', message: `    ✅ Метаданные главы созданы (senior-optimized audio)` });
         } catch (error: any) {
             log({ type: 'error', message: `  ❌ Ошибка обработки главы ${chapterNum}: ${error.message}` });
         }
@@ -712,14 +720,23 @@ REM Check FFmpeg and FFprobe
         
         REM Add music if exists (after SFX mixing)
         if exist "!chapter_dir!\\music.wav" (
-            echo [INFO] Adding background music...
+            echo [INFO] Adding background music (senior-optimized: 15%%)...
             set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
-            set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
+            REM ✅ UPDATED: Music volume 0.3 → 0.15 (15%%) for senior audience
+            REM Speech-to-music ratio: 85%% speech, 15%% music (was 70/30)
+            set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=0.85 0.15[final_audio]"
             set "maps=-map [v] -map [final_audio]"
         )
         
-        REM Apply subtitles with UTF-8 encoding
-        set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
+        REM ✅ UPDATED: Senior-optimized subtitle styling
+        REM Changes from standard (for 50+ viewers):
+        REM - FontSize: 24 → 32 (33%% larger, readable from 3m on TV)
+        REM - FontName: Arial → Arial Bold (thicker strokes)
+        REM - Outline: 2 → 3 (50%% thicker edge for clarity)
+        REM - MarginV: 40 → 60 (higher position, avoids YouTube UI)
+        REM - Alignment: 2 (bottom center, easier to follow)
+        REM - BorderStyle: 1 (opaque border)
+        set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial Bold,FontSize=32,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=3,Bold=1,MarginV=60,Alignment=2,BorderStyle=1'"
         
         REM Execute FFmpeg
         ffmpeg -y !inputs! ^

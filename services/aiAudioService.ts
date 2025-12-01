@@ -2,9 +2,26 @@
 import { GenerateContentResponse, Modality } from "@google/genai";
 import { createWavBlobFromPcm } from './audioUtils';
 import { withRetries, getAiClient } from './apiUtils';
+import SENIOR_OPTIMIZED_AUDIO from './audioOptimization';
 import type { LogEntry, ScriptLine, NarrationMode } from '../types';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
+
+/**
+ * ✅ Generate SSML with senior-optimized pacing
+ * Adds pauses between sentences and paragraphs for comfortable listening
+ */
+const addSeniorOptimizedPauses = (text: string): string => {
+    const { sentenceGap, paragraphGap } = SENIOR_OPTIMIZED_AUDIO.pauses;
+    
+    // Add breaks after sentence-ending punctuation
+    let ssmlText = text
+        .replace(/([.!?])\s+/g, `$1<break time="${sentenceGap}s"/> `)
+        // Add longer breaks between paragraphs (double newlines)
+        .replace(/\n\n+/g, `<break time="${paragraphGap}s"/>`);
+    
+    return ssmlText;
+};
 
 const processTtsResponse = (response: GenerateContentResponse): Blob => {
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -84,7 +101,10 @@ export const generateChapterAudio = async (
     let ttsConfig: any;
 
     if (narrationMode === 'monologue') {
-        ttsPrompt = dialogueScript.map(line => line.text).join(' \n');
+        let combinedText = dialogueScript.map(line => line.text).join('\n\n');
+        // ✅ Apply senior-optimized pauses for monologue
+        combinedText = addSeniorOptimizedPauses(combinedText);
+        ttsPrompt = combinedText;
         ttsConfig = {
             responseModalities: [Modality.AUDIO],
             speechConfig: {
@@ -102,7 +122,10 @@ export const generateChapterAudio = async (
             };
         });
 
-        ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
+        let dialogueText = dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n');
+        // ✅ Apply senior-optimized pauses for dialogue
+        dialogueText = addSeniorOptimizedPauses(dialogueText);
+        ttsPrompt = `TTS the following conversation:\n\n${dialogueText}`;
         ttsConfig = {
             responseModalities: [Modality.AUDIO],
             speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } }

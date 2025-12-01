@@ -257,31 +257,84 @@ export const getNextChapterPrompt = (topic: string, podcastTitle: string, charac
 };
 
 export const getRegenerateTextPrompt = (topic: string, creativeFreedom: boolean, language: string): string => `
-You are a YouTube marketing expert. Create new, engaging text materials for a video on: "${topic}".
-    
+You are a YouTube marketing expert creating content for MATURE AUDIENCE (50-70 years old) from Tier 1 countries.
+
 **CRITICAL INSTRUCTION: Generate all text content STRICTLY in ${language}.**
-    
-Style: ${creativeFreedom ? "Lovecraftian thriller — atmospheric, mysterious, psychologically unsettling. Make the viewer WANT to know what dark secret lies beneath." : "Documentary, strict, informative."}
+
+**IMPORTANT: This is for ADULTS 50-70 years old. Avoid clickbait. Use authority-based formulas instead.**
+
+Style: ${creativeFreedom 
+  ? `Lovecraftian thriller for mature audience:
+- Lead with authority/credibility ("Declassified", "Historian uncovers", "Official documents reveal")
+- Use curiosity, NOT shock ("What they didn't tell you", "The missing chapter")
+- Tone: Sophisticated, respectful of intelligence
+- Avoid ALL CAPS, exclamation marks, and "won't believe" language
+- Focus on specific details: dates, credible sources, expert testimony` 
+  : "Documentary for mature audience — professional, credible, informative. Avoid sensationalism."}
+
+**TITLE FORMULAS FOR 50+ AUDIENCE:**
+
+1. **Authority + Mystery**: "[Source/Expert] Reveals/Discovers [Subject]"
+   Example: "Declassified Files Reveal Truth About Roswell"
+
+2. **Time + Discovery**: "After [Time Period], [What Emerged/Changed]"
+   Example: "After 70 Years, Witnesses Break Their Silence"
+
+3. **What They Won't Tell You**: "What [Authority] Won't Tell You About [Subject]"
+   Example: "What Historians Won't Tell You About the Civil War"
+
+4. **Evidence-Based**: "[Evidence Type] Changes Our Understanding of [Subject]"
+   Example: "New Documents Change Our Understanding of 1947 Incident"
 
 Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
 **JSON Structure:**
 {
-  "youtubeTitleOptions": ["Array of 3-5 new CLICKABLE titles in ${language} that create curiosity and dread"],
-  "description": "New detailed description in ${language} with CTA. ${creativeFreedom ? 'Set the dark atmosphere immediately.' : 'Professional and informative.'}",
-  "seoKeywords": ["new", "list", "of", "tags", "in", "${language}"]
+  "youtubeTitleOptions": ["Use different formulas from above. 3-5 titles in ${language}. NO ALL CAPS, NO clickbait language"],
+  "description": "New description in ${language} that builds authority and credibility. Lead with source/expert. 2-3 sentences max. ${creativeFreedom ? 'Set dark atmosphere respectfully.' : 'Professional and informative.'} Include respectful CTA.",
+  "seoKeywords": ["list", "of", "tags", "in", "${language}", "focus", "on", "credibility"]
 }`;
 
 export const getThumbnailConceptsPrompt = (topic: string, language: string): string => `
-You are an expert in creating viral, high-CTR YouTube thumbnails.
+You are an expert in creating YouTube thumbnails for MATURE AUDIENCE (50-70 years old) from Tier 1 countries.
 Topic: "${topic}". 
 
-**TASK:** Propose 3 **DISTINCTLY DIFFERENT** design concepts. They MUST NOT look alike.
-1.  **Concept 1:** High contrast, bold, shocking colors (e.g., Yellow/Black). Font: Impact, Anton.
-2.  **Concept 2:** Mysterious, atmospheric, serif fonts, dark palette (e.g., Red/DarkBlue). Font: Playfair Display, Roboto Slab.
-3.  **Concept 3:** Modern, minimal, clean sans-serif, neon accents. Font: Montserrat, Bebas Neue.
+**CRITICAL: This is NOT for Gen Z. Avoid:**
+- Bright neon colors
+- ALL CAPS text
+- Shocked faces
+- Busy, chaotic layouts
 
-**CRITICAL INSTRUCTION: For 'fontFamily', suggest specific Google Fonts (e.g., 'Anton', 'Bebas Neue', 'Playfair Display'). Response must be in ${language}.**
+**Design for Sophistication and Authority:**
+- Color schemes that suggest credibility
+- Classical/traditional aesthetics
+- High contrast for readability from distance (TV viewing 3+ meters)
+- Professional, elegant design
+- Serif fonts (communicate authority and timelessness)
+
+**TASK:** Propose 3 **DISTINCTLY DIFFERENT** design concepts.
+
+1. **Concept 1 (Naval Authority)**: Navy blue (#1a365d) + Gold (#d4af37), Playfair Display (serif, classical)
+   - For: Government documents, military history
+   - Text: Title Case, 2-4 words, NO ALL CAPS
+
+2. **Concept 2 (Academic Elegance)**: Dark green (#2d5016) + Cream (#f5e6d3), Roboto Slab (serif, scholarly)
+   - For: Historical research, analysis
+   - Text: Title Case, professional
+
+3. **Concept 3 (Classic Prestige)**: Burgundy (#6b2737) + Tan (#d2b48c), Playfair Display (serif)
+   - For: Personal stories, dramatic but tasteful
+   - Text: Title Case, 110-130px
+
+**RULES:**
+- Title Case only (NOT ALL CAPS)
+- 2-4 words maximum in title
+- No exclamation marks
+- High contrast (minimum 7:1 ratio)
+- Serif fonts only (professional, classical)
+- fontSize: 100-130px
+
+**CRITICAL INSTRUCTION: For 'fontFamily', suggest specific Google Fonts ONLY from this approved list: 'Playfair Display', 'Roboto Slab', 'Cinzel'. Response must be in ${language}.**
 
 Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -289,40 +342,40 @@ Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 {
   "concepts": [
     {
-      "name": "Unique name for concept 1",
-      "fontFamily": "Anton",
-      "fontSize": 100,
-      "textColor": "#FFFF00",
-      "shadowColor": "#000000",
-      "overlayOpacity": 0.3,
-      "textTransform": "uppercase",
-      "strokeColor": "#000000",
-      "strokeWidth": 12,
-      "gradientColors": null
-    },
-    {
-      "name": "Unique name for concept 2",
+      "name": "Naval Authority",
       "fontFamily": "Playfair Display",
-      "fontSize": 90,
+      "fontSize": 110,
       "textColor": "#FFFFFF",
-      "shadowColor": "#550000",
-      "overlayOpacity": 0.6,
+      "shadowColor": "#1a365d",
+      "overlayOpacity": 0.4,
       "textTransform": "none",
-      "strokeColor": "transparent",
-      "strokeWidth": 0,
+      "strokeColor": "#d4af37",
+      "strokeWidth": 3,
       "gradientColors": null
     },
     {
-      "name": "Unique name for concept 3",
-      "fontFamily": "Montserrat",
-      "fontSize": 110,
-      "textColor": "#00FFFF",
-      "shadowColor": "transparent",
-      "overlayOpacity": 0.4,
-      "textTransform": "uppercase",
-      "strokeColor": "#000000",
-      "strokeWidth": 5,
-      "gradientColors": ["#00FFFF", "#FF00FF"]
+      "name": "Academic Elegance",
+      "fontFamily": "Roboto Slab",
+      "fontSize": 100,
+      "textColor": "#f5e6d3",
+      "shadowColor": "#2d5016",
+      "overlayOpacity": 0.5,
+      "textTransform": "none",
+      "strokeColor": "#2d5016",
+      "strokeWidth": 2,
+      "gradientColors": null
+    },
+    {
+      "name": "Classic Prestige",
+      "fontFamily": "Playfair Display",
+      "fontSize": 120,
+      "textColor": "#FFFFFF",
+      "shadowColor": "#6b2737",
+      "overlayOpacity": 0.45,
+      "textTransform": "none",
+      "strokeColor": "#d2b48c",
+      "strokeWidth": 3,
+      "gradientColors": null
     }
   ]
 }`;
@@ -373,3 +426,65 @@ Focus on:
 
 Description: "${description}"
 Keywords:`;
+
+export const getTemporalSignpostingPrompt = (videoDurationMinutes: number): string => `
+**TEMPORAL SIGNPOSTING FOR 50+ AUDIENCE**
+
+You are helping to add natural, conversational temporal signposts to a ${videoDurationMinutes}-minute video.
+
+These signposts help older viewers who may have difficulty tracking long-form content:
+- Prevent feeling "lost" in the narrative
+- Provide natural mental checkpoints
+- Create a sense of progress and structure
+
+**Insert at these key moments:**
+1. **12-15 minute mark (if video is 30+ min)**: Position marker + recap of main points
+2. **25-28 minute mark (if video is 40+ min)**: Progress checkpoint + promise of what's coming
+3. **38-40 minute mark (if video is 50+ min)**: Final position + building toward conclusion
+
+**TEMPLATES (adapt these naturally):**
+
+Position Marker:
+"We're halfway through our investigation, and what we've uncovered so far is remarkable..."
+"As we move into the second half of this story..."
+"Let's take a moment to consider where we are..."
+
+Recap:
+"So far, we've established three critical points: [A], [B], and [C]..."
+"Let's review what we know at this stage..."
+"The evidence has pointed us toward several key conclusions..."
+
+Promise/Forward-Looking:
+"But what happens next fundamentally changes how we understand this event..."
+"The most striking discovery is still to come..."
+"In the final section, we'll explore why this matters today..."
+
+**TONE GUIDELINES FOR 50+:**
+✓ Confident ("Let's recap what we've learned" NOT "I'm sorry to repeat this")
+✓ Collaborative ("We've established" NOT "I've told you")
+✓ Forward-looking ("What's ahead" NOT "We still have more to go")
+✓ Respectful ("The evidence suggests" NOT "Obviously you know that")
+
+Generate 3-5 natural signpost suggestions for a ${videoDurationMinutes}-minute video.`;
+
+export const getSignpostingInstructions = (): string => `
+**IMPLEMENTING TEMPORAL SIGNPOSTING**
+
+For videos longer than 30 minutes, add natural conversational markers:
+
+**Timing:**
+- 12-15 min: "We're halfway through..."
+- 25-28 min: "What comes next..."
+- 38-40 min: "As we conclude..."
+
+**Make it CONVERSATIONAL:**
+- Between characters naturally
+- Part of the dialogue flow
+- Not forced or artificial
+
+**For 50+ audience specifically:**
+- Use confident, collaborative language
+- Include brief recaps (mental reset points)
+- Build anticipation for what's ahead
+- Avoid mechanical "recap" structures
+`;
