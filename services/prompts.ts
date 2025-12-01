@@ -1,4 +1,3 @@
-
 // services/prompts.ts
 import { getVoiceListString } from '../config/voices';
 
@@ -90,10 +89,24 @@ export const getBlueprintPrompt = (topic: string, knowledgeBaseText: string, cre
         : `Use Google Search to gather facts and information on the topic.`;
 
     const styleInstruction = creativeFreedom
-        ? `**Style Requirements (Creative Freedom & YouTube Optimization):**
-    - **Atmosphere & Style:** DO NOT mention authors like King or Lovecraft. Instead, EMBODY their style. Create a dark, mysterious atmosphere filled with psychological tension, cosmic dread, and the fear of the unknown. Weave a chilling, fictional tale using the provided facts as a foundation.
-    - **Opening Hook:** The very first lines of the script MUST be a powerful 'hook' designed to grab the viewer's attention immediately.
-    - **Audience Engagement:** Throughout the script, organically weave in calls to action (CTAs).`
+        ? `**Style Requirements (Lovecraftian Realism & YouTube Optimization):**
+    - **Atmosphere & Tone:** Create an atmosphere of COSMIC DREAD and psychological tension. Write in the spirit of H.P. Lovecraft — never name him, but embody his style. Focus on:
+      * The insignificance of humanity before ancient, incomprehensible forces
+      * Psychological terror, not gore
+      * Gradual revelation of disturbing truths
+      * Realistic, grounded setting that makes the horror more believable
+      * Subtle hints at something wrong, building to overwhelming dread
+    - **Narrative Approach:** Present the historical facts FIRST as solid ground. Then slowly, carefully introduce unexplained details, anomalies, and patterns. Let the horror emerge naturally from contradictions in the evidence.
+    - **Opening Hook (CRITICAL):** The first 3 dialogue exchanges MUST grab attention immediately:
+      * Open with a shocking fact, unsettling quote, or disturbing question
+      * Create immediate tension or curiosity
+      * Make the viewer want to know what happened next
+    - **YouTube Engagement (Woven Throughout):**
+      * After establishing intrigue (3-4 min mark): "If you're already feeling the weight of this mystery, hit that subscribe button — we go deep into stories like this every week"
+      * Mid-point tension release (12-15 min): "What do YOU think happened here? Drop your theories in the comments below"
+      * Before final revelation (18-20 min): "If this story is pulling you in, you'll want to see our next episode on [related topic] — link in the description"
+      * Closing CTA: "Thanks for joining us in the darkness. Until next time, stay curious... and stay safe."
+    - **Keep it REAL:** No fantasy elements, no magic. Everything must have a plausible, realistic explanation... except for the one thing that CAN'T be explained. That's where the true horror lives.`
         : `**Style Requirements (Documentary & YouTube Optimization):**
     - **Atmosphere:** Create a serious, informative, and objective tone.
     - **Narrative:** Strictly adhere to the facts. Structure the narrative like a high-quality documentary.`;
@@ -117,13 +130,21 @@ export const getBlueprintPrompt = (topic: string, knowledgeBaseText: string, cre
     ${voiceList}
 
     **General Task Requirements:**
-    1.  **Characters:** Create two unique characters (e.g., "Skeptic & Believer", "Host & Historian"). 
+    1.  **Characters:** Create two unique characters (e.g., "Host & Researcher", "Skeptic & Historian"). 
         - **Crucial:** Assign a 'suggestedVoiceId' from the list above that perfectly matches their personality and gender.
+        - For Lovecraftian style: one should be more analytical/skeptical, the other more open to disturbing possibilities
     2.  **YouTube Assets:** Create YouTube-optimized text assets.
     3.  **Script:** Write the script for the FIRST CHAPTER (approx 7-8 mins). **Total text volume: 8500-9500 chars.**
-        - **DIALOGUE MODE:** This must be a REAL dialogue. Short exchanges, reactions, interruptions, questions. Avoid long monologues (max 3-4 sentences per turn). It should feel like a live conversation.
-    4.  **Sound Design:** Add 3-5 relevant SFX cues.
-    5.  **Visuals:** Provide 3 English prompts for image generation for this chapter.
+        - **DIALOGUE MODE:** This must be a REAL, dynamic conversation:
+          * Short exchanges (2-3 sentences max per turn)
+          * Natural reactions and interruptions
+          * Questions that pull the listener deeper
+          * Building tension through pacing
+          * One character often challenges or questions the other
+        - **Structure the chapter to END at a natural break point** — a cliffhanger, revelation, or transition moment that makes sense
+        - **Each chapter should feel COMPLETE while leaving questions unanswered**
+    4.  **Sound Design:** Add 3-5 ATMOSPHERIC SFX cues (creaking, wind, distant sounds, footsteps, paper rustling).
+    5.  **Visuals:** Provide 3 English prompts for HORIZONTAL, REALISTIC images (historical photos, locations, artifacts, documents).
 
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
@@ -132,18 +153,18 @@ export const getBlueprintPrompt = (topic: string, knowledgeBaseText: string, cre
       "youtubeTitleOptions": [ "Array of 3-5 clickable titles in ${language}" ],
       "description": "Detailed description in ${language} with CTA.",
       "seoKeywords": ["list", "of", "tags", "in", "${language}"],
-      "visualSearchPrompts": [ "3 unique English prompts for Chapter 1 visuals" ],
+      "visualSearchPrompts": [ "3 unique English prompts for HORIZONTAL Chapter 1 visuals (e.g., 'abandoned asylum hallway 1950s america', 'vintage medical records old paper', 'foggy forest path new england')" ],
       "characters": [
         { "name": "Name 1", "description": "Description in ${language}", "suggestedVoiceId": "VoiceID_From_List" },
         { "name": "Name 2", "description": "Description in ${language}", "suggestedVoiceId": "VoiceID_From_List" }
       ],
       "chapter": {
         "title": "Chapter 1 Title in ${language}",
-        "musicSearchKeywords": "English keywords for music",
+        "musicSearchKeywords": "English keywords specifically for dark, atmospheric music (e.g., 'dark ambient cinematic horror', 'eerie atmospheric drone', 'unsettling orchestral tension')",
         "script": [
-          { "speaker": "SFX", "text": "SFX description", "searchKeywords": "English keywords for SFX" },
-          { "speaker": "Name 1", "text": "Dialogue text in ${language}..." },
-          { "speaker": "Name 2", "text": "Response in ${language}..." }
+          { "speaker": "Name 1", "text": "Opening hook in ${language}..." },
+          { "speaker": "Name 2", "text": "Response in ${language}..." },
+          { "speaker": "SFX", "text": "SFX description (e.g., 'distant creaking door')", "searchKeywords": "English keywords for SFX (e.g., 'creaking door old wood')" }
         ]
       }
     }${knowledgeBaseBlock}`;
@@ -164,17 +185,17 @@ Your task is to generate a minimal set of assets for a short, 1-minute video. Th
   "youtubeTitleOptions": [ "A single, catchy title in ${language}" ],
   "description": "Short description in ${language}.",
   "seoKeywords": ["tags", "in", "${language}"],
-  "visualSearchPrompts": [ "ONE detailed English prompt for image." ],
+  "visualSearchPrompts": [ "ONE detailed English prompt for HORIZONTAL image (e.g., 'abandoned hospital corridor dark atmosphere')." ],
   "characters": [
     { "name": "Host", "description": "Male host.", "suggestedVoiceId": "Puck" },
     { "name": "Expert", "description": "Female expert.", "suggestedVoiceId": "Zephyr" }
   ],
   "chapter": {
     "title": "Quick Test: ${topic}",
-    "musicSearchKeywords": "English keywords",
+    "musicSearchKeywords": "dark atmospheric ambient (English keywords)",
     "script": [
       { "speaker": "Host", "text": "Opening line in ${language}..." },
-      { "speaker": "SFX", "text": "SFX description", "searchKeywords": "English SFX keywords" },
+      { "speaker": "SFX", "text": "SFX description", "searchKeywords": "English SFX keywords (e.g., 'wind howling')" },
       { "speaker": "Expert", "text": "Response in ${language}..." }
     ]
   }
@@ -184,7 +205,15 @@ export const getNextChapterPrompt = (topic: string, podcastTitle: string, charac
     const characterDescriptions = characters.map(c => `- ${c.name}: ${c.description}`).join('\n');
     
     const styleInstruction = creativeFreedom
-        ? "Continue the story in a captivating and atmospheric style. Deepen the mystery."
+        ? `**Continue the Lovecraftian narrative:**
+        - Maintain the atmosphere of cosmic dread and psychological tension
+        - Build on the mysteries established in previous chapters
+        - Deepen the sense that something fundamental is wrong
+        - Add new disturbing details or contradictions
+        - Move the story forward while preserving the horror
+        - **CRITICAL: This chapter must END at a natural stopping point** — complete its narrative arc while leaving larger mysteries unresolved
+        - **The chapter should feel like a complete segment**, not like it was cut mid-sentence
+        - Use pacing: slow reveals, building tension, moments of realization`
         : "Continue in a strict documentary style.";
     
     const sourceInstruction = knowledgeBaseText
@@ -208,20 +237,21 @@ export const getNextChapterPrompt = (topic: string, podcastTitle: string, charac
 
     Your task: write the script for the NEXT, ${chapterIndex + 1}-th chapter.
     - **Script Length:** Approx 7-8 minutes. **Total text volume: 8500-9500 characters.**
-    - **Sound Design:** Add 3-5 relevant SFX cues.
-    - **Visuals:** Provide 3 English prompts for images.
-    - **DIALOGUE MODE:** Maintain a dynamic, interactive conversation. Short turns. NO long lectures.
+    - **Sound Design:** Add 3-5 ATMOSPHERIC SFX cues (creaking, wind, footsteps, distant sounds).
+    - **Visuals:** Provide 3 English prompts for HORIZONTAL realistic images (historical locations, documents, artifacts).
+    - **DIALOGUE MODE:** Maintain a dynamic, interactive conversation. Short turns (2-3 sentences). Natural reactions.
+    - **STRUCTURE:** This chapter should have a COMPLETE narrative arc with a clear ending point (cliffhanger, revelation, or transition). It should NOT feel cut off mid-thought.
     - ${styleInstruction}
     ${sourceInstruction}
     
     Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
     Structure: {
         "title": "Chapter Title in ${language}",
-        "musicSearchKeywords": "English music keywords",
-        "visualSearchPrompts": ["Prompt 1", "Prompt 2", "Prompt 3"],
+        "musicSearchKeywords": "English keywords for dark atmospheric music (e.g., 'dark ambient horror tension')",
+        "visualSearchPrompts": ["HORIZONTAL English prompt 1 (e.g., 'old abandoned building interior')", "Prompt 2", "Prompt 3"],
         "script": [
-            { "speaker": "SFX", "text": "SFX description", "searchKeywords": "English SFX keywords" },
-            { "speaker": "${characters[0].name}", "text": "Dialogue in ${language}..." }
+            { "speaker": "${characters[0].name}", "text": "Dialogue in ${language}..." },
+            { "speaker": "SFX", "text": "SFX description", "searchKeywords": "English SFX keywords (e.g., 'creaking floorboards old house')" }
         ]
     }${knowledgeBaseBlock}`;
 };
@@ -231,14 +261,14 @@ You are a YouTube marketing expert. Create new, engaging text materials for a vi
     
 **CRITICAL INSTRUCTION: Generate all text content STRICTLY in ${language}.**
     
-Style: ${creativeFreedom ? "Fictional, mystical, intriguing." : "Documentary, strict, informative."}
+Style: ${creativeFreedom ? "Lovecraftian thriller — atmospheric, mysterious, psychologically unsettling. Make the viewer WANT to know what dark secret lies beneath." : "Documentary, strict, informative."}
 
 Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 
 **JSON Structure:**
 {
-  "youtubeTitleOptions": ["Array of 3-5 new titles in ${language}."],
-  "description": "New detailed description in ${language} with CTA.",
+  "youtubeTitleOptions": ["Array of 3-5 new CLICKABLE titles in ${language} that create curiosity and dread"],
+  "description": "New detailed description in ${language} with CTA. ${creativeFreedom ? 'Set the dark atmosphere immediately.' : 'Professional and informative.'}",
   "seoKeywords": ["new", "list", "of", "tags", "in", "${language}"]
 }`;
 
@@ -298,24 +328,48 @@ Return the result as a SINGLE VALID JSON OBJECT in \`\`\`json ... \`\`\`.
 }`;
 
 export const getMusicKeywordsPrompt = (topic: string): string => `
-Analyze the mood of: "${topic}". Generate a search query for Jamendo.
+You are a music curator for atmospheric, Lovecraftian horror content. 
 
-Instructions:
-1.  Identify primary mood and genre.
-2.  Combine into 2-3 English keywords.
-3.  Return ONLY the comma-separated English keywords.
+Analyze the mood and theme of: "${topic}"
 
-Example: dark, ambient, cinematic
-        
-Text: "${topic}"
+Your task is to generate 3-5 SPECIFIC English search keywords for finding background music on Jamendo that matches this Lovecraftian aesthetic:
+- Dark, brooding, atmospheric
+- Cinematic and immersive
+- Tension-building
+- Orchestral, ambient, or drone
+- NO upbeat, happy, or energetic music
+- NO metal or aggressive genres
+
+Focus on descriptive mood words combined with genre tags.
+
+**Examples of GOOD keywords:**
+- "dark ambient cinematic horror"
+- "eerie atmospheric drone"
+- "ominous orchestral tension"
+- "unsettling soundscape mystery"
+- "creepy ambient experimental"
+
+**Examples of BAD keywords:**
+- "horror" (too generic)
+- "scary music" (too vague)
+- "rock" (wrong genre)
+
+Based on the topic "${topic}", generate the PERFECT music search keywords.
+
+**Return ONLY the keywords as a comma-separated list in English. No explanations.**
+
 Keywords:`;
 
 export const getSfxKeywordsPrompt = (description: string): string => `
 Analyze sound effect description: "${description}".
-Generate 2-3 English search keywords for Freesound.org.
-Focus on core sound.
+Generate 2-3 SPECIFIC English search keywords for Freesound.org that will find the exact atmospheric sound effect needed.
 
-Example: "Heavy door creak": heavy door creak
+Focus on:
+- Core sound object (door, wind, footsteps, etc.)
+- Material/texture (wood, metal, paper, etc.)
+- Quality/atmosphere (old, creaking, distant, etc.)
+
+**Example:** "Heavy door creak" → "heavy door creak wood old"
 
 Description: "${description}"
 Keywords:`;
