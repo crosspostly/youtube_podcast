@@ -1,15 +1,20 @@
-# Audio Guidelines for 50+ Audience
+# Audio Standards for 50+ Audience
 
 ## Quick Reference
 
-| Element | Setting | Reason |
-|---------|---------|--------|
-| Music Volume | 15% | Prevents speech masking |
-| SFX (Atmospheric) | 20% | Subtle presence only |
-| SFX (Sudden) | 40% | Noticeable but not jarring |
-| Sentence Pause | 0.8s | Processing time |
-| Paragraph Pause | 1.5s | Mental reset |
+| Element | Setting | Why |
+|---------|---------|-----|
+| Music Volume | 15% | Speech clarity |
+| SFX Atmospheric | 20% | Subtle presence |
+| SFX Sudden | 40% | Not jarring |
 | Speech Boost (2-4kHz) | +3dB | Consonant clarity |
+| Compression | 3:1 @ -18dB | Consistent volume |
+
+## Senior-Friendly Pacing
+
+- Sentence pause: **0.8s** (processing time)
+- Paragraph pause: **1.5s** (mental reset)
+- Pre-revelation pause: **2.5s** (focus and anticipation)
 
 ## Why This Matters
 

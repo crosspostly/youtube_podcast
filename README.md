@@ -157,4 +157,16 @@ batch_projects_2025-11-23.zip
 - Прогресс общего архива
 - Детали ошибок при возникновении
 
+## 6. 50+ Audience Optimization Toolkit
+
+Для премиальной аудитории 50–70 лет из Tier 1 стран мы подготовили полный комплект документации и чек-листов. Используйте его перед каждым релизом:
+
+1. [`docs/50_PLUS_OPTIMIZATION_SUMMARY.md`](./docs/50_PLUS_OPTIMIZATION_SUMMARY.md) — подробный разбор retention anchors, персонажей «Wisdom Exchange» и micro-conclusions.
+2. [`docs/tech-spec-part-3-implementation-roadmap.md`](./docs/tech-spec-part-3-implementation-roadmap.md) — трёхнедельный roadmap, чек-листы и Success Metrics Dashboard (разделы 8–10).
+3. [`docs/AUDIO_GUIDELINES.md`](./docs/AUDIO_GUIDELINES.md) — стандарты аудио для слуха 50+, FFmpeg-фильтры и валидация.
+4. [`docs/VISUAL_ACCESSIBILITY.md`](./docs/VISUAL_ACCESSIBILITY.md) — правила субтитров, цветовых схем и длительности изображений (минимум 5 секунд на кадр).
+5. [`docs/PRE_PUBLISH_CHECKLIST.md`](./docs/PRE_PUBLISH_CHECKLIST.md) — операционный чек-лист перед публикацией (контент, звук, визуал, метаданные).
+
+**Метрики успеха:** фиксируйте базовую точку (AVD 19 мин, Retention 40%, CTR 5%) и обновляйте показатели каждую неделю, стремясь к 30+ мин AVD, 60% удержания и CTR 8–10%. Используйте шаблон A/B теста и Weekly Tracking из Part 3.
+
 (Остальные разделы без изменений)
