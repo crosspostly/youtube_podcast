@@ -207,19 +207,13 @@ export const drawCanvas = async (
         const trimmedLine = lines[i].trim();
         
         // Apply text alignment
-        let drawX = options.position.x;
-        if (options.textAlign === 'center') {
-            const metrics = ctx.measureText(trimmedLine);
-            drawX = options.position.x - metrics.width / 2;
-        } else if (options.textAlign === 'right') {
-            const metrics = ctx.measureText(trimmedLine);
-            drawX = options.position.x - metrics.width;
-        }
+        // FIXED: When ctx.textAlign is set to 'center' or 'right', we should NOT adjust the x position manually.
+        // The canvas context handles the alignment relative to the anchor point (options.position.x).
         
         if (ctx.lineWidth > 0) {
-            ctx.strokeText(trimmedLine, drawX, currentY);
+            ctx.strokeText(trimmedLine, options.position.x, currentY);
         }
-        ctx.fillText(trimmedLine, drawX, currentY);
+        ctx.fillText(trimmedLine, options.position.x, currentY);
         currentY += lineHeight;
     }
 

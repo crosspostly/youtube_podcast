@@ -2,11 +2,18 @@
 import { findAndDownloadSfx, performFreesoundSearch } from '../services/sfxService';
 import type { LogEntry } from '../types';
 
+declare var global: any;
+declare var jest: any;
+declare var describe: any;
+declare var it: any;
+declare var expect: any;
+declare var beforeEach: any;
+
 // Mock fetch
-const mockFetch = global.fetch as jest.MockedFunction<typeof fetch>;
+const mockFetch = global.fetch as any;
 
 describe('SFX Service Tests', () => {
-  let mockLog: jest.MockedFunction<(entry: Omit<LogEntry, 'timestamp'>) => void>;
+  let mockLog: any;
 
   beforeEach(() => {
     mockLog = jest.fn();

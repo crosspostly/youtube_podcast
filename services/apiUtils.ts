@@ -12,12 +12,8 @@ type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
  */
 export const getAiClient = (log: LogFunction): GoogleGenAI => {
   const apiKey = getApiKey('gemini');
-  if (!apiKey || apiKey === 'REPLACE_WITH_YOUR_GEMINI_API_KEY') {
-    const errorMsg = "Gemini API key is not configured. Please:\n" +
-      "1. Edit the .env file in the project root and replace 'REPLACE_WITH_YOUR_GEMINI_API_KEY' with your actual key\n" +
-      "2. Or enter your API key through the UI (click the 🔑 icon in the top right)\n" +
-      "3. Get your free API key from: https://aistudio.google.com/apikey\n" +
-      "The key should be 39 characters long and start with 'AIzaSy'";
+  if (!apiKey) {
+    const errorMsg = "Ключ API Gemini не настроен. Убедитесь, что переменная окружения API_KEY установлена, или введите ключ в настройках.";
     log({ type: 'error', message: errorMsg });
     throw new Error(errorMsg);
   }
@@ -25,6 +21,25 @@ export const getAiClient = (log: LogFunction): GoogleGenAI => {
 };
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Helper to safely serialize error objects for logging
+ */
+const serializeError = (error: any): any => {
+    if (error instanceof Error) {
+        return {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            // Capture additional properties often found in API errors
+            status: (error as any).status,
+            statusText: (error as any).statusText,
+            code: (error as any).code,
+            details: (error as any).details || (error as any).response?.data
+        };
+    }
+    return error;
+};
 
 /**
  * Generic retry wrapper for any async function.
@@ -40,22 +55,9 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
             // Check for common retryable error patterns in message, status, or code.
             const errorMessage = (error?.message || '').toLowerCase();
             const errorStatus = (error?.status || '').toLowerCase();
-            const errorCode = error?.code;
-            
-            // 400 errors are usually authentication/key issues - don't retry these
-            if (errorCode === 400 || errorMessage.includes('api key not valid') || errorMessage.includes('bad request')) {
-                const specificError = "API request failed with 400 Bad Request. This usually means:\n" +
-                    "• Invalid or missing API key\n" +
-                    "• API key expired or not activated\n" +
-                    "• Wrong API key format (should be 39 chars starting with 'AIzaSy')\n" +
-                    "Please check your API key configuration in .env file or UI settings.";
-                log({ type: 'error', message: specificError, data: { message: error.message } });
-                throw error;
-            }
-            
             const isRetryable = 
-                errorCode === 503 || 
-                errorCode === 429 || 
+                error?.code === 503 || 
+                error?.code === 429 || 
                 errorMessage.includes('overloaded') || 
                 errorMessage.includes('rate limit') ||
                 errorStatus === 'unavailable';
@@ -67,8 +69,8 @@ export const withRetries = async <T>(fn: () => Promise<T>, log: LogFunction, ret
                 currentDelay *= 2; // Exponential backoff
             } else {
                 // If the error is not retryable or retries are exhausted, throw it.
-                const serializedError = JSON.stringify(error, Object.getOwnPropertyNames(error));
-                log({ type: 'error', message: `API call failed permanently after ${attempt} attempts.`, data: serializedError });
+                const serialized = serializeError(error);
+                log({ type: 'error', message: `API call failed permanently after ${attempt} attempts.`, data: serialized });
                 throw error;
             }
         }

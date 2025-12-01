@@ -60,7 +60,7 @@ export const useChapterGeneration = (
             // Calculate SFX Timings immediately
             const sfxTimings: SfxTiming[] = [];
             let currentTime = 0;
-            const sanitizeFileNameForSfx = (name: string) => (name || "").replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').toLowerCase().substring(0, 50);
+            const sanitizeFileNameForSfx = (name: string) => name.replace(/[^\w\s-]/g, '').replace(/\s+/g, '_').toLowerCase().substring(0, 50);
 
             for (const line of populatedScript) {
                 if (line.speaker.toUpperCase() === 'SFX' && line.soundEffect) {

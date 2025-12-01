@@ -1,4 +1,5 @@
-// sljf services/aiAudioService.ts
+
+// services/aiAudioService.ts
 import { GenerateContentResponse, Modality } from "@google/genai";
 import { createWavBlobFromPcm } from './audioUtils';
 import { withRetries, getAiClient } from './apiUtils';
@@ -34,8 +35,9 @@ const generateAudioWithRetries = async (
         log({ type: 'response', message: `Successfully generated audio with model: ${model}` });
         return response;
     } catch (error) {
+        // Log the original error here so it's not lost
         log({ type: 'error', message: `Model ${model} failed after retries.`, data: error });
-        throw new Error(`TTS model failed. See logs for details.`);
+        throw error;
     }
 };
 
@@ -80,46 +82,68 @@ export const generateChapterAudio = async (
         return createWavBlobFromPcm(silentPcm, 24000, 1);
     }
 
-    let ttsPrompt: string;
-    let ttsConfig: any;
-
-    if (narrationMode === 'monologue') {
-        ttsPrompt = dialogueScript.map(line => line.text).join(' \n');
-        ttsConfig = {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: {
-                voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice } },
-            },
-        };
-    } else { // Dialogue mode
-        const speakersInScript = Array.from(new Set(dialogueScript.map(line => line.speaker)));
-        const speakerVoiceConfigs = speakersInScript.map(charName => {
-            const voiceName = characterVoices[charName] || 'Zephyr'; // Default fallback
-            log({ type: 'info', message: `Для персонажа "${charName}" выбран голос: ${voiceName}` });
+    const getParams = (mode: NarrationMode) => {
+        if (mode === 'monologue') {
+            // Simple prompt for monologue
+            const ttsPrompt = dialogueScript.map(line => line.text).join(' \n');
             return {
-                speaker: charName,
-                voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+                contents: [{ parts: [{ text: ttsPrompt }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: monologueVoice || 'Puck' } },
+                    },
+                },
             };
-        });
+        } else { 
+            // Complex prompt for dialogue
+            const speakersInScript = Array.from(new Set(dialogueScript.map(line => line.speaker)));
+            const speakerVoiceConfigs = speakersInScript.map(charName => {
+                const voiceName = characterVoices[charName] || 'Zephyr'; // Default fallback
+                log({ type: 'info', message: `Для персонажа "${charName}" выбран голос: ${voiceName}` });
+                return {
+                    speaker: charName,
+                    voiceConfig: { prebuiltVoiceConfig: { voiceName } }
+                };
+            });
 
-        ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
-        ttsConfig = {
-            responseModalities: [Modality.AUDIO],
-            speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } }
-        };
-    }
-    
-    const params = {
-        contents: [{ parts: [{ text: ttsPrompt }] }],
-        config: ttsConfig
+            const ttsPrompt = `TTS the following conversation:\n\n${dialogueScript.map(line => `${line.speaker}: ${line.text}`).join('\n')}`;
+            return {
+                contents: [{ parts: [{ text: ttsPrompt }] }],
+                config: {
+                    responseModalities: [Modality.AUDIO],
+                    speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } }
+                }
+            };
+        }
     };
     
     try {
+        // Attempt 1: Try requested mode
+        const params = getParams(narrationMode);
         const response = await generateAudioWithRetries(params, log);
         const wavBlob = processTtsResponse(response);
         log({ type: 'info', message: 'WAV файл успешно создан.' });
         return wavBlob;
+
     } catch (error) {
+        // Fallback: If dialogue mode fails (often due to speaker config complexity), 
+        // try to salvage the generation by switching to monologue mode automatically.
+        if (narrationMode === 'dialogue') {
+            log({ type: 'info', message: '⚠️ Сбой режима диалога. Попытка автоматического переключения на режим монолога (fallback)...' });
+            
+            try {
+                const fallbackParams = getParams('monologue');
+                const response = await generateAudioWithRetries(fallbackParams, log);
+                const wavBlob = processTtsResponse(response);
+                log({ type: 'info', message: '✅ WAV файл успешно создан в режиме монолога (fallback).' });
+                return wavBlob;
+            } catch (fallbackError) {
+                log({ type: 'error', message: 'Ошибка при fallback-синтезе (монолог)', data: fallbackError });
+                throw fallbackError;
+            }
+        }
+        
         log({ type: 'error', message: 'Ошибка при синтезе аудио (TTS)', data: error });
         throw error;
     }

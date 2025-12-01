@@ -297,7 +297,7 @@ ${podcast.youtubeThumbnails?.map((t, i) => `  ${i + 1}. ${t.styleName}`).join('\
 
 ⏱️ Video Duration: ${Math.ceil(chapterDurations.reduce((sum, d) => sum + d, 0) / 60)} minutes
 
-📂 Video File: final_video.mp4
+📂 Video File: ${(podcast.selectedTitle || podcast.topic).replace(/[<>:"/\\|?*]/g, '_')}.mp4
 📸 Thumbnails Folder: thumbnails/
 `;
 
@@ -306,7 +306,13 @@ ${podcast.youtubeThumbnails?.map((t, i) => `  ${i + 1}. ${t.styleName}`).join('\
     
     const assemblyScript = generateChapterBasedAssemblyScript(podcast.chapters.length);
     zipFolder.file('assemble_video.bat', assemblyScript);
-    log({ type: 'info', message: `✅ Скрипт сборки видео добавлен для "${podcast.selectedTitle || podcast.topic}"` });
+    log({ type: 'info', message: `✅ Скрипт сборки видео (BAT) добавлен для "${podcast.selectedTitle || podcast.topic}"` });
+    
+    // Also add Python script (more reliable)
+    const pythonScript = generatePythonAssemblyScript(podcast.chapters.length);
+    zipFolder.file('assemble_video.py', pythonScript);
+    zipFolder.file('py.bat', PYTHON_LAUNCHER_BAT);
+    log({ type: 'info', message: `✅ Скрипт сборки видео (Python) добавлен для "${podcast.selectedTitle || podcast.topic}"` });
     
     log({ type: 'info', message: `🎉 Упаковка проекта "${podcast.selectedTitle || podcast.topic}" завершена!` });
 };
@@ -503,269 +509,300 @@ const sanitizeFileName = (name: string): string => {
 
 const generateChapterBasedAssemblyScript = (chapterCount: number): string => {
     return `@echo off
-chcp 65001 >nul
+REM ============================================
+REM CRITICAL: Keep window open on any error
+REM ============================================
+if not "%1"=="KEEPOPEN" (
+    cmd /k "%~f0" KEEPOPEN
+    exit /b
+)
+
 setlocal enabledelayedexpansion
 
 echo ===================================================
 echo Chapter-Based Video Assembly (High Quality + SFX)
 echo ===================================================
 echo.
+echo [INFO] Script started at: %DATE% %TIME%
+echo [INFO] Working directory: %CD%
+echo [INFO] If you see this message, script is running!
+echo.
 
-REM Check FFmpeg and FFprobe
-    where ffmpeg >nul 2>nul
-    if %errorlevel% neq 0 (
-        echo [ERROR] FFmpeg not found! Install FFmpeg and add to PATH.
-        goto :error
-    )
+REM --- AUTO-DETECT FFMPEG ---
+set "FFMPEG_EXEC=ffmpeg"
+set "FFPROBE_EXEC=ffprobe"
 
-    where ffprobe >nul 2>nul
-    if %errorlevel% neq 0 (
-        echo [ERROR] FFprobe not found! Install FFmpeg and add to PATH.
-        goto :error
-    )
+where ffmpeg >nul 2>nul
+if %errorlevel% equ 0 (
+    echo [INFO] Found FFmpeg in system PATH.
+    goto :check_dependencies_done
+)
 
-    REM Create temp folder
-    mkdir temp_videos 2>nul
+if exist "ffmpeg.exe" (
+    set "FFMPEG_EXEC=ffmpeg.exe"
+    set "FFPROBE_EXEC=ffprobe.exe"
+    echo [INFO] Found FFmpeg in current directory.
+    goto :check_dependencies_done
+)
 
-    REM Process each chapter
-    for /L %%i in (1,1,${chapterCount}) do (
-        set "chapter_num=0%%i"
-        set "chapter_num=!chapter_num:~-2!"
-        set "chapter_dir=chapters\\chapter_!chapter_num!"
+REM Common installation paths
+if exist "C:\ffmpeg\bin\ffmpeg.exe" (
+    set "FFMPEG_EXEC=C:\ffmpeg\bin\ffmpeg.exe"
+    set "FFPROBE_EXEC=C:\ffmpeg\bin\ffprobe.exe"
+    echo [INFO] Found FFmpeg in C:\ffmpeg\bin
+    goto :check_dependencies_done
+)
 
-        echo.
-        echo [INFO] Processing Chapter !chapter_num!...
+echo [ERROR] FFmpeg not found! 
+echo Please install FFmpeg and add to PATH, or copy ffmpeg.exe and ffprobe.exe to this folder.
+pause
+exit /b 1
 
-        REM Check if chapter exists
-        if not exist "!chapter_dir!" (
-            echo [WARNING] Chapter !chapter_num! not found, skipping...
-            goto :skip_chapter
-        )
+:check_dependencies_done
 
-        REM Read metadata
-        if not exist "!chapter_dir!\\metadata.json" (
-            echo [ERROR] Metadata missing for chapter !chapter_num!
-            goto :skip_chapter
-        )
+REM Check PowerShell
+where powershell >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [ERROR] PowerShell not found.
+    pause
+    exit /b 1
+)
 
-        REM Check if audio exists
-        if not exist "!chapter_dir!\\audio.wav" (
-            echo [ERROR] Audio file not found for chapter !chapter_num!
-            goto :skip_chapter
-        )
+REM Create temp folder
+mkdir temp_videos 2>nul
 
-        REM Create image concat file with CORRECT last image handling
-        set "total_images=0"
+REM Test FFmpeg with a simple command
+echo [DEBUG] Testing FFmpeg...
+"!FFMPEG_EXEC!" -version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] FFmpeg test failed! Cannot execute FFmpeg.
+    pause
+    exit /b 1
+)
+echo [SUCCESS] FFmpeg is working.
+echo.
 
-        REM First pass - count images (both .png and .jpg)
-        for %%f in ("!chapter_dir!\\images\\*.png" "!chapter_dir!\\images\\*.jpg") do (
-            set /a total_images+=1
-        )
+REM Check project structure
+if not exist "chapters" (
+    echo [ERROR] 'chapters' folder not found! Make sure you're running this from the project root.
+    pause
+    exit /b 1
+)
+echo [SUCCESS] Chapters folder found.
+echo.
 
-        if !total_images! equ 0 (
-            echo [ERROR] No images found for chapter !chapter_num!
-            goto :skip_chapter
-        )
-
-        REM Get audio duration using ffprobe
-        for /f %%d in ('ffprobe -v error -show_entries format=duration -of default^=noprint_wrappers^=1:nokey^=1 "!chapter_dir!\\audio.wav" 2^>nul') do set "duration=%%d"
-
-        if "!duration!"=="" (
-            echo [ERROR] Could not determine audio duration for chapter !chapter_num!
-            goto :skip_chapter
-        )
-
-        REM Calculate image duration with error handling
-        powershell -Command "$d = [math]::Round(!duration! / !total_images!, 2); if ($d -lt 2) { $d = 2 }; if ($d -gt 20) { $d = 20 }; Write-Output $d" > temp_img_dur.txt 2>nul
-        if %errorlevel% neq 0 (
-            echo [ERROR] Failed to calculate image duration for chapter !chapter_num!
-            del temp_img_dur.txt 2>nul
-            goto :skip_chapter
-        )
-        set /p img_duration=<temp_img_dur.txt
-        del temp_img_dur.txt
-
-        if "!img_duration!"=="" (
-            echo [ERROR] Invalid image duration calculated for chapter !chapter_num!
-            goto :skip_chapter
-        )
-
-        echo [INFO] Chapter duration: !duration!s, Images: !total_images!, Image duration: !img_duration!s each
-
-        REM Second pass - create concat file with proper duration handling
-        set "image_index=0"
-        (for %%f in ("!chapter_dir!\\images\\*.png" "!chapter_dir!\\images\\*.jpg") do (
-            set /a image_index+=1
-            echo file '%%f'
-            if !image_index! lss !total_images! (
-                echo duration !img_duration!
-            )
-        )) > temp_concat_!chapter_num!.txt
-        
-        REM Build FFmpeg command with filters
-        set "filter_complex=[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v]"
-        set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i \"!chapter_dir!\\audio.wav\""
-        set "maps=-map [v] -map 1:a"
+REM Process each chapter
+for /L %%i in (1,1,${chapterCount}) do (
+    set "chapter_num=0%%i"
+    set "chapter_num=!chapter_num:~-2!"
+    set "chapter_dir=chapters\chapter_!chapter_num!"
     
-    REM 🆕 ADD SFX PROCESSING
-        set "sfx_count=0"
-        for %%f in ("!chapter_dir!\\sfx\\*.wav") do set /a sfx_count+=1
+    echo.
+    echo [INFO] Processing Chapter !chapter_num!...
+    
+    if not exist "!chapter_dir!" (
+        echo [WARNING] Chapter !chapter_num! not found, skipping...
+        goto :skip_chapter
+    )
+    
+    if not exist "!chapter_dir!\metadata.json" (
+        echo [ERROR] Metadata missing for chapter !chapter_num!
+        goto :skip_chapter
+    )
+    
+    set "img_count=0"
+    for %%f in ("!chapter_dir!\images\*.png") do set /a img_count+=1
+    
+    if !img_count! equ 0 (
+        echo [WARNING] No images found for chapter !chapter_num!
+        goto :skip_chapter
+    )
+    
+    REM Get audio duration using ffprobe
+    set "duration="
+    for /f "usebackq tokens=*" %%d in (`"!FFPROBE_EXEC!" -v error -show_entries format^=duration -of default^=noprint_wrappers^=1:nokey^=1 "!chapter_dir!\audio.wav" 2^>nul`) do set "duration=%%d"
+    
+    if not defined duration (
+        echo [WARNING] Could not determine audio duration. Skipping chapter.
+        goto :skip_chapter
+    )
+
+    REM Calculate image duration using PowerShell (with proper escaping)
+    powershell -NoProfile -Command "$d = [math]::Round([double]!duration! / [int]!img_count!, 2); if ($d -lt 2) { $d = 2 }; if ($d -gt 20) { $d = 20 }; Write-Output $d" > temp_img_dur.txt
+    set /p img_duration=<temp_img_dur.txt
+    del temp_img_dur.txt
+    
+    echo [INFO] Chapter duration: !duration!s, Image duration: !img_duration!s each
+    
+    (for %%f in ("!chapter_dir!\images\*.png") do (
+        echo file '%%f'
+        echo duration !img_duration!
+    )) > temp_concat_!chapter_num!.txt
+    
+    set "filter_complex=[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v]"
+    set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i "!chapter_dir!\audio.wav""
+    set "maps=-map [v] -map 1:a"
+    
+    set "sfx_count=0"
+    for %%f in ("!chapter_dir!\sfx\*.wav") do set /a sfx_count+=1
     
     if !sfx_count! gtr 0 (
-            echo [INFO] Found !sfx_count! SFX files, mixing with audio...
-            
-            REM Get SFX timings from metadata
-            set "sfx_filter="
-            for /f "usebackq tokens=*" %%a in ("!chapter_dir!\\metadata.json") do (
-                set "json_line=%%a"
-                REM Simple parsing for SFX timings (basic implementation)
-                echo !json_line! | findstr /C:"sfxTimings" >nul
-                if !errorlevel! equ 0 (
-                    REM Found SFX section - will be processed in advanced version
-                    echo [INFO] SFX metadata detected
-                )
-            )
-            
-            REM Enhanced SFX processing with timing from metadata
-            set "sfx_inputs="
-            set "sfx_input_count=2"
-            set "sfx_filter="
-            set "sfx_delay_filter="
-            
-            REM Build SFX inputs and collect timing information
-            for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
-                set "sfx_inputs=!sfx_inputs! -i \"%%f\""
-                set /a sfx_input_count+=1
-            )
-            
-            REM Parse SFX timings from metadata.json and create adelay filters
-            if exist "!chapter_dir!\\metadata.json" (
-                echo [INFO] Parsing SFX timings from metadata...
-                REM Use PowerShell to parse JSON and create timing filters
-                powershell -Command ^
-                    "$metadata = Get-Content '!chapter_dir!\metadata.json' -Raw | ConvertFrom-Json; ^
-                    $sfxIndex = 0; ^
-                    $sfxFiles = Get-ChildItem '!chapter_dir!\sfx\*.wav' | Sort-Object Name; ^
-                    foreach ($timing in $metadata.sfxTimings) { ^
-                        if ($sfxIndex -lt $sfxFiles.Count) { ^
-                            $delayMs = [math]::Round($timing.startTime * 1000); ^
-                            $volume = if ($timing.volume) { $timing.volume } else { 0.3 }; ^
-                            Write-Output \"[!sfx_input_count!a]adelay=!delayMs|!delayMs!,volume=!volume![sfx!sfxIndex!a]\"; ^
-                            $sfxIndex++; ^
-                            $script:sfx_input_count++; ^
-                        } ^
-                    }" > temp_sfx_filters.txt 2>nul
-                
-                REM Read generated filters
-                setlocal enabledelayedexpansion
-                if exist temp_sfx_filters.txt (
-                    set "first_sfx=1"
-                    for /f "usebackq tokens=*" %%a in (temp_sfx_filters.txt) do (
-                        if !first_sfx! equ 1 (
-                            set "sfx_filter=%%a"
-                            set "first_sfx=0"
-                        ) else (
-                            set "sfx_filter=!sfx_filter!;%%a"
-                        )
-                    )
-                    echo [INFO] Applied SFX timing filters
-                )
-                endlocal
-                del temp_sfx_filters.txt 2>nul
-            )
-            
-            REM Mix audio with SFX using timing if available, otherwise simple mix
-            if !sfx_count! equ 1 (
-                set "inputs=!inputs! !sfx_inputs!"
-                if defined sfx_filter (
-                    set "filter_complex=!filter_complex!;!sfx_filter!;[1:a][sfx0a]amix=inputs=2:duration=first[a]"
-                ) else (
-                    set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
-                )
-                set "maps=-map [v] -map [a]"
-            ) else if !sfx_count! gtr 1 (
-                set "inputs=!inputs! !sfx_inputs!"
-                if defined sfx_filter (
-                    REM Mix all timed SFX with main audio
-                    set "mix_inputs=[1:a]"
-                    for /L %%n in (0,1,!sfx_count!) do (
-                        set "mix_inputs=!mix_inputs![sfx%%na]"
-                    )
-                    set /a total_inputs=!sfx_count!+1
-                    set "filter_complex=!filter_complex!;!sfx_filter!;!mix_inputs!amix=inputs=!total_inputs!:duration=first[a]"
-                ) else (
-                    REM Simple mix without timing
-                    set "amix_inputs=!sfx_input_count!"
-                    set "filter_complex=!filter_complex!;"
-                    for /L %%n in (1,1,!sfx_count!) do (
-                        set "filter_complex=!filter_complex![%%n:a]"
-                    )
-                    set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
-                )
-                set "maps=-map [v] -map [a]"
-            )
-        ) else (
-            echo [INFO] No SFX files found, using audio only
-            set "filter_complex=!filter_complex!;[1:a]acopy[a]"
-            set "maps=-map [v] -map [a]"
+        echo [INFO] Found !sfx_count! SFX files...
+        
+        set "sfx_inputs="
+        set "sfx_input_count=2"
+        set "sfx_filter="
+        
+        for %%f in ("!chapter_dir!\sfx\*.wav") do (
+            set "sfx_inputs=!sfx_inputs! -i "%%f""
+            set /a sfx_input_count+=1
         )
         
-        REM Add music if exists (after SFX mixing)
-        if exist "!chapter_dir!\\music.wav" (
-            echo [INFO] Adding background music...
-            set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
-            set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
-            set "maps=-map [v] -map [final_audio]"
+        if exist "!chapter_dir!\metadata.json" (
+            REM Use PowerShell script file to avoid brace escaping issues
+            echo $metadata = Get-Content '!chapter_dir!\metadata.json' -Raw ^| ConvertFrom-Json; > temp_ps_script.ps1
+            echo $sfxIndex = 0; >> temp_ps_script.ps1
+            echo $sfxFiles = Get-ChildItem '!chapter_dir!\sfx\*.wav' ^| Sort-Object Name; >> temp_ps_script.ps1
+            echo foreach ($timing in $metadata.sfxTimings) { >> temp_ps_script.ps1
+            echo     if ($sfxIndex -lt $sfxFiles.Count) { >> temp_ps_script.ps1
+            echo         $delayMs = [math]::Round($timing.startTime * 1000); >> temp_ps_script.ps1
+            echo         $volume = if ($timing.volume) { $timing.volume } else { 0.3 }; >> temp_ps_script.ps1
+            echo         Write-Output "[2:a]adelay=$delayMs^|$delayMs,volume=$volume[sfx$sfxIndex a]"; >> temp_ps_script.ps1
+            echo         $sfxIndex++; >> temp_ps_script.ps1
+            echo     } >> temp_ps_script.ps1
+            echo } >> temp_ps_script.ps1
+            powershell -NoProfile -ExecutionPolicy Bypass -File temp_ps_script.ps1 > temp_sfx_filters.txt 2>nul
+            del temp_ps_script.ps1 2>nul
+            
+            if exist temp_sfx_filters.txt (
+                set "first_sfx=1"
+                for /f "usebackq tokens=*" %%a in (temp_sfx_filters.txt) do (
+                    if !first_sfx! equ 1 (
+                        set "sfx_filter=%%a"
+                        set "first_sfx=0"
+                    ) else (
+                        set "sfx_filter=!sfx_filter!;%%a"
+                    )
+                )
+            )
+            del temp_sfx_filters.txt 2>nul
         )
         
-        REM Apply subtitles with UTF-8 encoding
-        set "subtitle_filter=subtitles=!chapter_dir!\\subtitles.srt:charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'"
-        
-        REM Execute FFmpeg
-        ffmpeg -y !inputs! ^
-            -filter_complex "!filter_complex!" ^
-            !maps! ^
-            -vf "!subtitle_filter!" ^
-            -c:v libx264 -preset medium -crf 20 ^
-            -c:a aac -b:a 192k ^
-            -shortest ^
-            temp_videos\\chapter_!chapter_num!.mp4
-        
-        if %errorlevel% neq 0 (
-            echo [ERROR] Failed to process chapter !chapter_num!
-        ) else (
-            echo [SUCCESS] Chapter !chapter_num! complete
+        if !sfx_count! equ 1 (
+            set "inputs=!inputs! !sfx_inputs!"
+            if defined sfx_filter (
+                set "filter_complex=!filter_complex!;!sfx_filter!;[1:a][sfx0a]amix=inputs=2:duration=first[a]"
+            ) else (
+                set "filter_complex=!filter_complex!;[1:a][2:a]amix=inputs=2:duration=first[a]"
+            )
+        ) else if !sfx_count! gtr 1 (
+            set "inputs=!inputs! !sfx_inputs!"
+            if defined sfx_filter (
+                set "mix_inputs=[1:a]"
+                for /L %%n in (0,1,!sfx_count!) do (
+                    if %%n lss !sfx_count! set "mix_inputs=!mix_inputs![sfx%%na]"
+                )
+                set /a total_inputs=!sfx_count!+1
+                set "filter_complex=!filter_complex!;!sfx_filter!;!mix_inputs!amix=inputs=!total_inputs!:duration=first[a]"
+            ) else (
+                set "amix_inputs=!sfx_input_count!"
+                for /L %%n in (1,1,!sfx_count!) do (
+                    set "filter_complex=!filter_complex![%%n:a]"
+                )
+                set "filter_complex=!filter_complex!amix=inputs=!amix_inputs!:duration=first[a]"
+            )
         )
+        set "maps=-map [v] -map [a]"
+    ) else (
+        set "filter_complex=!filter_complex!;[1:a]acopy[a]"
+        set "maps=-map [v] -map [a]"
+    )
+    
+    REM Track which audio output we're using
+    set "audio_out=[a]"
+    
+    if exist "!chapter_dir!\music.wav" (
+        echo [INFO] Adding music...
+        set "inputs=!inputs! -i "!chapter_dir!\music.wav""
+        set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
+        set "audio_out=[final_audio]"
+    )
+    
+    REM TEMPORARY: Skip subtitles for debugging - uncomment below to enable
+    REM Check if subtitles file exists
+    if not exist "!chapter_dir!\subtitles.srt" (
+        echo [WARNING] Subtitles file not found for chapter !chapter_num!, skipping subtitles...
+        set "maps=-map [v] -map !audio_out!"
+    ) else (
+        echo [INFO] Subtitles found, but temporarily DISABLED for debugging...
+        echo [INFO] To enable subtitles, uncomment the subtitle filter code in bat file.
+        set "maps=-map [v] -map !audio_out!"
+        
+        REM UNCOMMENT BELOW TO ENABLE SUBTITLES:
+        REM echo [INFO] Adding subtitles for chapter !chapter_num!...
+        REM set "subtitle_path=%CD%\!chapter_dir!\subtitles.srt"
+        REM set "subtitle_path=!subtitle_path:\=/!"
+        REM for /f "tokens=1* delims=:" %%a in ("!subtitle_path!") do (
+        REM     if not "%%b"=="" set "subtitle_path=%%a\:/%%b"
+        REM )
+        REM set "filter_complex=!filter_complex!;[v]subtitles='!subtitle_path!':charenc=UTF-8:force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,OutlineColour=&H000000,Outline=2,Bold=1'[vout]"
+        REM set "maps=-map [vout] -map !audio_out!"
+    )
+    
+    echo [DEBUG] Filter complex length: !filter_complex:~0,200!...
+    echo [DEBUG] Maps: !maps!
+    echo [DEBUG] Starting FFmpeg for chapter !chapter_num!...
+    
+    "!FFMPEG_EXEC!" -y !inputs! ^
+        -filter_complex "!filter_complex!" ^
+        !maps! ^
+        -c:v libx264 -preset medium -crf 20 ^
+        -c:a aac -b:a 192k ^
+        -shortest ^
+        temp_videos\chapter_!chapter_num!.mp4
+    
+    set "ffmpeg_exit=!errorlevel!"
+    if !ffmpeg_exit! neq 0 (
+        echo.
+        echo [ERROR] ==========================================
+        echo [ERROR] Failed to process chapter !chapter_num!
+        echo [ERROR] FFmpeg exit code: !ffmpeg_exit!
+        echo [ERROR] ==========================================
+        echo.
+        echo [DEBUG] Filter complex was:
+        echo !filter_complex!
+        echo.
+        pause
+    ) else (
+        echo [SUCCESS] Chapter !chapter_num! complete
+    )
     
     :skip_chapter
 )
 
 echo.
-echo [INFO] Concatenating all chapters into final video...
+echo [INFO] Concatenating chapters...
 
-REM Create final concat list
 (for /L %%i in (1,1,${chapterCount}) do (
     set "chapter_num=0%%i"
     set "chapter_num=!chapter_num:~-2!"
-    if exist "temp_videos\\chapter_!chapter_num!.mp4" (
+    if exist "temp_videos\chapter_!chapter_num!.mp4" (
         echo file 'temp_videos/chapter_!chapter_num!.mp4'
     )
 )) > final_concat.txt
 
-REM Concatenate
-ffmpeg -y -f concat -safe 0 -i final_concat.txt -c copy final_video.mp4
+"!FFMPEG_EXEC!" -y -f concat -safe 0 -i final_concat.txt -c copy final_video.mp4
 
 if %errorlevel% equ 0 (
     echo.
-    echo [SUCCESS] Final video created: final_video.mp4
+    echo [SUCCESS] Video created: final_video.mp4
     echo.
 ) else (
     echo [ERROR] Failed to create final video
     goto :error
 )
 
-REM Cleanup
-echo [INFO] Cleaning up temporary files...
+echo [INFO] Cleaning up...
 rmdir /s /q temp_videos 2>nul
 del temp_concat_*.txt 2>nul
 del final_concat.txt 2>nul
@@ -777,8 +814,546 @@ exit /b 0
 
 :error
 echo.
-echo [FATAL ERROR] An error occurred during assembly. Review output above.
+echo ==========================================
+echo [FATAL ERROR] Video assembly failed!
+echo ==========================================
+echo.
+echo Please review the error messages above.
+echo.
+echo Common issues:
+echo 1. Missing FFmpeg or FFmpeg not in PATH
+echo 2. Missing chapter files (audio.wav, images, etc.)
+echo 3. Corrupted audio/image files
+echo 4. Insufficient disk space
+echo.
 pause
 exit /b 1
+`;
+};
+
+const PYTHON_LAUNCHER_BAT = `@echo off
+REM Simple launcher for Python script
+REM Keeps window open on errors
+
+python assemble_video.py
+
+if %errorlevel% neq 0 (
+    echo.
+    echo [ERROR] Python script failed with exit code %errorlevel%
+    pause
+    exit /b %errorlevel%
+)
+
+exit /b 0
+`;
+
+const generatePythonAssemblyScript = (chapterCount: number): string => {
+    return `#!/usr/bin/env python3
+"""
+Video Assembly Script - Creates video from chapters with SFX, music, and subtitles
+Works on Windows, macOS, and Linux
+"""
+
+import os
+import sys
+import json
+import re
+import subprocess
+import shutil
+from pathlib import Path
+from typing import Optional, List, Tuple
+
+# Configuration
+TEMP_VIDEOS_DIR = "temp_videos"
+FPS = 30
+OUTPUT_RESOLUTION = "1920:1080"
+VIDEO_CODEC = "libx264"
+VIDEO_PRESET = "medium"
+VIDEO_CRF = "20"
+AUDIO_CODEC = "aac"
+AUDIO_BITRATE = "192k"
+
+
+def find_ffmpeg() -> Optional[str]:
+    """Find FFmpeg executable in system PATH or common locations"""
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        return ffmpeg
+    
+    common_paths = [
+        r"C:\\ffmpeg\\bin\\ffmpeg.exe",
+        r"C:\\Program Files\\ffmpeg\\bin\\ffmpeg.exe",
+        "ffmpeg.exe"
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+
+def find_ffprobe() -> Optional[str]:
+    """Find FFprobe executable"""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        return ffprobe
+    
+    common_paths = [
+        r"C:\\ffmpeg\\bin\\ffprobe.exe",
+        r"C:\\Program Files\\ffmpeg\\bin\\ffprobe.exe",
+        "ffprobe.exe"
+    ]
+    
+    for path in common_paths:
+        if os.path.exists(path):
+            return path
+    
+    return None
+
+
+def get_audio_duration(ffprobe: str, audio_file: str) -> Optional[float]:
+    """Get audio duration in seconds using ffprobe"""
+    try:
+        cmd = [
+            ffprobe,
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            audio_file
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        duration = float(result.stdout.strip())
+        return duration
+    except (subprocess.CalledProcessError, ValueError) as e:
+        print(f"[WARNING] Could not determine audio duration: {e}")
+        return None
+
+
+def calculate_image_duration(audio_duration: float, image_count: int) -> float:
+    """Calculate duration per image (min 2s, max 20s)"""
+    if image_count == 0:
+        return 2.0
+    duration = audio_duration / image_count
+    return max(2.0, min(20.0, round(duration, 2)))
+
+
+def get_chapter_images(chapter_dir: Path) -> List[Path]:
+    """Get all PNG/JPG images from chapter directory"""
+    images_dir = chapter_dir / "images"
+    if not images_dir.exists():
+        return []
+    
+    images = []
+    for ext in ["*.png", "*.jpg", "*.jpeg"]:
+        images.extend(images_dir.glob(ext))
+    
+    return sorted(images, key=lambda x: x.name)
+
+
+def create_concat_file(images: List[Path], image_duration: float, output_file: Path):
+    """Create FFmpeg concat file for images"""
+    with open(output_file, "w", encoding="utf-8") as f:
+        for img in images:
+            # Use absolute path - simplest and most reliable
+            # FFmpeg on Windows accepts Windows paths with backslashes
+            img_path = str(img.absolute())
+
+            # Escape single quotes only
+            img_path = img_path.replace("'", "'\\\\''")
+
+            f.write(f"file '{img_path}'\\n")
+            f.write(f"duration {image_duration}\\n")
+
+
+def parse_sfx_timings(metadata_file: Path) -> List[dict]:
+    """Parse SFX timings from metadata.json"""
+    try:
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+            return metadata.get("sfxTimings", [])
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f"[WARNING] Could not parse SFX timings: {e}")
+        return []
+
+
+def build_ffmpeg_command(
+    ffmpeg: str,
+    chapter_dir: Path,
+    chapter_num: int,
+    concat_file: Path,
+    output_file: Path,
+    audio_duration: float,
+    music_fallback: Optional[Path] = None
+) -> List[str]:
+    """Build FFmpeg command for chapter processing"""
+    
+    inputs = [
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(concat_file),
+        "-i", str(chapter_dir / "audio.wav")
+    ]
+    
+    filter_parts = []
+    
+    filter_parts.append(
+        "[0:v]scale={}:force_original_aspect_ratio=decrease,"
+        "pad={}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={}[v]".format(
+            OUTPUT_RESOLUTION, OUTPUT_RESOLUTION, FPS
+        )
+    )
+    
+    audio_inputs = ["[1:a]"]
+    audio_label = "[1:a]"
+    
+    sfx_dir = chapter_dir / "sfx"
+    sfx_files = sorted(sfx_dir.glob("*.wav")) if sfx_dir.exists() else []
+    
+    if sfx_files:
+        print(f"[INFO] Found {len(sfx_files)} SFX files...")
+        sfx_timings = parse_sfx_timings(chapter_dir / "metadata.json")
+        
+        for idx, sfx_file in enumerate(sfx_files):
+            inputs.extend(["-i", str(sfx_file)])
+            
+            if idx < len(sfx_timings):
+                timing = sfx_timings[idx]
+                delay_ms = int(timing.get("startTime", 0) * 1000)
+                volume = timing.get("volume", 0.3)
+                
+                filter_parts.append(
+                    "[{}:a]adelay={}|{},volume={}[sfx{}a]".format(
+                        idx + 2, delay_ms, delay_ms, volume, idx
+                    )
+                )
+                audio_inputs.append(f"[sfx{idx}a]")
+            else:
+                audio_inputs.append(f"[{idx + 2}:a]")
+        
+        if len(audio_inputs) > 1:
+            filter_parts.append(
+                "".join(audio_inputs) + f"amix=inputs={len(audio_inputs)}:duration=first[a]"
+            )
+            audio_label = "[a]"
+    
+    music_file = chapter_dir / "music.wav"
+    local_music = chapter_dir / "music.wav"
+    music_source: Optional[Path] = None
+    if local_music.exists():
+        music_source = local_music
+    elif music_fallback and music_fallback.exists():
+        music_source = music_fallback
+        print(f"[INFO] Using fallback background music from: {music_source}")
+
+    if music_source:
+        print(f"[INFO] Adding background music...")
+        inputs.extend(["-i", str(music_source)])
+        
+        # Mix with music (main audio louder, music ~2% громкости)
+        music_input_idx = len(sfx_files) + 2
+        if audio_label == "[a]":
+            filter_parts.append(f"{audio_label}amix=inputs=2:duration=first:weights=1 0.02[final_audio]")
+        else:
+            filter_parts.append(f"{audio_label}[{music_input_idx}:a]amix=inputs=2:duration=first:weights=1 0.02[final_audio]")
+        audio_label = "[final_audio]"
+    else:
+        if audio_label != "[1:a]":
+            filter_parts.append(f"{audio_label}acopy[a]")
+            audio_label = "[a]"
+    
+    subtitle_file = chapter_dir / "subtitles.srt"
+    if subtitle_file.exists():
+        print(f"[INFO] Adding subtitles...")
+        subtitle_path = str(subtitle_file.absolute()).replace("\\\\", "/")
+        if ":" in subtitle_path:
+            parts = subtitle_path.split(":", 1)
+            subtitle_path = parts[0] + "\\\\:" + parts[1]
+        
+        filter_parts.append(
+            "[v]subtitles='{}':charenc=UTF-8:"
+            "force_style='FontName=Arial,FontSize=24,PrimaryColour=&Hffffff,"
+            "OutlineColour=&H000000,Outline=2,Bold=1'[vout]".format(subtitle_path)
+        )
+        video_label = "[vout]"
+    else:
+        video_label = "[v]"
+    
+    filter_complex = ";".join(filter_parts)
+    
+    cmd = [
+        ffmpeg,
+        "-y",
+    ] + inputs + [
+        "-filter_complex", filter_complex,
+        "-map", video_label,
+        "-map", audio_label,
+        "-c:v", VIDEO_CODEC,
+        "-preset", VIDEO_PRESET,
+        "-crf", VIDEO_CRF,
+        "-pix_fmt", "yuv420p",  # Required for compatibility (most players need this)
+        "-profile:v", "high",  # H.264 high profile for better compatibility
+        "-level", "4.0",  # H.264 level 4.0 for wide compatibility
+        "-c:a", AUDIO_CODEC,
+        "-b:a", AUDIO_BITRATE,
+        "-ar", "48000",  # Sample rate for audio (standard)
+        "-movflags", "+faststart",  # Enable fast start for web playback
+        "-shortest",
+        str(output_file)
+    ]
+    
+    return cmd
+
+
+def process_chapter(
+    ffmpeg: str,
+    ffprobe: str,
+    chapter_dir: Path,
+    chapter_num: int,
+    temp_dir: Path,
+    music_fallback: Optional[Path] = None,
+) -> bool:
+    """Process a single chapter"""
+    print(f"\\n{'='*50}")
+    print(f"Processing Chapter {chapter_num:02d}...")
+    print(f"{'='*50}")
+    
+    audio_file = chapter_dir / "audio.wav"
+    if not audio_file.exists():
+        print(f"[WARNING] Audio file not found for chapter {chapter_num:02d}, skipping...")
+        return False
+    
+    metadata_file = chapter_dir / "metadata.json"
+    if not metadata_file.exists():
+        print(f"[WARNING] Metadata not found for chapter {chapter_num:02d}, skipping...")
+        return False
+    
+    images = get_chapter_images(chapter_dir)
+    if not images:
+        print(f"[WARNING] No images found for chapter {chapter_num:02d}, skipping...")
+        return False
+    
+    print(f"[INFO] Found {len(images)} images")
+    
+    audio_duration = get_audio_duration(ffprobe, str(audio_file))
+    if audio_duration is None:
+        print(f"[WARNING] Could not determine audio duration, skipping...")
+        return False
+    
+    print(f"[INFO] Audio duration: {audio_duration:.2f} seconds")
+    
+    image_duration = calculate_image_duration(audio_duration, len(images))
+    print(f"[INFO] Image duration: {image_duration:.2f} seconds each")
+    
+    concat_file = temp_dir / f"temp_concat_{chapter_num:02d}.txt"
+    create_concat_file(images, image_duration, concat_file)
+    
+    output_file = temp_dir / f"chapter_{chapter_num:02d}.mp4"
+    
+    cmd = build_ffmpeg_command(
+        ffmpeg, chapter_dir, chapter_num, concat_file, output_file, audio_duration, music_fallback
+    )
+    
+    print(f"[INFO] Starting FFmpeg encoding...")
+    
+    try:
+        subprocess.run(cmd, check=True)
+        print(f"[SUCCESS] Chapter {chapter_num:02d} completed!")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Failed to process chapter {chapter_num:02d}")
+        print(f"[ERROR] FFmpeg exit code: {e.returncode}")
+        return False
+
+
+def get_video_title() -> str:
+    """Get video title from project_metadata.json"""
+    metadata_file = Path("project_metadata.json")
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                # Try youtube.selectedTitle first, then title
+                title = metadata.get("youtube", {}).get("selectedTitle") or metadata.get("title", "final_video")
+                return title
+        except (FileNotFoundError, json.JSONDecodeError, KeyError):
+            pass
+    return "final_video"
+
+
+def sanitize_filename(filename: str) -> str:
+    """Remove invalid characters from filename"""
+    # Remove invalid characters for Windows/Linux filenames
+    filename = re.sub(r'[<>:\"/\\|?*]', '_', filename)
+    # Remove leading/trailing dots and spaces
+    filename = filename.strip('. ')
+    # Limit length
+    if len(filename) > 200:
+        filename = filename[:200]
+    return filename
+
+
+def concatenate_chapters(ffmpeg: str, temp_dir: Path, output_file: Path, num_chapters: int = ${chapterCount}) -> bool:
+    """Concatenate all chapter videos"""
+    print(f"\\n{'='*50}")
+    print("Concatenating chapters...")
+    print(f"{'='*50}")
+    
+    concat_file = Path("final_concat.txt")
+    with open(concat_file, "w", encoding="utf-8") as f:
+        for i in range(1, num_chapters + 1):
+            chapter_video = temp_dir / f"chapter_{i:02d}.mp4"
+            if chapter_video.exists():
+                path = str(chapter_video).replace("\\\\", "/")
+                f.write(f"file '{path}'\\n")
+    
+    if concat_file.stat().st_size == 0:
+        print("[ERROR] No chapter videos found for concatenation!")
+        return False
+    
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(concat_file),
+        "-c", "copy",
+        str(output_file)
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True)
+        print(f"[SUCCESS] Final video created: {output_file}")
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] Failed to concatenate chapters: {e}")
+        return False
+
+
+def cleanup(temp_dir: Path):
+    """Clean up temporary files"""
+    print("\\n[INFO] Cleaning up temporary files...")
+    
+    try:
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        
+        concat_files = list(Path(".").glob("temp_concat_*.txt"))
+        concat_files.append(Path("final_concat.txt"))
+        
+        for file in concat_files:
+            if file.exists():
+                file.unlink()
+        
+        print("[SUCCESS] Cleanup completed")
+    except Exception as e:
+        print(f"[WARNING] Cleanup error: {e}")
+
+
+def main():
+    """Main function"""
+    print("="*60)
+    print("Chapter-Based Video Assembly (Python Version)")
+    print("="*60)
+    print()
+    
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        print("[ERROR] FFmpeg not found!")
+        print("Please install FFmpeg and add it to your PATH,")
+        print("or place ffmpeg.exe in this directory.")
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
+    
+    print(f"[SUCCESS] Found FFmpeg: {ffmpeg}")
+    
+    ffprobe = find_ffprobe()
+    if not ffprobe:
+        print("[ERROR] FFprobe not found!")
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
+    
+    print(f"[SUCCESS] Found FFprobe: {ffprobe}")
+    
+    chapters_dir = Path("chapters")
+    if not chapters_dir.exists():
+        print("[ERROR] 'chapters' folder not found!")
+        print("Make sure you're running this script from the project root.")
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
+    
+    print(f"[SUCCESS] Found chapters directory")
+    print()
+    
+    temp_dir = Path(TEMP_VIDEOS_DIR)
+    temp_dir.mkdir(exist_ok=True)
+    
+    # Determine number of chapters
+    num_chapters = ${chapterCount}
+
+    # Find fallback music (first available music.wav in chapters)
+    music_fallback: Optional[Path] = None
+    for i in range(1, num_chapters + 1):
+        candidate = chapters_dir / f"chapter_{i:02d}" / "music.wav"
+        if candidate.exists():
+            music_fallback = candidate
+            print(f"[INFO] Fallback music source detected: {music_fallback}")
+            break
+
+    successful_chapters = []
+    
+    for i in range(1, num_chapters + 1):
+        chapter_dir = chapters_dir / f"chapter_{i:02d}"
+        
+        if not chapter_dir.exists():
+            print(f"[WARNING] Chapter {i:02d} directory not found, skipping...")
+            continue
+        
+        success = process_chapter(ffmpeg, ffprobe, chapter_dir, i, temp_dir, music_fallback)
+        if success:
+            successful_chapters.append(i)
+    
+    if not successful_chapters:
+        print("\\n[ERROR] No chapters were processed successfully!")
+        cleanup(temp_dir)
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
+    
+    # Get video title and create output filename
+    video_title = get_video_title()
+    safe_title = sanitize_filename(video_title)
+    output_file = Path(f"{safe_title}.mp4")
+
+    print(f"[INFO] Output file will be: {output_file}")
+
+    success = concatenate_chapters(ffmpeg, temp_dir, output_file, num_chapters)
+    
+    if not success:
+        cleanup(temp_dir)
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
+    
+    cleanup(temp_dir)
+    
+    print("\\n" + "="*60)
+    print("[SUCCESS] Video assembly completed!")
+    print(f"[SUCCESS] Output: {output_file.absolute()}")
+    print("="*60)
+    print()
+    input("Press Enter to exit...")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\\n\\n[INFO] Interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"\\n[FATAL ERROR] {e}")
+        import traceback
+        traceback.print_exc()
+        input("\\nPress Enter to exit...")
+        sys.exit(1)
 `;
 };

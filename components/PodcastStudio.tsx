@@ -804,11 +804,11 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {podcast.youtubeThumbnails.map((thumbnail, index) => (
-                                        <div key={thumbnail.styleName} className="group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                                        <div key={thumbnail.styleName} className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
                                             selectedThumbnailIndex === index 
                                                 ? 'border-cyan-500 ring-2 ring-cyan-500/50' 
                                                 : 'border-slate-700 hover:border-cyan-500'
-                                        }">
+                                        }`}>
                                             <div className="relative">
                                                 <img 
                                                     src={thumbnail.dataUrl} 
@@ -816,31 +816,36 @@ const PodcastStudio: React.FC<PodcastStudioProps> = ({ onEditThumbnail }) => {
                                                     className={`w-full aspect-video object-cover transition-opacity ${isUpdatingThumbnails ? 'opacity-50' : 'opacity-100'}`} 
                                                 />
                                                 {selectedThumbnailIndex === index && (
-                                                    <div className="absolute top-2 right-2 w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
+                                                    <div className="absolute top-2 right-2 w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center z-10">
                                                         <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                                                             <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                                                         </svg>
                                                     </div>
                                                 )}
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center">
+                                                
+                                                {/* Edit Overlay - Fixed Z-index to allow clicks */}
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center z-20 pointer-events-none">
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             onEditThumbnail(thumbnail);
                                                         }}
-                                                        className="p-3 bg-white/90 rounded-full mb-2 hover:bg-white transition-colors"
+                                                        className="p-3 bg-white/90 rounded-full mb-2 hover:bg-white transition-colors pointer-events-auto shadow-lg transform hover:scale-105 active:scale-95"
                                                     >
                                                         <EditIcon className="w-6 h-6 text-slate-800" />
                                                     </button>
-                                                    <span className="text-white font-bold text-sm">Редактировать</span>
+                                                    <span className="text-white font-bold text-sm drop-shadow-md">Редактировать</span>
                                                 </div>
-                                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm">
+
+                                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-2 backdrop-blur-sm z-10">
                                                     <p className="text-xs text-white font-semibold text-center">{thumbnail.styleName}</p>
                                                 </div>
                                             </div>
+                                            
+                                            {/* Select Button - Moved to background with lower Z-index */}
                                             <button
                                                 onClick={() => handleSelectDesign(index)}
-                                                className="absolute inset-0 w-full h-full opacity-0"
+                                                className="absolute inset-0 w-full h-full opacity-0 z-0"
                                                 aria-label={`Select ${thumbnail.styleName} design`}
                                             />
                                         </div>

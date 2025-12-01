@@ -3,6 +3,12 @@ import { combineAndMixAudio } from '../services/audioUtils';
 import { createMockPodcast, createMockChapter, createMockScriptLine, createMockSoundEffect } from './testHelpers';
 import type { Podcast } from '../types';
 
+declare var jest: any;
+declare var describe: any;
+declare var it: any;
+declare var expect: any;
+declare var beforeEach: any;
+
 // Mock the memory cleanup function
 jest.mock('../utils/sfxMemoryCleanup', () => ({
   cleanupSfxBlobs: jest.fn().mockReturnValue(3)

@@ -3,6 +3,11 @@ import { cleanupSfxBlobs, cleanupChapterSfxBlobs, getSfxMemoryStats } from '../u
 import { createMockPodcast, createMockChapter, createMockScriptLine, createMockSoundEffect } from './testHelpers';
 import type { Podcast, Chapter } from '../types';
 
+declare var describe: any;
+declare var it: any;
+declare var expect: any;
+declare var beforeEach: any;
+
 describe('SFX Memory Cleanup Tests', () => {
   let mockPodcast: Podcast;
   let mockChapter: Chapter;

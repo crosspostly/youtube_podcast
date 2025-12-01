@@ -1,4 +1,7 @@
 // test/setup.ts
+declare var global: any;
+declare var jest: any;
+
 // Mock Web Audio API for testing
 (global as any).AudioContext = class MockAudioContext {
   destination = {};

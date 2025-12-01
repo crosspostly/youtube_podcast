@@ -52,7 +52,7 @@ const searchJamendoWithStrategy = async (keywords: string, log: LogFunction): Pr
     }
 
     // Prepare query: replace commas with spaces and trim
-    const query = (keywords || "").replace(/,\s*/g, ' ').trim();
+    const query = keywords.replace(/,\s*/g, ' ').trim();
     
     if (!query) {
         log({ type: 'info', message: 'Ключевые слова для поиска музыки не предоставлены.' });
