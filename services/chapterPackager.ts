@@ -622,31 +622,17 @@ REM Check FFmpeg and FFprobe
         REM Apply 50+ audio optimizations: speech clarity + gentle compression
         set "speech_filter=equalizer=f=3000:width_type=h:width=2000:g=3,acompressor=threshold=-18dB:ratio=3:attack=200:release=1000"
         set "maps=-map [v] -map 1:a"
-    
-    REM 🆕 ADD SFX PROCESSING
+        
+        REM Enhanced SFX processing with timing from metadata
         set "sfx_count=0"
         for %%f in ("!chapter_dir!\\sfx\\*.wav") do set /a sfx_count+=1
-    
-    if !sfx_count! gtr 0 (
+        
+        if !sfx_count! gtr 0 (
             echo [INFO] Found !sfx_count! SFX files, mixing with audio...
             
-            REM Get SFX timings from metadata
-            set "sfx_filter="
-            for /f "usebackq tokens=*" %%a in ("!chapter_dir!\\metadata.json") do (
-                set "json_line=%%a"
-                REM Simple parsing for SFX timings (basic implementation)
-                echo !json_line! | findstr /C:"sfxTimings" >nul
-                if !errorlevel! equ 0 (
-                    REM Found SFX section - will be processed in advanced version
-                    echo [INFO] SFX metadata detected
-                )
-            )
-            
-            REM Enhanced SFX processing with timing from metadata
             set "sfx_inputs="
             set "sfx_input_count=2"
             set "sfx_filter="
-            set "sfx_delay_filter="
             
             REM Build SFX inputs and collect timing information
             for %%f in ("!chapter_dir!\\sfx\\*.wav") do (
