@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import type { Podcast, Chapter, ChapterMetadata, SfxTiming, LogEntry } from '../types';
 import { fetchWithCorsFallback } from './apiUtils';
 import { getChapterDurations } from './audioUtils';
+import SENIOR_OPTIMIZED_AUDIO from './audioOptimization';
 
 type LogFunction = (entry: Omit<LogEntry, 'timestamp'>) => void;
 
@@ -215,8 +216,17 @@ export const packageProjectToFolder = async (
                 audioDuration: audioDuration,
                 imageDuration: calculatedImageDuration,
                 imageCount: imageCount,
-                musicVolume: chapter.backgroundMusicVolume ?? podcast.backgroundMusicVolume,
-                sfxTimings: finalSfxTimings
+                musicVolume: SENIOR_OPTIMIZED_AUDIO.mixLevels.music,  // 0.15 instead of default
+                sfxTimings: finalSfxTimings.map(timing => ({
+                    ...timing,
+                    // Adjust SFX volumes based on type for 50+ audience
+                    volume: timing.name.toLowerCase().includes('sudden') || 
+                            timing.name.toLowerCase().includes('loud') ||
+                            timing.name.toLowerCase().includes('crash') ||
+                            timing.name.toLowerCase().includes('bang')
+                        ? SENIOR_OPTIMIZED_AUDIO.mixLevels.sfxSudden  // 0.40
+                        : SENIOR_OPTIMIZED_AUDIO.mixLevels.sfxAtmospheric  // 0.20
+                }))
             };
             chapterFolder.file('metadata.json', JSON.stringify(metadata, null, 2));
             log({ type: 'info', message: `    ✅ Метаданные главы созданы` });
@@ -507,7 +517,10 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ===================================================
-echo Chapter-Based Video Assembly (High Quality + SFX)
+echo Chapter-Based Video Assembly (50+ Audio Optimized)
+echo ===================================================
+echo Senior-Optimized: Speech clarity boost + Gentle compression
+echo Music: 15%% | SFX: 20-40%% | Speech: Enhanced 2-4kHz
 echo ===================================================
 echo.
 
@@ -605,6 +618,9 @@ REM Check FFmpeg and FFprobe
         REM Build FFmpeg command with filters
         set "filter_complex=[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30[v]"
         set "inputs=-f concat -safe 0 -i temp_concat_!chapter_num!.txt -i \"!chapter_dir!\\audio.wav\""
+        
+        REM Apply 50+ audio optimizations: speech clarity + gentle compression
+        set "speech_filter=equalizer=f=3000:width_type=h:width=2000:g=3,acompressor=threshold=-18dB:ratio=3:attack=200:release=1000"
         set "maps=-map [v] -map 1:a"
     
     REM 🆕 ADD SFX PROCESSING
@@ -705,17 +721,26 @@ REM Check FFmpeg and FFprobe
                 set "maps=-map [v] -map [a]"
             )
         ) else (
-            echo [INFO] No SFX files found, using audio only
-            set "filter_complex=!filter_complex!;[1:a]acopy[a]"
+            echo [INFO] No SFX files found, using speech only
+            REM Apply 50+ speech optimization (clarity boost + compression)
+            set "filter_complex=!filter_complex!;[1:a]!speech_filter![a]"
             set "maps=-map [v] -map [a]"
         )
         
-        REM Add music if exists (after SFX mixing)
+        REM Add music if exists (after SFX mixing, with 50+ optimized volume)
         if exist "!chapter_dir!\\music.wav" (
-            echo [INFO] Adding background music...
+            echo [INFO] Adding background music (50+ optimized: 15%%)...
             set "inputs=!inputs! -i \"!chapter_dir!\\music.wav\""
-            set "filter_complex=!filter_complex!;[a]amix=inputs=2:duration=first:weights=1 0.3[final_audio]"
+            REM Speech with filters + Music at 15%% (senior-optimized)
+            set "filter_complex=!filter_complex!;[a]!speech_filter![speech_clean];[speech_clean]volume=0.85[speech_norm];[speech_norm]amix=inputs=2:duration=first:weights=1 0.15[final_audio]"
             set "maps=-map [v] -map [final_audio]"
+        ) else (
+            REM No music - just apply speech filter if not already done
+            if !sfx_count! gtr 0 (
+                REM Already mixed with SFX, just apply speech filter to result
+                set "filter_complex=!filter_complex!;[a]!speech_filter![final_audio]"
+                set "maps=-map [v] -map [final_audio]"
+            )
         )
         
         REM Apply subtitles with UTF-8 encoding
