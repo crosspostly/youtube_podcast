@@ -15,8 +15,9 @@ const searchUnsplash = async (query: string, log: LogFunction): Promise<StockPho
         return [];
     }
 
+    // FIXED: Force landscape orientation for horizontal images
     const url = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`;
-    log({ type: 'request', message: 'Searching Unsplash for photos', data: { query } });
+    log({ type: 'request', message: 'Searching Unsplash for LANDSCAPE photos', data: { query } });
 
     try {
         const response = await fetchWithCorsFallback(url, { headers: { Authorization: `Client-ID ${apiKey}` } });
@@ -46,8 +47,9 @@ const searchPexels = async (query: string, log: LogFunction): Promise<StockPhoto
         return [];
     }
 
+    // FIXED: Force landscape orientation for horizontal images
     const url = `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=10&orientation=landscape`;
-    log({ type: 'request', message: 'Searching Pexels for photos', data: { query } });
+    log({ type: 'request', message: 'Searching Pexels for LANDSCAPE photos', data: { query } });
 
     try {
         const response = await fetchWithCorsFallback(url, { headers: { Authorization: apiKey } });
@@ -58,7 +60,7 @@ const searchPexels = async (query: string, log: LogFunction): Promise<StockPhoto
         const data = await response.json();
         return data.photos.map((p: any): StockPhoto => ({
             id: p.id.toString(),
-            url: p.src.landscape,
+            url: p.src.landscape, // Already landscape format from API
             downloadUrl: p.src.original,
             authorName: p.photographer,
             authorUrl: p.photographer_url,
@@ -75,7 +77,7 @@ export const searchStockPhotos = async (
     prompt: string,
     log: LogFunction
 ): Promise<string[]> => {
-    log({ type: 'info', message: `Searching for stock photos with prompt: ${prompt}` });
+    log({ type: 'info', message: `🌄 Searching for HORIZONTAL stock photos with prompt: ${prompt}` });
     try {
         let photos = await searchUnsplash(prompt, log);
 
@@ -90,7 +92,7 @@ export const searchStockPhotos = async (
             return [await cropToAspectRatio(PLACEHOLDER_IMAGE_URL)];
         }
         
-        log({ type: 'info', message: `Found ${photos.length} stock photos. Cropping to aspect ratio...` });
+        log({ type: 'info', message: `✅ Found ${photos.length} LANDSCAPE stock photos. Cropping to 16:9 aspect ratio...` });
         
         const croppedImagePromises = photos.map(p => cropToAspectRatio(p.url).catch(e => {
             log({type: 'error', message: `Failed to crop image ${p.id}`, data: e});
@@ -106,7 +108,7 @@ export const searchStockPhotos = async (
 };
 
 export const getOnePhotoFromEachStockService = async (prompt: string, log: LogFunction): Promise<string[]> => {
-    log({ type: 'info', message: `Quick Test: Fetching one photo from each stock service.` });
+    log({ type: 'info', message: `Quick Test: Fetching one LANDSCAPE photo from each stock service.` });
     
     const results = await Promise.allSettled([
         searchUnsplash(prompt, log),
@@ -116,11 +118,11 @@ export const getOnePhotoFromEachStockService = async (prompt: string, log: LogFu
     const successfulPhotos: StockPhoto[] = [];
     if (results[0].status === 'fulfilled' && results[0].value.length > 0) {
         successfulPhotos.push(results[0].value[0]);
-        log({ type: 'info', message: `Got an image from Unsplash for the test.` });
+        log({ type: 'info', message: `Got a LANDSCAPE image from Unsplash for the test.` });
     }
     if (results[1].status === 'fulfilled' && results[1].value.length > 0) {
         successfulPhotos.push(results[1].value[0]);
-         log({ type: 'info', message: `Got an image from Pexels for the test.` });
+         log({ type: 'info', message: `Got a LANDSCAPE image from Pexels for the test.` });
     }
 
     if (successfulPhotos.length === 0) {
